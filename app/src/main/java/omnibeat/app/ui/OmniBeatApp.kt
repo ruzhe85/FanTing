@@ -27,6 +27,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -44,8 +45,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -63,6 +66,7 @@ import omnibeat.app.data.appString
 import omnibeat.app.data.removeTrackingParameters
 import omnibeat.app.data.normalizeStreamUrl
 import omnibeat.app.model.MainPage
+import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.model.Station
@@ -84,8 +88,11 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.random.Random
 
-/** 进入订阅时的刷新节流：超过这个时间才重新拉 feed（避免每次点开都走网络） */
-private const val PODCAST_REFRESH_INTERVAL_MS = 30 * 60 * 1000L
+/** 进入订阅时的刷新节流：超过这个时间才重新拉 feed（避免每次点开都走网络）；下拉刷新不受它限制 */
+private const val PODCAST_REFRESH_INTERVAL_MS = 10 * 60 * 1000L
+
+/** 距结尾不足这个时长就算「听完」，避免结尾几秒的误差让单集一直显示未听完 */
+private const val EPISODE_COMPLETED_TAIL_MS = 15_000L
 
 @Composable
 fun OmniBeatApp() {
@@ -94,6 +101,8 @@ fun OmniBeatApp() {
     // 播客订阅存在独立的 DataStore 里，与电台库互不干扰
     val podcastRepository = remember(context) { PodcastRepository(context.applicationContext) }
     val podcastSubscriptions by podcastRepository.subscriptions.collectAsState(initial = emptyList())
+    val podcastPlaybackSpeed by podcastRepository.playbackSpeed
+        .collectAsState(initial = PODCAST_DEFAULT_PLAYBACK_SPEED)
     val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
     var translationLoaded by remember(repository) { mutableStateOf(false) }
     LaunchedEffect(repository) {
@@ -127,6 +136,8 @@ fun OmniBeatApp() {
         }
 
         val scope = rememberCoroutineScope()
+        // 进度落盘用的额外作用域：退出时的最后一次写不能跟着组合一起被取消
+        val progressScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
         val onboardingCompleted by repository.onboardingCompleted.collectAsState(initial = null)
 
         if (onboardingCompleted == null || !translationLoaded) {
@@ -596,10 +607,13 @@ fun OmniBeatApp() {
             }
         }
 
-        /** 打开订阅时按需刷新（节流，避免每次点开都拉网络） */
-        fun refreshPodcast(subscription: PodcastSubscription) {
+        /**
+         * 刷新订阅的期数。
+         * [force] = true 时忽略节流（下拉刷新用），否则按 [PODCAST_REFRESH_INTERVAL_MS] 节流。
+         */
+        fun refreshPodcast(subscription: PodcastSubscription, force: Boolean = false) {
             if (podcastLoading) return
-            if (System.currentTimeMillis() - subscription.lastFetchedAtMs < PODCAST_REFRESH_INTERVAL_MS) return
+            if (!force && System.currentTimeMillis() - subscription.lastFetchedAtMs < PODCAST_REFRESH_INTERVAL_MS) return
             if (!NetworkStatus.isOnline(context)) return
             podcastLoading = true
             scope.launch {
@@ -629,16 +643,66 @@ fun OmniBeatApp() {
         }
 
         /**
-         * 播放单集：交给 PlaybackService 的独立入口（点播语义、可拖进度）。
+         * 当前正在播放的单集（连同它所属的订阅）。
+         * 播放服务只把单集的 guid 放在 `selectedStation.id` 上，这里再对回播客数据。
+         */
+        fun currentEpisode(): Pair<PodcastSubscription, PodcastEpisode>? {
+            val guid = playbackState.selectedStation?.id ?: return null
+            podcastSubscriptions.forEach { subscription ->
+                subscription.episodes.firstOrNull { it.guid == guid }?.let { return subscription to it }
+            }
+            return null
+        }
+
+        /**
+         * 把当前这一集的播放进度落盘。
+         *
+         * 只在**暂停 / 切集 / 退出**时调用：DataStore 每次写都是整文件重写，
+         * 不能挂到每秒的进度上报上。
+         */
+        fun saveEpisodeProgress(target: CoroutineScope = scope) {
+            val (subscription, episode) = currentEpisode() ?: return
+            val playback = playbackState
+            // 时长还没拿到时不写，否则会把位置误判成「听完」
+            if (playback.durationMs <= 0L) return
+            val completed = playback.positionMs >= playback.durationMs - EPISODE_COMPLETED_TAIL_MS
+            val position = if (completed) 0L else playback.positionMs
+            // 位置为 0 且没听完 = 没有有效进度：不写，免得把已有的断点清成 0
+            if (position <= 0L && !completed) return
+            if (position == episode.positionMs && completed == episode.completed) return
+            target.launch {
+                podcastRepository.updateEpisodeProgress(
+                    feedUrl = subscription.feedUrl,
+                    guid = episode.guid,
+                    positionMs = position,
+                    completed = completed,
+                )
+            }
+        }
+
+        // 暂停时写回进度（播放中不会触发，所以不会每秒写盘）
+        LaunchedEffect(playbackState.isPlaying) {
+            if (!playbackState.isPlaying) saveEpisodeProgress()
+        }
+
+        // 退出（或旋转）时最后写一次
+        DisposableEffect(Unit) {
+            onDispose { saveEpisodeProgress(progressScope) }
+        }
+
+        /**
+         * 播放单集：交给 PlaybackService 的独立入口（点播语义、可拖进度、可倍速）。
          * 单集只作为「播放描述」传过去，不写进电台库。
          */
         fun playPodcastEpisode(subscription: PodcastSubscription, episode: PodcastEpisode) {
             if (episode.audioUrl.isBlank()) return
             if (!hasInternetOrToast()) return
+            // 切集前先把上一集的进度落盘（此刻 playbackState 还指向上一集）
+            saveEpisodeProgress()
             expandPlayerPanelForUserPlaybackRequest()
             PlaybackService.playEpisode(
-                context,
-                Station(
+                context = context,
+                episode = Station(
                     id = episode.guid,
                     title = episode.title,
                     streamUrl = episode.audioUrl,
@@ -647,6 +711,9 @@ fun OmniBeatApp() {
                     isFavorite = false,
                     dateAdded = "",
                 ),
+                // 听完的期从头播；否则从上次位置继续
+                startPositionMs = if (episode.completed) 0L else episode.positionMs,
+                speed = podcastPlaybackSpeed,
             )
         }
 
@@ -782,6 +849,8 @@ fun OmniBeatApp() {
         }
 
         fun playStationAt(index: Int) {
+            // 从单集切到电台前，先把单集进度存下来
+            saveEpisodeProgress()
             if (!hasInternetOrToast()) return
             expandPlayerPanelForUserPlaybackRequest()
             scope.launch { drawerState.close() }
@@ -1086,7 +1155,11 @@ fun OmniBeatApp() {
                             },
                             onSeek = { positionMs -> PlaybackService.seekTo(context, positionMs) },
                             onPlayPause = { playOrPause() },
-                            onStop = { PlaybackService.stop(context) },
+                            onStop = {
+                                // 主动停止前先把单集进度存下来
+                                saveEpisodeProgress()
+                                PlaybackService.stop(context)
+                            },
                             onPreviousStation = { playAdjacentStation(-1) },
                             onNextStation = { playAdjacentStation(1) },
                             onRandomStation = { playRandomStation() },
@@ -1134,6 +1207,7 @@ fun OmniBeatApp() {
                                         onOpenSubscription = ::openPodcast,
                                         onCloseSubscription = { openPodcastUrl = null },
                                         onDeleteSubscription = { pendingPodcastRemoval = it },
+                                        onRefreshSubscription = { refreshPodcast(it, force = true) },
                                         onPlayEpisode = ::playPodcastEpisode,
                                         modifier = contentModifier,
                                     )

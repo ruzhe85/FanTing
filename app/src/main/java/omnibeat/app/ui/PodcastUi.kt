@@ -20,8 +20,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +68,7 @@ fun PodcastTabContent(
     onOpenSubscription: (PodcastSubscription) -> Unit,
     onCloseSubscription: () -> Unit,
     onDeleteSubscription: (PodcastSubscription) -> Unit,
+    onRefreshSubscription: (PodcastSubscription) -> Unit,
     onPlayEpisode: (PodcastSubscription, PodcastEpisode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -84,6 +87,7 @@ fun PodcastTabContent(
             playingEpisodeId = playingEpisodeId,
             loading = loading,
             onBack = onCloseSubscription,
+            onRefresh = { onRefreshSubscription(open) },
             onEpisodeClick = onPlayEpisode,
             modifier = modifier,
         )
@@ -147,6 +151,13 @@ private fun PodcastSubscriptionRow(
         stringResource(R.string.podcast_never_updated)
     }
     val countText = stringResource(R.string.podcast_episode_count, subscription.episodes.size)
+    // 有没听完的期就优先显示它，否则显示总期数（避免这一行太长被省略号吃掉）
+    val unfinishedCount = subscription.episodes.count { !it.completed }
+    val subtitle = if (unfinishedCount > 0) {
+        stringResource(R.string.podcast_unfinished_count, unfinishedCount) + " · " + updatedText
+    } else {
+        countText + " · " + updatedText
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -172,7 +183,7 @@ private fun PodcastSubscriptionRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "$countText · $updatedText",
+                text = subtitle,
                 color = RadioTextMuted,
                 fontSize = RadioTextSizes.caption,
                 maxLines = 1,
@@ -187,12 +198,14 @@ private fun PodcastSubscriptionRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PodcastEpisodesPage(
     subscription: PodcastSubscription,
     playingEpisodeId: String?,
     loading: Boolean,
     onBack: () -> Unit,
+    onRefresh: () -> Unit,
     onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -237,23 +250,48 @@ fun PodcastEpisodesPage(
             }
         }
 
-        when {
-            subscription.episodes.isEmpty() && loading -> CenteredNote(stringResource(R.string.podcast_loading))
-            subscription.episodes.isEmpty() -> CenteredNote(stringResource(R.string.podcast_episodes_empty))
-            else -> LazyColumn(
+        // 下拉刷新。空态也放进 LazyColumn：没有可滚动容器时下拉手势收不到。
+        PullToRefreshBox(
+            isRefreshing = loading,
+            onRefresh = onRefresh,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                contentPadding = PaddingValues(
                     horizontal = RadioSpacing.medium,
                     vertical = RadioSpacing.small,
                 ),
                 verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
             ) {
-                items(subscription.episodes, key = { it.guid }) { episode ->
-                    PodcastEpisodeRow(
-                        episode = episode,
-                        playing = episode.guid == playingEpisodeId,
-                        onClick = { onEpisodeClick(subscription, episode) },
-                    )
+                if (subscription.episodes.isEmpty()) {
+                    item {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .fillParentMaxSize()
+                                .padding(horizontal = RadioSpacing.page),
+                        ) {
+                            Text(
+                                text = if (loading) {
+                                    stringResource(R.string.podcast_loading)
+                                } else {
+                                    stringResource(R.string.podcast_episodes_empty)
+                                },
+                                color = RadioTextMuted,
+                                fontSize = RadioTextSizes.bodyLarge,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                } else {
+                    items(subscription.episodes, key = { it.guid }) { episode ->
+                        PodcastEpisodeRow(
+                            episode = episode,
+                            playing = episode.guid == playingEpisodeId,
+                            onClick = { onEpisodeClick(subscription, episode) },
+                        )
+                    }
                 }
             }
         }
@@ -266,9 +304,21 @@ private fun PodcastEpisodeRow(
     playing: Boolean,
     onClick: () -> Unit,
 ) {
-    val meta = listOf(formatEpisodeDate(episode.publishedAtMs), formatDuration(episode.durationSec))
-        .filter { it.isNotEmpty() }
-        .joinToString(" · ")
+    // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完
+    val progressText = when {
+        episode.positionMs > 0L -> stringResource(
+            R.string.podcast_listened_progress,
+            formatDuration((episode.positionMs / 1000L).toInt()),
+        )
+
+        episode.completed -> stringResource(R.string.podcast_completed)
+        else -> ""
+    }
+    val meta = listOf(
+        formatEpisodeDate(episode.publishedAtMs),
+        formatDuration(episode.durationSec),
+        progressText,
+    ).filter { it.isNotEmpty() }.joinToString(" · ")
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -303,23 +353,6 @@ private fun PodcastEpisodeRow(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun CenteredNote(text: String) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = RadioSpacing.page),
-    ) {
-        Text(
-            text = text,
-            color = RadioTextMuted,
-            fontSize = RadioTextSizes.bodyLarge,
-            textAlign = TextAlign.Center,
-        )
     }
 }
 

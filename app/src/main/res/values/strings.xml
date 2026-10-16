@@ -300,4 +300,7 @@
     <string name="podcast_remove_title">Remove subscription?</string>
     <string name="podcast_remove_text">%1$s will be removed from your podcasts. The RSS feed itself is not affected.</string>
     <string name="podcast_remove_confirm">Remove</string>
+    <string name="podcast_unfinished_count">%1$d unfinished</string>
+    <string name="podcast_listened_progress">Played %1$s</string>
+    <string name="podcast_completed">Finished</string>
 </resources>
