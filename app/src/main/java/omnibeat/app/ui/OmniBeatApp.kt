@@ -67,6 +67,7 @@ import omnibeat.app.data.removeTrackingParameters
 import omnibeat.app.data.normalizeStreamUrl
 import omnibeat.app.model.MainPage
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
+import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.model.Station
@@ -88,9 +89,6 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.random.Random
 
-/** 进入订阅时的刷新节流：超过这个时间才重新拉 feed（避免每次点开都走网络）；下拉刷新不受它限制 */
-private const val PODCAST_REFRESH_INTERVAL_MS = 10 * 60 * 1000L
-
 /** 距结尾不足这个时长就算「听完」，避免结尾几秒的误差让单集一直显示未听完 */
 private const val EPISODE_COMPLETED_TAIL_MS = 15_000L
 
@@ -103,6 +101,13 @@ fun OmniBeatApp() {
     val podcastSubscriptions by podcastRepository.subscriptions.collectAsState(initial = emptyList())
     val podcastPlaybackSpeed by podcastRepository.playbackSpeed
         .collectAsState(initial = PODCAST_DEFAULT_PLAYBACK_SPEED)
+    // 播客刷新偏好（设置-播客分组可改）：自动刷新开关与刷新间隔
+    val podcastAutoRefreshOnStart by podcastRepository.autoRefreshOnStart
+        .collectAsState(initial = true)
+    val podcastAutoRefreshOnEnterList by podcastRepository.autoRefreshOnEnterList
+        .collectAsState(initial = true)
+    val podcastRefreshIntervalMinutes by podcastRepository.refreshIntervalMinutes
+        .collectAsState(initial = PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES)
     val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
     var translationLoaded by remember(repository) { mutableStateOf(false) }
     LaunchedEffect(repository) {
@@ -217,6 +222,9 @@ fun OmniBeatApp() {
         var editPodcastUrl by remember { mutableStateOf<String?>(null) }
         var addPodcastDialogVisible by remember { mutableStateOf(false) }
         var podcastLoading by remember { mutableStateOf(false) }
+        // 一键刷新全部的进度：总数 > 0 表示正在刷新，已完成数驱动 FAB 的「n/N」
+        var podcastRefreshAllTotal by remember { mutableIntStateOf(0) }
+        var podcastRefreshAllDone by remember { mutableIntStateOf(0) }
         var podcastError by remember { mutableStateOf<String?>(null) }
         var pendingPodcastRemoval by remember { mutableStateOf<PodcastSubscription?>(null) }
         // 播客页始终可见；收藏页在「一条收藏都没有且设置里关掉空收藏页」时隐藏
@@ -446,10 +454,31 @@ fun OmniBeatApp() {
             }
         }
 
+        // 启动时按设置自动刷新全部订阅（静默：只拉间隔已到的，成功不提示、失败才提示）。
+        // 订阅列表从 DataStore 现读，避免组合首次时 collectAsState 还是空列表导致漏刷。
+        LaunchedEffect(Unit) {
+            if (!podcastAutoRefreshOnStart) return@LaunchedEffect
+            val saved = podcastRepository.subscriptions.first()
+            if (saved.isNotEmpty()) {
+                refreshAllPodcasts(saved, silent = true)
+            }
+        }
+
         LaunchedEffect(selectedPage, collapsePlayerPanelInSearch) {
             if (selectedPage == MainPage.SearchOnline && collapsePlayerPanelInSearch && !playerPanelCollapsed) {
                 playerPanelCollapsed = true
                 repository.savePlayerPanelCollapsed(true)
+            }
+        }
+
+        // 进入播客列表页（Tab 页且没打开某个订阅）时按设置自动刷新，同样静默 + 节流。
+        // 打开期数页（openPodcastUrl != null）不触发，那边走打开订阅时的单个节流刷新。
+        LaunchedEffect(selectedPage, openPodcastUrl) {
+            if (selectedPage != MainPage.Podcasts || openPodcastUrl != null) return@LaunchedEffect
+            if (!podcastAutoRefreshOnEnterList) return@LaunchedEffect
+            val saved = podcastRepository.subscriptions.first()
+            if (saved.isNotEmpty()) {
+                refreshAllPodcasts(saved, silent = true)
             }
         }
 
@@ -611,13 +640,19 @@ fun OmniBeatApp() {
             }
         }
 
+        /** 距上次拉取超过设置的刷新间隔才算「可以再拉」 */
+        fun refreshIntervalElapsed(subscription: PodcastSubscription): Boolean {
+            val intervalMs = podcastRefreshIntervalMinutes.coerceAtLeast(1) * 60_000L
+            return System.currentTimeMillis() - subscription.lastFetchedAtMs >= intervalMs
+        }
+
         /**
          * 刷新订阅的期数。
-         * [force] = true 时忽略节流（下拉刷新用），否则按 [PODCAST_REFRESH_INTERVAL_MS] 节流。
+         * [force] = true 时忽略节流（下拉刷新 / 一键刷新用），否则按设置里的刷新间隔节流。
          */
         fun refreshPodcast(subscription: PodcastSubscription, force: Boolean = false) {
             if (podcastLoading) return
-            if (!force && System.currentTimeMillis() - subscription.lastFetchedAtMs < PODCAST_REFRESH_INTERVAL_MS) return
+            if (!force && !refreshIntervalElapsed(subscription)) return
             if (!NetworkStatus.isOnline(context)) return
             podcastLoading = true
             scope.launch {
@@ -632,7 +667,99 @@ fun OmniBeatApp() {
                             ),
                         )
                     }
+                    .onFailure { error ->
+                        // 手动刷新失败必须说一声，否则用户分不清「没有新期」还是「拉取失败」；
+                        // 自动刷新（非 force）保持静默，由批量逻辑统一汇总提示
+                        if (force) {
+                            showPodcastRefreshError(error)
+                        }
+                    }
                 podcastLoading = false
+            }
+        }
+
+        /** 单个订阅刷新失败的提示（RssParser 的异常 message 就是可展示文案） */
+        fun showPodcastRefreshError(error: Throwable) {
+            val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
+            Toast.makeText(
+                context,
+                resources.appString(R.string.podcast_refresh_failed, reason),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+
+        /**
+         * 一键刷新全部订阅（订阅列表 FAB 用）。
+         *
+         * 串行执行：并发打多个 feed 容易触发源站限流，逐个拉 + FAB 进度（n/N）可感知且稳妥。
+         * [silent] = true 是自动刷新（启动 / 进入列表）：只拉间隔已到的订阅，成功不提示、
+         * 仅在失败时汇总提示；[silent] = false 是手动操作：忽略节流全部重拉，结束后给汇总
+         * toast（N 个订阅 / 新增 M 期 / 失败 K 个）。
+         */
+        fun refreshAllPodcasts(targets: List<PodcastSubscription>, silent: Boolean) {
+            if (podcastLoading) return
+            val pending = if (silent) {
+                targets.filter { refreshIntervalElapsed(it) }
+            } else {
+                targets
+            }
+            if (pending.isEmpty()) {
+                if (!silent) {
+                    Toast.makeText(
+                        context,
+                        resources.appString(R.string.podcast_refresh_nothing),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                return
+            }
+            podcastLoading = true
+            podcastRefreshAllTotal = pending.size
+            podcastRefreshAllDone = 0
+            scope.launch {
+                var succeeded = 0
+                var failed = 0
+                var newEpisodes = 0
+                pending.forEach { subscription ->
+                    // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」
+                    val previousGuids = subscription.episodes.mapTo(mutableSetOf()) { it.guid }
+                    runCatching { RssParser.load(subscription.feedUrl) }
+                        .onSuccess { parsed ->
+                            succeeded++
+                            newEpisodes += parsed.episodes.count { it.guid !in previousGuids }
+                            podcastRepository.upsertSubscription(
+                                subscription.copy(
+                                    title = parsed.title,
+                                    imageUrl = parsed.imageUrl ?: subscription.imageUrl,
+                                    lastFetchedAtMs = System.currentTimeMillis(),
+                                    episodes = parsed.episodes,
+                                ),
+                            )
+                        }
+                        .onFailure { failed++ }
+                    podcastRefreshAllDone++
+                }
+                podcastLoading = false
+                podcastRefreshAllTotal = 0
+                podcastRefreshAllDone = 0
+                when {
+                    // 自动刷新不打扰：只在有失败时提示
+                    silent && failed > 0 -> Toast.makeText(
+                        context,
+                        resources.appString(R.string.podcast_refresh_auto_failed, failed),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    !silent -> Toast.makeText(
+                        context,
+                        resources.appString(
+                            R.string.podcast_refresh_summary,
+                            pending.size,
+                            newEpisodes,
+                            failed,
+                        ),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
             }
         }
 
@@ -1328,6 +1455,15 @@ fun OmniBeatApp() {
                                         onCloseSubscription = { openPodcastUrl = null },
                                         onDeleteSubscription = { pendingPodcastRemoval = it },
                                         onRefreshSubscription = { refreshPodcast(it, force = true) },
+                                        onRefreshAll = {
+                                            refreshAllPodcasts(podcastSubscriptions, silent = false)
+                                        },
+                                        refreshingAll = podcastRefreshAllTotal > 0,
+                                        refreshProgress = if (podcastRefreshAllTotal > 0) {
+                                            podcastRefreshAllDone to podcastRefreshAllTotal
+                                        } else {
+                                            null
+                                        },
                                         onEditSubscription = {
                                             podcastError = null
                                             editPodcastUrl = it.feedUrl
@@ -1401,6 +1537,9 @@ fun OmniBeatApp() {
                                 addRadioBrowserTags = addRadioBrowserTags,
                                 removeTrackingParameters = removeTrackingParametersFromUrls,
                                 showAndroidAutoArtwork = showAndroidAutoArtwork,
+                                podcastAutoRefreshOnStart = podcastAutoRefreshOnStart,
+                                podcastAutoRefreshOnEnterList = podcastAutoRefreshOnEnterList,
+                                podcastRefreshIntervalMinutes = podcastRefreshIntervalMinutes,
                                 onThemeModeChange = { nextThemeMode ->
                                     scope.launch { repository.saveThemeMode(nextThemeMode) }
                                 },
@@ -1467,6 +1606,15 @@ fun OmniBeatApp() {
                                 onShowAndroidAutoArtworkChange = { show ->
                                     showAndroidAutoArtwork = show
                                     scope.launch { repository.saveShowAndroidAutoArtwork(show) }
+                                },
+                                onPodcastAutoRefreshOnStartChange = { enabled ->
+                                    scope.launch { podcastRepository.saveAutoRefreshOnStart(enabled) }
+                                },
+                                onPodcastAutoRefreshOnEnterListChange = { enabled ->
+                                    scope.launch { podcastRepository.saveAutoRefreshOnEnterList(enabled) }
+                                },
+                                onPodcastRefreshIntervalMinutesChange = { minutes ->
+                                    scope.launch { podcastRepository.saveRefreshIntervalMinutes(minutes) }
                                 },
                                 onClearLibrary = { clearLibrary() },
                                 modifier = Modifier.fillMaxSize(),

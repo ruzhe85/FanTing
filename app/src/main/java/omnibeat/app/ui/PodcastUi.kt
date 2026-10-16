@@ -21,9 +21,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -35,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,6 +78,9 @@ fun PodcastTabContent(
     onCloseSubscription: () -> Unit,
     onDeleteSubscription: (PodcastSubscription) -> Unit,
     onRefreshSubscription: (PodcastSubscription) -> Unit,
+    onRefreshAll: () -> Unit = {},
+    refreshingAll: Boolean = false,
+    refreshProgress: Pair<Int, Int>? = null,
     onEditSubscription: (PodcastSubscription) -> Unit,
     onPlayLatest: (PodcastSubscription) -> Unit,
     onPlayEpisode: (PodcastSubscription, PodcastEpisode) -> Unit,
@@ -87,6 +94,9 @@ fun PodcastTabContent(
             onPlayLatest = onPlayLatest,
             onEdit = onEditSubscription,
             onDelete = onDeleteSubscription,
+            onRefreshAll = onRefreshAll,
+            refreshingAll = refreshingAll,
+            refreshProgress = refreshProgress,
             modifier = modifier,
         )
     } else {
@@ -125,6 +135,9 @@ fun PodcastSubscriptionsPage(
     onPlayLatest: (PodcastSubscription) -> Unit,
     onEdit: (PodcastSubscription) -> Unit,
     onDelete: (PodcastSubscription) -> Unit,
+    onRefreshAll: () -> Unit,
+    refreshingAll: Boolean,
+    refreshProgress: Pair<Int, Int>?,
     modifier: Modifier = Modifier,
 ) {
     if (subscriptions.isEmpty()) {
@@ -132,22 +145,72 @@ fun PodcastSubscriptionsPage(
         return
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            horizontal = RadioSpacing.medium,
-            vertical = RadioSpacing.small,
-        ),
-        verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
-    ) {
-        items(subscriptions, key = { it.feedUrl }) { subscription ->
-            PodcastSubscriptionRow(
-                subscription = subscription,
-                onClick = { onOpen(subscription) },
-                onPlayLatest = { onPlayLatest(subscription) },
-                onEdit = { onEdit(subscription) },
-                onDelete = { onDelete(subscription) },
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = RadioSpacing.medium,
+                end = RadioSpacing.medium,
+                top = RadioSpacing.small,
+                // 底部加大：避让右下角的一键刷新 FAB
+                bottom = RadioSizes.fabListClearance,
+            ),
+            verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+        ) {
+            items(subscriptions, key = { it.feedUrl }) { subscription ->
+                PodcastSubscriptionRow(
+                    subscription = subscription,
+                    onClick = { onOpen(subscription) },
+                    onPlayLatest = { onPlayLatest(subscription) },
+                    onEdit = { onEdit(subscription) },
+                    onDelete = { onDelete(subscription) },
+                )
+            }
+        }
+
+        // 刷新中在 FAB 上方显示「n/N」小胶囊：串行刷多个订阅时可感知进度
+        if (refreshingAll && refreshProgress != null) {
+            val (done, total) = refreshProgress
+            Text(
+                text = stringResource(R.string.podcast_refresh_progress, done, total),
+                color = RadioText,
+                fontSize = RadioTextSizes.badge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = RadioSpacing.page,
+                        bottom = RadioSpacing.page + RadioSizes.fab + RadioSpacing.compact,
+                    )
+                    .clip(RoundedCornerShape(RadioCorners.pill))
+                    .background(RadioSurfaceHigh)
+                    .padding(horizontal = RadioSpacing.compact, vertical = RadioSpacing.extraSmall),
             )
+        }
+
+        // 一键刷新全部订阅：刷新中图标位换成转圈，点击由 podcastLoading 互斥防重复
+        FloatingActionButton(
+            onClick = onRefreshAll,
+            containerColor = RadioPrimary,
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = RadioSpacing.page, bottom = RadioSpacing.page),
+        ) {
+            if (refreshingAll) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(RadioSizes.iconInline),
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    painter = painterResource(R.drawable.ic_sync),
+                    contentDescription = stringResource(R.string.podcast_refresh_all),
+                    modifier = Modifier.size(RadioSizes.icon),
+                )
+            }
         }
     }
 }

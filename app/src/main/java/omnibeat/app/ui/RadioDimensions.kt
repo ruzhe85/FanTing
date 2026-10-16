@@ -34,6 +34,10 @@ object RadioSizes {
     val playerDividerThickness = 2.dp
     val button = 53.dp
     val primaryPlaybackButton = 76.dp
+    /** 悬浮操作按钮（播客订阅列表的一键刷新）标准尺寸 */
+    val fab = 56.dp
+    /** 列表底部为 FAB 留出的间距：FAB 高度 + 上下边距 */
+    val fabListClearance = 88.dp
     val textFieldMinHeight = 62.dp
     val actionButtonMinHeight = 44.dp
     val menuItemMinHeight = 53.dp

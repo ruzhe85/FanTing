@@ -1,14 +1,18 @@
 package omnibeat.app.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
+import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
 import omnibeat.app.model.PODCAST_PLAYBACK_SPEEDS
+import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
 import org.json.JSONArray
@@ -21,14 +25,18 @@ import org.json.JSONObject
  * 「整表覆盖写 + 导入导出」语义面对「一个订阅含多期」会变得很难受。
  * 读写风格与 `StationRepository` 保持一致：手写 JSON、整表覆盖写、解码失败整体降级为空列表。
  *
- * 除了订阅本身，这里还存两样与单集播放有关的状态：
+ * 除了订阅本身，这里还存这些与播客有关的状态：
  *   - 每期的续播位置与听完标记（随订阅一起进 JSON）
  *   - 播放倍速（单独的 Float 键）
+ *   - 刷新偏好：启动时 / 进入列表时自动刷新开关 + 刷新间隔
  * 因为 DataStore 每次写都是整文件重写，进度只在暂停 / 切集 / 退出时更新。
  */
 private val Context.podcastDataStore by preferencesDataStore(name = "podcasts")
 private val podcastsJsonKey = stringPreferencesKey("podcasts_json")
 private val playbackSpeedKey = floatPreferencesKey("podcast_playback_speed")
+private val autoRefreshOnStartKey = booleanPreferencesKey("podcast_auto_refresh_on_start")
+private val autoRefreshOnEnterListKey = booleanPreferencesKey("podcast_auto_refresh_on_enter_list")
+private val refreshIntervalMinutesKey = intPreferencesKey("podcast_refresh_interval_minutes")
 
 class PodcastRepository(private val context: Context) {
     val subscriptions: Flow<List<PodcastSubscription>> = context.podcastDataStore.data
@@ -37,6 +45,20 @@ class PodcastRepository(private val context: Context) {
     /** 单集播放倍速（默认 1.0×）；电台直播不使用这个值 */
     val playbackSpeed: Flow<Float> = context.podcastDataStore.data
         .map { preferences -> preferences[playbackSpeedKey] ?: PODCAST_DEFAULT_PLAYBACK_SPEED }
+
+    /** 启动软件时自动刷新全部订阅（默认开） */
+    val autoRefreshOnStart: Flow<Boolean> = context.podcastDataStore.data
+        .map { preferences -> preferences[autoRefreshOnStartKey] ?: true }
+
+    /** 进入播客列表页时自动刷新（默认开；按刷新间隔节流） */
+    val autoRefreshOnEnterList: Flow<Boolean> = context.podcastDataStore.data
+        .map { preferences -> preferences[autoRefreshOnEnterListKey] ?: true }
+
+    /** 自动刷新间隔（分钟，默认 10）；越界值在保存时夹回可选项 */
+    val refreshIntervalMinutes: Flow<Int> = context.podcastDataStore.data
+        .map { preferences ->
+            preferences[refreshIntervalMinutesKey] ?: PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
+        }
 
     /** 新增或覆盖（按 feedUrl 去重）：添加订阅与刷新后都用它写回 */
     suspend fun upsertSubscription(subscription: PodcastSubscription) {
@@ -86,6 +108,31 @@ class PodcastRepository(private val context: Context) {
         context.podcastDataStore.edit { preferences ->
             if (preferences[playbackSpeedKey] != clamped) {
                 preferences[playbackSpeedKey] = clamped
+            }
+        }
+    }
+
+    /** 启动软件时自动刷新全部订阅的开关 */
+    suspend fun saveAutoRefreshOnStart(enabled: Boolean) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[autoRefreshOnStartKey] = enabled
+        }
+    }
+
+    /** 进入播客列表时自动刷新的开关 */
+    suspend fun saveAutoRefreshOnEnterList(enabled: Boolean) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[autoRefreshOnEnterListKey] = enabled
+        }
+    }
+
+    /** 保存自动刷新间隔（分钟，越界值夹回最近的可选项） */
+    suspend fun saveRefreshIntervalMinutes(minutes: Int) {
+        val clamped = PODCAST_REFRESH_INTERVAL_OPTIONS.minByOrNull { kotlin.math.abs(it - minutes) }
+            ?: PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
+        context.podcastDataStore.edit { preferences ->
+            if (preferences[refreshIntervalMinutesKey] != clamped) {
+                preferences[refreshIntervalMinutesKey] = clamped
             }
         }
     }

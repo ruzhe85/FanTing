@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.IntOffset
 import omnibeat.app.R
 import omnibeat.app.data.STOP_SERVICE_AFTER_PAUSE_NEVER
 import omnibeat.app.model.AppLanguage
+import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
 import omnibeat.app.data.TranslationLanguage
 import omnibeat.app.model.ThemeMode
 
@@ -156,6 +157,9 @@ fun SettingsPage(
     addRadioBrowserTags: Boolean,
     removeTrackingParameters: Boolean,
     showAndroidAutoArtwork: Boolean,
+    podcastAutoRefreshOnStart: Boolean,
+    podcastAutoRefreshOnEnterList: Boolean,
+    podcastRefreshIntervalMinutes: Int,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
     onRememberLastStationChange: (Boolean) -> Unit,
@@ -174,6 +178,9 @@ fun SettingsPage(
     onAddRadioBrowserTagsChange: (Boolean) -> Unit,
     onRemoveTrackingParametersChange: (Boolean) -> Unit,
     onShowAndroidAutoArtworkChange: (Boolean) -> Unit,
+    onPodcastAutoRefreshOnStartChange: (Boolean) -> Unit,
+    onPodcastAutoRefreshOnEnterListChange: (Boolean) -> Unit,
+    onPodcastRefreshIntervalMinutesChange: (Int) -> Unit,
     onClearLibrary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -301,6 +308,33 @@ fun SettingsPage(
                 },
                 checked = confirmStationDeletion,
                 onCheckedChange = onConfirmStationDeletionChange,
+            )
+            SettingsDivider()
+
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_podcast))
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_podcast_refresh_on_start_title),
+                subtitle = stringResource(
+                    if (podcastAutoRefreshOnStart) R.string.settings_podcast_refresh_on_start_on
+                    else R.string.settings_podcast_refresh_on_start_off,
+                ),
+                checked = podcastAutoRefreshOnStart,
+                onCheckedChange = onPodcastAutoRefreshOnStartChange,
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_podcast_refresh_on_enter_list_title),
+                subtitle = stringResource(
+                    if (podcastAutoRefreshOnEnterList) R.string.settings_podcast_refresh_on_enter_list_on
+                    else R.string.settings_podcast_refresh_on_enter_list_off,
+                ),
+                checked = podcastAutoRefreshOnEnterList,
+                onCheckedChange = onPodcastAutoRefreshOnEnterListChange,
+            )
+            SettingsPodcastRefreshIntervalRow(
+                title = stringResource(R.string.settings_podcast_refresh_interval_title),
+                subtitle = stringResource(R.string.settings_podcast_refresh_interval_subtitle),
+                selectedMinutes = podcastRefreshIntervalMinutes,
+                onSelectedMinutesChange = onPodcastRefreshIntervalMinutesChange,
             )
             SettingsDivider()
 
@@ -492,6 +526,86 @@ private fun SettingsLanguageRow(
                         onClick = {
                             expanded = false
                             onAppLanguageChange(option)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun podcastRefreshIntervalLabel(minutes: Int): String {
+    return when (minutes) {
+        60 -> stringResource(R.string.settings_podcast_refresh_interval_1h)
+        360 -> stringResource(R.string.settings_podcast_refresh_interval_6h)
+        1440 -> stringResource(R.string.settings_podcast_refresh_interval_1d)
+        else -> stringResource(R.string.settings_podcast_refresh_interval_10m)
+    }
+}
+
+/**
+ * 播客刷新间隔行：交互复刻「暂停后停止服务」（当前值 + 点开菜单 + 选中项即当前值），
+ * 选项取 [PODCAST_REFRESH_INTERVAL_OPTIONS]（10 分钟 / 1 小时 / 6 小时 / 每天）。
+ */
+@Composable
+private fun SettingsPodcastRefreshIntervalRow(
+    title: String,
+    subtitle: String,
+    selectedMinutes: Int,
+    onSelectedMinutesChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.groupGap),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = RadioSpacing.fieldGap),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(
+                text = title,
+                color = RadioText,
+                fontSize = RadioTextSizes.bodyLarge,
+            )
+            Text(
+                text = subtitle,
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.bodySmall,
+            )
+        }
+        Box {
+            TextButton(onClick = { expanded = true }) {
+                Text(
+                    text = podcastRefreshIntervalLabel(selectedMinutes),
+                    color = RadioPrimary,
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                containerColor = RadioSurface,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(RadioCorners.medium),
+            ) {
+                PODCAST_REFRESH_INTERVAL_OPTIONS.forEach { minutes ->
+                    DropdownMenuItem(
+                        modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                        contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                        text = {
+                            Text(
+                                text = podcastRefreshIntervalLabel(minutes),
+                                color = RadioText,
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelectedMinutesChange(minutes)
                         },
                     )
                 }

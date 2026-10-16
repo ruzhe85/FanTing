@@ -8,6 +8,12 @@ val PODCAST_PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
 
 const val PODCAST_DEFAULT_PLAYBACK_SPEED = 1.0f
 
+/** 自动刷新间隔的可选项（分钟）：10 分钟 / 1 小时 / 6 小时 / 每天，设置下拉按此顺序展示 */
+val PODCAST_REFRESH_INTERVAL_OPTIONS = listOf(10, 60, 360, 1440)
+
+/** 自动刷新间隔默认值（分钟），与旧版硬编码的 10 分钟一致 */
+const val PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES = 10
+
 /**
  * 一个播客单集。
  *
