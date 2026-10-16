@@ -32,6 +32,12 @@ data class PodcastEpisode(
     val completed: Boolean = false,
     /** 是否收藏：刷新换期数时按 guid 保留，删订阅才随之消失 */
     val favorite: Boolean = false,
+    /**
+     * 已下载的本地文件名（null = 未下载）。
+     * 目录固定为 `filesDir/podcast_audio/`，只存文件名不存全路径——
+     * 换设备/清数据后文件不在，播放与导出处按存在性兜底回网络。
+     */
+    val localFileName: String? = null,
 )
 
 /**

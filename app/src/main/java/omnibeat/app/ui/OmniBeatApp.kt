@@ -56,7 +56,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import omnibeat.app.data.DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
+import omnibeat.app.data.PodcastDownloadManager
 import omnibeat.app.data.PodcastRepository
+import omnibeat.app.data.buildDownloadExportName
 import omnibeat.app.data.SimpleStationTextCodec
 import omnibeat.app.data.StationExportCodec
 import omnibeat.app.data.StationImportMode
@@ -109,7 +111,7 @@ fun OmniBeatApp() {
         .collectAsState(initial = true)
     val podcastRefreshIntervalMinutes by podcastRepository.refreshIntervalMinutes
         .collectAsState(initial = PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES)
-    // 收藏的期：跨订阅聚合，按发布时间倒序（与订阅内排序一致）。
+    // 收藏的节目：跨订阅聚合，按发布时间倒序（与订阅内排序一致）。
     // 纯读派生——数据源就是各订阅里 favorite = true 的期，不额外落库。
     val favoriteEpisodes = remember(podcastSubscriptions) {
         podcastSubscriptions
@@ -118,6 +120,8 @@ fun OmniBeatApp() {
             }
             .sortedByDescending { it.second.publishedAtMs }
     }
+    // 播客下载状态（guid → 下载中/失败）；已下载与否看 episode.localFileName
+    val podcastDownloadStates by PodcastDownloadManager.states.collectAsState()
     val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
     var translationLoaded by remember(repository) { mutableStateOf(false) }
     LaunchedEffect(repository) {
@@ -228,7 +232,7 @@ fun OmniBeatApp() {
         var onlineOptionsExpanded by remember { mutableStateOf(false) }
         // 播客页状态：当前打开的订阅（null = 订阅列表）、添加弹窗、加载与错误
         var openPodcastUrl by remember { mutableStateOf<String?>(null) }
-        // 收藏的期列表是否打开（跨订阅聚合页）；与 openPodcastUrl 互斥显示
+        // 收藏的节目列表是否打开（跨订阅聚合页）；与 openPodcastUrl 互斥显示
         var openPodcastFavorites by remember { mutableStateOf(false) }
         // 正在编辑的订阅（按 feedUrl 定位；地址改动后会重定向到新地址）
         var editPodcastUrl by remember { mutableStateOf<String?>(null) }
@@ -307,6 +311,69 @@ fun OmniBeatApp() {
                     ).show()
                 }
             }
+        }
+
+        // ---- 播客下载导出：SAF 选位置 → 内部文件字节拷出去（不需要 FileProvider / 权限）----
+        // 注意本地函数先声明后使用：拷贝函数 → launcher → 触发函数。
+        var pendingDownloadExport by remember {
+            mutableStateOf<Pair<PodcastSubscription, PodcastEpisode>?>(null)
+        }
+
+        /** 把已下载的单集音频拷到用户选的位置；文件不在 / 写失败返回 false */
+        suspend fun copyDownloadedEpisode(
+            episode: PodcastEpisode,
+            destination: android.net.Uri,
+        ): Boolean {
+            val fileName = episode.localFileName ?: return false
+            val file = PodcastDownloadManager.localFile(context, fileName)
+            if (!file.isFile) return false
+            return withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(destination)?.use { output ->
+                        file.inputStream().use { it.copyTo(output) }
+                    } ?: error("cannot open output stream")
+                }.isSuccess
+            }
+        }
+
+        // 建议名「订阅名 - 单集名.ext」：内部 hash 名用户看不懂，导出必须可读；
+        // SAF 里用户还能自己改。mime 用通配 audio/*，实际后缀由建议名带。
+        val downloadExportLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("audio/*"),
+        ) { uri ->
+            val target = pendingDownloadExport ?: return@rememberLauncherForActivityResult
+            pendingDownloadExport = null
+            if (uri == null) return@rememberLauncherForActivityResult
+            scope.launch {
+                val exported = copyDownloadedEpisode(target.second, uri)
+                Toast.makeText(
+                    context,
+                    resources.appString(
+                        if (exported) R.string.toast_download_exported
+                        else R.string.toast_download_export_failed,
+                    ),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+
+        /** 导出已下载的单集：存在性检查 → 拼可读建议名 → SAF */
+        fun exportDownloadedEpisode(
+            subscription: PodcastSubscription,
+            episode: PodcastEpisode,
+        ) {
+            val fileName = episode.localFileName ?: return
+            if (!PodcastDownloadManager.localFileExists(context, fileName)) {
+                // 文件没了（清过数据之类）：提示失败，别把一个空壳导出去
+                Toast.makeText(
+                    context,
+                    resources.appString(R.string.toast_download_export_failed),
+                    Toast.LENGTH_SHORT,
+                ).show()
+                return
+            }
+            pendingDownloadExport = subscription to episode
+            downloadExportLauncher.launch(buildDownloadExportName(subscription, episode))
         }
 
         val jsonExportLauncher = rememberLauncherForActivityResult(
@@ -853,7 +920,12 @@ fun OmniBeatApp() {
          */
         fun playPodcastEpisode(subscription: PodcastSubscription, episode: PodcastEpisode) {
             if (episode.audioUrl.isBlank()) return
-            if (!hasInternetOrToast()) return
+            // 已下载且文件还在：走本地 file://，离线也能播（HLS 的分片同样是本地路径）；
+            // 没有本地文件才检查网络、回退在线地址
+            val localUri = episode.localFileName?.let {
+                PodcastDownloadManager.localFileUri(context, it)
+            }
+            if (localUri == null && !hasInternetOrToast()) return
             // 切集前先把上一集的进度落盘（此刻 playbackState 还指向上一集）
             saveEpisodeProgress()
             expandPlayerPanelForUserPlaybackRequest()
@@ -862,7 +934,7 @@ fun OmniBeatApp() {
                 episode = Station(
                     id = episode.guid,
                     title = episode.title,
-                    streamUrl = episode.audioUrl,
+                    streamUrl = localUri ?: episode.audioUrl,
                     tags = emptyList(),
                     imageUrl = subscription.imageUrl,
                     isFavorite = false,
@@ -1501,6 +1573,27 @@ fun OmniBeatApp() {
                                                     favorite = !episode.favorite,
                                                 )
                                             }
+                                        },
+                                        downloadStates = podcastDownloadStates,
+                                        onDownload = { subscription, episode ->
+                                            PodcastDownloadManager.download(
+                                                context,
+                                                subscription,
+                                                episode,
+                                            )
+                                        },
+                                        onCancelDownload = { episode ->
+                                            PodcastDownloadManager.cancel(episode.guid)
+                                        },
+                                        onDeleteDownload = { subscription, episode ->
+                                            PodcastDownloadManager.deleteDownload(
+                                                context,
+                                                subscription,
+                                                episode,
+                                            )
+                                        },
+                                        onExportDownload = { subscription, episode ->
+                                            exportDownloadedEpisode(subscription, episode)
                                         },
                                         onEditSubscription = {
                                             podcastError = null

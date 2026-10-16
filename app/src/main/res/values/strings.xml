@@ -132,6 +132,8 @@
     <string name="toast_export_json">JSON exported</string>
     <string name="toast_export_txt">TXT exported</string>
     <string name="toast_export_failed">Export failed: %1$s</string>
+    <string name="toast_download_exported">File exported</string>
+    <string name="toast_download_export_failed">Export failed</string>
     <string name="toast_import_failed">Import failed: %1$s</string>
     <string name="toast_stations_imported">Stations imported</string>
     <string name="toast_library_deleted">Library deleted</string>
@@ -317,6 +319,14 @@
     <string name="podcast_favorites_title">Favorite episodes</string>
     <string name="podcast_favorites_count">%1$d episodes</string>
     <string name="podcast_favorites_empty">No favorite episodes yet.\nTap the heart on an episode to keep it here.</string>
+    <string name="podcast_favorite_add">Favorite</string>
+    <string name="podcast_favorite_remove">Unfavorite</string>
+    <string name="podcast_download">Download</string>
+    <string name="podcast_download_cancel">Cancel download</string>
+    <string name="podcast_download_retry">Retry download</string>
+    <string name="podcast_download_downloaded">Downloaded</string>
+    <string name="podcast_download_export">Export file</string>
+    <string name="podcast_download_delete">Delete download</string>
     <string name="podcast_episode_count">%1$d episodes</string>
     <string name="podcast_last_updated">Updated %1$s</string>
     <string name="podcast_never_updated">Not updated yet</string>

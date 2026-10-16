@@ -178,6 +178,34 @@ class PodcastRepository(private val context: Context) {
     }
 
     /**
+     * 记录 / 清除某个节目的本地下载文件（下载完成与删除下载时调用）。
+     * 与 [updateEpisodeProgress] 同一套写法：值没变化就不整表重写。
+     */
+    suspend fun setEpisodeLocalFile(
+        feedUrl: String,
+        guid: String,
+        localFileName: String?,
+    ) {
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            val subscriptionIndex = current.indexOfFirst { it.feedUrl == feedUrl }
+            if (subscriptionIndex == -1) return@edit
+            val subscription = current[subscriptionIndex]
+            val episodeIndex = subscription.episodes.indexOfFirst { it.guid == guid }
+            if (episodeIndex == -1) return@edit
+            val episode = subscription.episodes[episodeIndex]
+            if (episode.localFileName == localFileName) return@edit
+            val updatedEpisodes = subscription.episodes.toMutableList().also {
+                it[episodeIndex] = episode.copy(localFileName = localFileName)
+            }
+            val next = current.toMutableList().also {
+                it[subscriptionIndex] = subscription.copy(episodes = updatedEpisodes)
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
+    /**
      * 收藏 / 取消收藏某一期。
      * 与 [updateEpisodeProgress] 同一套写法：值没变化就不整表重写。
      */
@@ -207,8 +235,8 @@ class PodcastRepository(private val context: Context) {
 
     /**
      * 把 [previous] 里同 guid 的期状态搬到本期数上（新出现的期保持默认值）。
-     * 保留三样：续播位置、听完标记、收藏 —— 刷新换掉的只是期数列表，
-     * 这三样是用户行为产生的，不能因为重新拉了一次 feed 就丢。
+     * 保留四样：续播位置、听完标记、收藏、下载文件名 —— 刷新换掉的只是期数列表，
+     * 这些是用户行为产生的，不能因为重新拉了一次 feed 就丢。
      */
     private fun PodcastSubscription.withPreservedEpisodeState(
         previous: List<PodcastEpisode>,
@@ -218,12 +246,14 @@ class PodcastRepository(private val context: Context) {
         return copy(
             episodes = episodes.map { episode ->
                 val saved = previousByGuid[episode.guid] ?: return@map episode
-                val hasState = saved.positionMs != 0L || saved.completed || saved.favorite
+                val hasState = saved.positionMs != 0L || saved.completed ||
+                    saved.favorite || saved.localFileName != null
                 if (hasState) {
                     episode.copy(
                         positionMs = saved.positionMs,
                         completed = saved.completed,
                         favorite = saved.favorite,
+                        localFileName = saved.localFileName,
                     )
                 } else {
                     episode
@@ -254,7 +284,8 @@ class PodcastRepository(private val context: Context) {
                         .put("durationSec", episode.durationSec)
                         .put("positionMs", episode.positionMs)
                         .put("completed", episode.completed)
-                        .put("favorite", episode.favorite),
+                        .put("favorite", episode.favorite)
+                        .put("localFileName", episode.localFileName.orEmpty()),
                 )
             }
             items.put(
@@ -321,8 +352,10 @@ class PodcastRepository(private val context: Context) {
                             // 旧数据没有这两个字段：走默认值（无进度、未听完）
                             positionMs = item.optLong("positionMs", 0L),
                             completed = item.optBoolean("completed", false),
-                            // 旧数据没有收藏字段：默认未收藏
+                            // 旧数据没有收藏与下载字段：默认未收藏、未下载
                             favorite = item.optBoolean("favorite", false),
+                            localFileName = item.optString("localFileName").trim()
+                                .takeIf { it.isNotBlank() },
                         ),
                     )
                 }

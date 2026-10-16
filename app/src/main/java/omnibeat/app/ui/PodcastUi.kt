@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -47,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import omnibeat.app.R
+import omnibeat.app.data.PodcastDownloadState
 import omnibeat.app.model.PODCAST_FEED_URL_MAX_LENGTH
 import omnibeat.app.model.PODCAST_TITLE_MAX_LENGTH
 import omnibeat.app.model.PodcastEpisode
@@ -86,6 +89,11 @@ fun PodcastTabContent(
     onOpenFavorites: () -> Unit = {},
     onCloseFavorites: () -> Unit = {},
     onToggleFavorite: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    downloadStates: Map<String, PodcastDownloadState> = emptyMap(),
+    onDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    onCancelDownload: (PodcastEpisode) -> Unit = {},
+    onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     onEditSubscription: (PodcastSubscription) -> Unit,
     onPlayLatest: (PodcastSubscription) -> Unit,
     onPlayEpisode: (PodcastSubscription, PodcastEpisode) -> Unit,
@@ -93,7 +101,7 @@ fun PodcastTabContent(
 ) {
     val open = subscriptions.firstOrNull { it.feedUrl == openSubscriptionUrl }
     when {
-        // 收藏的期：跨订阅聚合，优先于订阅列表
+        // 收藏的节目：跨订阅聚合，优先于订阅列表
         favoritesOpen -> {
             BackHandler { onCloseFavorites() }
             FavoriteEpisodesPage(
@@ -102,6 +110,11 @@ fun PodcastTabContent(
                 onBack = onCloseFavorites,
                 onEpisodeClick = onPlayEpisode,
                 onToggleFavorite = onToggleFavorite,
+                downloadStates = downloadStates,
+                onDownload = onDownload,
+                onCancelDownload = onCancelDownload,
+                onDeleteDownload = onDeleteDownload,
+                onExportDownload = onExportDownload,
                 modifier = modifier,
             )
         }
@@ -116,6 +129,11 @@ fun PodcastTabContent(
                 onRefresh = { onRefreshSubscription(open) },
                 onEpisodeClick = onPlayEpisode,
                 onToggleFavorite = { onToggleFavorite(open, it) },
+                downloadStates = downloadStates,
+                onDownload = { onDownload(open, it) },
+                onCancelDownload = onCancelDownload,
+                onDeleteDownload = { onDeleteDownload(open, it) },
+                onExportDownload = { onExportDownload(open, it) },
                 modifier = modifier,
             )
         }
@@ -174,7 +192,7 @@ fun PodcastSubscriptionsPage(
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // 收藏入口：有收藏的期才显示。发现路径是期数行的收藏按钮——
+            // 收藏入口：有收藏的节目才显示。发现路径是期数行的收藏按钮——
             // 收藏了第一期，这行才出现，避免空数据时占着一个没内容的入口。
             if (favoriteCount > 0) {
                 PodcastFavoritesEntryRow(
@@ -390,6 +408,11 @@ fun PodcastEpisodesPage(
     onRefresh: () -> Unit,
     onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
     onToggleFavorite: (PodcastEpisode) -> Unit = {},
+    downloadStates: Map<String, PodcastDownloadState> = emptyMap(),
+    onDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    onCancelDownload: (PodcastEpisode) -> Unit = {},
+    onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -474,6 +497,11 @@ fun PodcastEpisodesPage(
                             playing = episode.guid == playingEpisodeId,
                             onClick = { onEpisodeClick(subscription, episode) },
                             onToggleFavorite = { onToggleFavorite(episode) },
+                            downloadState = downloadStates[episode.guid],
+                            onDownload = { onDownload(subscription, episode) },
+                            onCancelDownload = { onCancelDownload(episode) },
+                            onDeleteDownload = { onDeleteDownload(subscription, episode) },
+                            onExportDownload = { onExportDownload(subscription, episode) },
                         )
                     }
                 }
@@ -483,7 +511,7 @@ fun PodcastEpisodesPage(
 }
 
 /**
- * 收藏的期：跨订阅聚合列表。
+ * 收藏的节目：跨订阅聚合列表。
  * 数据是各订阅里 favorite = true 的期（OmniBeatApp 侧按发布时间倒序派发），
  * 纯本地数据，所以不做下拉刷新 —— 没有可刷的东西，避免转一个骗人的圈。
  */
@@ -494,6 +522,11 @@ fun FavoriteEpisodesPage(
     onBack: () -> Unit,
     onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
     onToggleFavorite: (PodcastSubscription, PodcastEpisode) -> Unit,
+    downloadStates: Map<String, PodcastDownloadState> = emptyMap(),
+    onDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    onCancelDownload: (PodcastEpisode) -> Unit = {},
+    onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -565,6 +598,11 @@ fun FavoriteEpisodesPage(
                         playing = episode.guid == playingEpisodeId,
                         onClick = { onEpisodeClick(subscription, episode) },
                         onToggleFavorite = { onToggleFavorite(subscription, episode) },
+                        downloadState = downloadStates[episode.guid],
+                        onDownload = { onDownload(subscription, episode) },
+                        onCancelDownload = { onCancelDownload(episode) },
+                        onDeleteDownload = { onDeleteDownload(subscription, episode) },
+                        onExportDownload = { onExportDownload(subscription, episode) },
                     )
                 }
             }
@@ -623,6 +661,11 @@ private fun PodcastEpisodeRow(
     playing: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: (() -> Unit)? = null,
+    downloadState: PodcastDownloadState? = null,
+    onDownload: (() -> Unit)? = null,
+    onCancelDownload: (() -> Unit)? = null,
+    onDeleteDownload: (() -> Unit)? = null,
+    onExportDownload: (() -> Unit)? = null,
 ) {
     // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完
     val progressText = when {
@@ -673,16 +716,167 @@ private fun PodcastEpisodeRow(
                 )
             }
         }
-        // 收藏按钮：行尾，未收藏时低调（描边爱心 + 弱色），收藏后主色实心爱心。
-        // 按钮自己吃掉点击，不会冒泡到整行的播放。
+        // 收藏与下载两个辅助按钮：38dp 小圆钮（比 53dp 正牌按钮小一档），
+        // 并排也不抢标题宽度；按钮自己吃掉点击，不会冒泡到整行的播放。
         if (onToggleFavorite != null) {
-            OmniIconButton(
-                painter = painterResource(
+            EpisodeRowAuxButton(
+                icon = painterResource(
                     if (episode.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
                 ),
                 onClick = onToggleFavorite,
                 tint = if (episode.favorite) RadioPrimary else RadioTextMuted,
+                contentDescription = stringResource(
+                    if (episode.favorite) R.string.podcast_favorite_remove
+                    else R.string.podcast_favorite_add,
+                ),
             )
+        }
+        if (onDownload != null) {
+            EpisodeDownloadButton(
+                episode = episode,
+                downloadState = downloadState,
+                onDownload = onDownload,
+                onCancelDownload = onCancelDownload ?: {},
+                onDeleteDownload = onDeleteDownload ?: {},
+                onExportDownload = onExportDownload ?: {},
+            )
+        }
+    }
+}
+
+/** 期数行尾部辅助按钮（收藏 / 下载）的直径：比 53dp 正牌按钮小一档，两个并排不抢标题宽度 */
+private val EPISODE_ROW_AUX_BUTTON_SIZE = 38.dp
+
+/**
+ * 期数行尾部的小圆钮。[progress] 非空时切转圈模式（>=0  determinate、<0   indeterminate，
+ * 用于下载中），此时 [icon] 忽略。
+ */
+@Composable
+private fun EpisodeRowAuxButton(
+    onClick: () -> Unit,
+    tint: Color,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    icon: Painter? = null,
+    progress: Float? = null,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(EPISODE_ROW_AUX_BUTTON_SIZE)
+            .clip(CircleShape)
+            .background(RadioSurfaceHigh)
+            .clickable(onClick = onClick),
+    ) {
+        when {
+            progress != null && progress >= 0f -> CircularProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.size(RadioSizes.iconInline),
+                color = tint,
+                strokeWidth = 2.dp,
+            )
+
+            progress != null -> CircularProgressIndicator(
+                modifier = Modifier.size(RadioSizes.iconInline),
+                color = tint,
+                strokeWidth = 2.dp,
+            )
+
+            icon != null -> Icon(
+                painter = icon,
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier.size(RadioSizes.iconInline),
+            )
+        }
+    }
+}
+
+/**
+ * 期数行的下载按钮，四态：
+ * - 下载中：进度圈（点了取消）
+ * - 已下载：主色实心勾（点开小菜单：导出文件 / 删除下载）
+ * - 失败：主色下载图标（点了重试）
+ * - 未下载：弱色下载图标（点了开始）
+ */
+@Composable
+private fun EpisodeDownloadButton(
+    episode: PodcastEpisode,
+    downloadState: PodcastDownloadState?,
+    onDownload: () -> Unit,
+    onCancelDownload: () -> Unit,
+    onDeleteDownload: () -> Unit,
+    onExportDownload: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        when {
+            downloadState is PodcastDownloadState.Downloading -> EpisodeRowAuxButton(
+                onClick = onCancelDownload,
+                tint = RadioTextMuted,
+                contentDescription = stringResource(R.string.podcast_download_cancel),
+                progress = downloadState.progress,
+            )
+
+            episode.localFileName != null -> {
+                EpisodeRowAuxButton(
+                    onClick = { menuExpanded = true },
+                    tint = RadioPrimary,
+                    contentDescription = stringResource(R.string.podcast_download_downloaded),
+                    icon = painterResource(R.drawable.ic_check),
+                )
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    containerColor = RadioSurface,
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.podcast_download_export)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_file_export),
+                                contentDescription = null,
+                                tint = RadioTextMuted,
+                                modifier = Modifier.size(RadioSizes.iconInline),
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onExportDownload()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.podcast_download_delete)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_delete),
+                                contentDescription = null,
+                                tint = RadioTextMuted,
+                                modifier = Modifier.size(RadioSizes.iconInline),
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onDeleteDownload()
+                        },
+                    )
+                }
+            }
+
+            else -> {
+                // 失败态用主色：提示「可以重点重试」，和未下载的弱色区分
+                val failed = downloadState is PodcastDownloadState.Failed
+                EpisodeRowAuxButton(
+                    onClick = onDownload,
+                    tint = if (failed) RadioPrimary else RadioTextMuted,
+                    contentDescription = stringResource(
+                        if (failed) R.string.podcast_download_retry
+                        else R.string.podcast_download,
+                    ),
+                    icon = painterResource(R.drawable.ic_download),
+                )
+            }
         }
     }
 }

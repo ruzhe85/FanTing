@@ -115,6 +115,8 @@
     <string name="toast_export_json">JSON-файл экспортирован</string>
     <string name="toast_export_txt">TXT-файл экспортирован</string>
     <string name="toast_export_failed">Не удалось экспортировать: %1$s</string>
+    <string name="toast_download_exported">Файл экспортирован</string>
+    <string name="toast_download_export_failed">Не удалось экспортировать</string>
     <string name="toast_import_failed">Не удалось импортировать: %1$s</string>
     <string name="toast_stations_imported">Станции импортированы</string>
     <string name="toast_library_deleted">Библиотека удалена</string>
@@ -210,6 +212,14 @@
     <string name="podcast_favorites_title">Избранные выпуски</string>
     <string name="podcast_favorites_count">Выпусков: %1$d</string>
     <string name="podcast_favorites_empty">Пока нет избранных выпусков.\nНажмите на сердечко у выпуска, чтобы сохранить его здесь.</string>
+    <string name="podcast_favorite_add">В избранное</string>
+    <string name="podcast_favorite_remove">Убрать из избранного</string>
+    <string name="podcast_download">Скачать</string>
+    <string name="podcast_download_cancel">Отменить скачивание</string>
+    <string name="podcast_download_retry">Повторить скачивание</string>
+    <string name="podcast_download_downloaded">Скачано</string>
+    <string name="podcast_download_export">Экспортировать файл</string>
+    <string name="podcast_download_delete">Удалить загрузку</string>
     <string name="settings_section_podcast">Подкасты</string>
     <string name="settings_podcast_refresh_on_start_title">Обновлять при запуске</string>
     <string name="settings_podcast_refresh_on_start_on">Обновлять все подписки при открытии приложения</string>
