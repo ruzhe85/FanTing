@@ -202,6 +202,7 @@
 
     <string name="player_bitrate_format">%1$d kbps</string>
     <string name="player_bitrate_unavailable">未知</string>
+    <string name="player_live_badge">直播</string>
     <string name="player_clipboard_track_label">曲目</string>
     <string name="player_track_copied">已复制曲目名</string>
     <string name="player_choose_station">选择一个电台</string>

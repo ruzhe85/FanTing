@@ -1261,6 +1261,7 @@ fun OmniBeatApp() {
                             collapsed = playerPanelCollapsed,
                             positionMs = playbackState.positionMs,
                             durationMs = playbackState.durationMs,
+                            seekable = playbackState.seekable,
                             onCollapsedChange = { collapsed ->
                                 playerPanelCollapsed = collapsed
                                 scope.launch { repository.savePlayerPanelCollapsed(collapsed) }

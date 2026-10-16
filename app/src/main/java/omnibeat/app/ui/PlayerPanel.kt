@@ -108,6 +108,8 @@ fun PlayerPanel(
     positionMs: Long = 0L,
     durationMs: Long = 0L,
     playbackSpeed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
+    /** 当前是否为可 seek 的点播内容（播客单集）；电台直播恒为 false，面板据此切换控制组 */
+    seekable: Boolean = false,
     onCollapsedChange: (Boolean) -> Unit,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
@@ -127,7 +129,8 @@ fun PlayerPanel(
     // 播客单集是 HLS 点播，**没有 ICY 元数据这一层**：服务端等不到元数据会把第二行
     // 永久停在「无元数据」，所以单集时第二行只在出错时出现；电台保留原来的
     // 「曲目名 / 播放状态」逻辑（那边有 ICY 元数据，是有信息量的）。
-    val displayTrackText: String? = if (durationMs > 0L) {
+    val onDemand = seekable
+    val displayTrackText: String? = if (onDemand) {
         errorText?.takeIf { it.isNotBlank() }
     } else {
         errorText ?: trackStatus?.let { trackStatusText(it) } ?: trackText
@@ -257,6 +260,9 @@ fun PlayerPanel(
                                     ),
                             )
                         }
+                        if (!onDemand && station != null) {
+                            LiveBadge()
+                        }
                         bitrateText?.let { bitrate ->
                             Text(
                                 text = bitrate,
@@ -268,9 +274,9 @@ fun PlayerPanel(
                         }
                     }
                 }
-                // durationMs > 0 说明在播点播单集（直播没有时长）。两种形态分开：
-                if (durationMs > 0L) {
-                    // 单集：进度条（右端挂倍速与音量）+ 一行播放控制
+                // 进度区：仅点播单集显示，且等时长真正拿到再画（避免 0:00/0:00 闪烁）。
+                // 直播没有可拖动的进度，这块区域直接不占位。
+                if (onDemand && durationMs > 0L) {
                     PlaybackProgress(
                         positionMs = positionMs,
                         durationMs = durationMs,
@@ -280,78 +286,34 @@ fun PlayerPanel(
                         onSpeedChange = onSpeedChange,
                         onVolumeChange = onVolumeChange,
                     )
-                    // 播放控制（原始尺寸，整组居中）：上一集 / 后退 15 秒 / 播放暂停 / 前进 30 秒 / 下一集
-                    // 倍速与音量不在这里 —— 五控 288dp + 倍速音量 106dp = 394dp，
-                    // 超过 360dp 屏可用的 316dp 会重叠，所以那两个右对齐挂在进度条那一行。
-                    // 间隔用固定值 + 整组居中：SpaceBetween 会把按钮摊到整行两端，观感很散。
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(
-                            RadioSpacing.extraSmall,
-                            Alignment.CenterHorizontally,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = RadioSpacing.large),
-                    ) {
-                        PlayerIconButton(
-                            enabled = true,
-                            onClick = onPreviousStation,
-                            modifier = Modifier.size(RadioSizes.button),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_skip_previous),
-                                contentDescription = null,
-                                modifier = Modifier.size(RadioSizes.icon),
-                            )
-                        }
+                }
+                // 控制行：统一五槽骨架 —— 同位置、同尺寸、整组居中，只槽位内容随内容类型变：
+                //   直播 = 随机 / 上一台 / 播放暂停 / 下一台 / 音量
+                //   点播 = −15s / 上一集 / 播放暂停 / 下一集 / +30s
+                // 倍速与音量（点播）不在这行 —— 五控 288dp + 倍速音量 106dp = 394dp，
+                // 超过 360dp 屏可用的 316dp 会重叠，所以那两个右对齐挂在进度条那一行。
+                // 间隔用固定值 + 整组居中：SpaceBetween 会把按钮摊到整行两端，观感很散。
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(
+                        RadioSpacing.extraSmall,
+                        Alignment.CenterHorizontally,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = RadioSpacing.large),
+                ) {
+                    // 槽1：直播随机 / 点播快退 15s
+                    if (onDemand) {
                         PlayerTextButton(
                             label = stringResource(R.string.podcast_skip_backward_label),
                             onClick = { onSeek((positionMs - SKIP_BACKWARD_MS).coerceAtLeast(0L)) },
                         )
-                        PlayerIconButton(
-                            enabled = true,
-                            onClick = onPlayPause,
-                            onLongClick = onStop,
-                            modifier = Modifier.size(RadioSizes.primaryPlaybackButton),
-                        ) {
-                            Icon(
-                                painter = painterResource(
-                                    if (hasActivePlaybackRequest) R.drawable.ic_pause else R.drawable.ic_play_arrow,
-                                ),
-                                contentDescription = null,
-                                modifier = Modifier.size(RadioSizes.iconPlayback),
-                            )
-                        }
-                        PlayerTextButton(
-                            label = stringResource(R.string.podcast_skip_forward_label),
-                            onClick = { onSeek((positionMs + SKIP_FORWARD_MS).coerceAtMost(durationMs)) },
-                        )
-                        PlayerIconButton(
-                            enabled = true,
-                            onClick = onNextStation,
-                            modifier = Modifier.size(RadioSizes.button),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_skip_next),
-                                contentDescription = null,
-                                modifier = Modifier.size(RadioSizes.icon),
-                            )
-                        }
-                    }
-                } else {
-                    // 电台直播：面板维持原样（随机 / 上一台 / 播放暂停 / 下一台 / 音量）
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = RadioSpacing.large),
-                    ) {
+                    } else {
                         PlayerIconButton(
                             enabled = true,
                             onClick = onRandomStation,
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .size(RadioSizes.button),
+                            modifier = Modifier.size(RadioSizes.button),
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_shuffle),
@@ -359,52 +321,56 @@ fun PlayerPanel(
                                 modifier = Modifier.size(RadioSizes.icon),
                             )
                         }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(RadioSpacing.fieldGap),
-                            modifier = Modifier.align(Alignment.Center),
-                        ) {
-                            PlayerIconButton(
-                                enabled = true,
-                                onClick = onPreviousStation,
-                                modifier = Modifier.size(RadioSizes.button),
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_skip_previous),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(RadioSizes.icon),
-                                )
-                            }
-                            PlayerIconButton(
-                                enabled = true,
-                                onClick = onPlayPause,
-                                onLongClick = onStop,
-                                modifier = Modifier.size(RadioSizes.primaryPlaybackButton),
-                            ) {
-                                Icon(
-                                    painter = painterResource(
-                                        if (hasActivePlaybackRequest) R.drawable.ic_pause else R.drawable.ic_play_arrow,
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(RadioSizes.iconPlayback),
-                                )
-                            }
-                            PlayerIconButton(
-                                enabled = true,
-                                onClick = onNextStation,
-                                modifier = Modifier.size(RadioSizes.button),
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_skip_next),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(RadioSizes.icon),
-                                )
-                            }
-                        }
+                    }
+                    // 槽2：上一台 / 上一集
+                    PlayerIconButton(
+                        enabled = true,
+                        onClick = onPreviousStation,
+                        modifier = Modifier.size(RadioSizes.button),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_skip_previous),
+                            contentDescription = null,
+                            modifier = Modifier.size(RadioSizes.icon),
+                        )
+                    }
+                    // 槽3：播放 / 暂停（长按停止）
+                    PlayerIconButton(
+                        enabled = true,
+                        onClick = onPlayPause,
+                        onLongClick = onStop,
+                        modifier = Modifier.size(RadioSizes.primaryPlaybackButton),
+                    ) {
+                        Icon(
+                            painter = painterResource(
+                                if (hasActivePlaybackRequest) R.drawable.ic_pause else R.drawable.ic_play_arrow,
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(RadioSizes.iconPlayback),
+                        )
+                    }
+                    // 槽4：下一台 / 下一集
+                    PlayerIconButton(
+                        enabled = true,
+                        onClick = onNextStation,
+                        modifier = Modifier.size(RadioSizes.button),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_skip_next),
+                            contentDescription = null,
+                            modifier = Modifier.size(RadioSizes.icon),
+                        )
+                    }
+                    // 槽5：直播音量 / 点播快进 30s
+                    if (onDemand) {
+                        PlayerTextButton(
+                            label = stringResource(R.string.podcast_skip_forward_label),
+                            onClick = { onSeek((positionMs + SKIP_FORWARD_MS).coerceAtMost(durationMs)) },
+                        )
+                    } else {
                         VolumeButton(
                             volume = appVolume,
                             onVolumeChange = onVolumeChange,
-                            modifier = Modifier.align(Alignment.CenterEnd),
                         )
                     }
                 }
@@ -424,6 +390,27 @@ fun PlayerPanel(
             },
         )
     }
+}
+
+/**
+ * 直播徽标：曲目行里的小 pill。
+ * 直播没有可拖动的进度（点播有进度条），用徽标把「这是直播」说明白，
+ * 免得用户以为进度条缺失是 bug。只在电台直播且已选中电台时显示。
+ */
+@Composable
+private fun LiveBadge(modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(R.string.player_live_badge),
+        color = Color.White,
+        fontSize = RadioTextSizes.badge,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        modifier = modifier
+            .padding(start = RadioSpacing.medium)
+            .clip(RadioCorners.pill)
+            .background(RadioPrimary)
+            .padding(horizontal = RadioSpacing.compact, vertical = RadioSpacing.extraSmall),
+    )
 }
 
 /**

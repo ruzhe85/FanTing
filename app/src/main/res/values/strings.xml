@@ -202,6 +202,7 @@
 
     <string name="player_bitrate_format">%1$d kbps</string>
     <string name="player_bitrate_unavailable">N/A kbps</string>
+    <string name="player_live_badge">LIVE</string>
     <string name="player_clipboard_track_label">Track</string>
     <string name="player_track_copied">Track name copied</string>
     <string name="player_choose_station">Choose a station</string>

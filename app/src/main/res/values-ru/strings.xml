@@ -198,6 +198,7 @@
 
     <string name="player_bitrate_format">%1$d кбит/с</string>
     <string name="player_bitrate_unavailable">N/A кбит/с</string>
+    <string name="player_live_badge">LIVE</string>
     <string name="player_clipboard_track_label">Трек</string>
     <string name="player_track_copied">Название трека скопировано</string>
     <string name="player_choose_station">Выберите станцию</string>

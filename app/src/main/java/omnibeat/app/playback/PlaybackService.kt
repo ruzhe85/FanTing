@@ -88,6 +88,12 @@ data class PlaybackState(
     /** 点播单集的播放进度与总时长（直播恒为 0）；播放面板据此画可拖动的进度条 */
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    /**
+     * 当前内容是否为可 seek 的点播（播客单集）；电台直播恒为 false。
+     * 播放面板据此切换控制组（点播：快进快退；直播：随机/音量），
+     * 不再靠 durationMs 反推 —— 切台时若残留上一集的时长，面板会错误继承点播形态。
+     */
+    val seekable: Boolean = false,
     /** 当前播放倍速（直播恒为 1.0）；面板按它显示倍速按钮文案 */
     val playbackSpeed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
     /** 当前条目已播到结尾（STATE_ENDED）；准备新条目时会自动清零，供 UI 做「标记听完 + 自动下一集」 */
@@ -448,6 +454,9 @@ class PlaybackService : MediaLibraryService() {
         resolveJob?.cancel()
         stopAfterPauseJob?.cancel()
         noMetadataJob?.cancel()
+        // 进度轮询只属于点播单集：换内容时立刻停掉，否则旧任务的 tick 会把
+        // 上一集的 positionMs/durationMs 写回来，面板据此错误继承点播形态
+        positionJob?.cancel()
         playbackRequested = startPlayback
         currentItemSeekable = seekable
         // 倍速只跟随单集；切回电台时立即恢复 1.0×，直播行为不受影响
@@ -471,6 +480,12 @@ class PlaybackService : MediaLibraryService() {
                     isPlaying = false,
                     errorText = resources.appString(R.string.toast_no_internet),
                     streamInfo = PlaybackStreamInfo(),
+                    // 新内容立即就位：清掉上一集的进度/倍速，面板随之切回对应形态
+                    seekable = seekable,
+                    positionMs = 0L,
+                    durationMs = 0L,
+                    playbackSpeed = if (seekable) speed else PODCAST_DEFAULT_PLAYBACK_SPEED,
+                    ended = false,
                 ).withTrackStatus(PlaybackTrackStatus.Stopped)
             }
             stopPlaybackService(errorText = state.value.errorText)
@@ -486,6 +501,12 @@ class PlaybackService : MediaLibraryService() {
                 isPlaying = false,
                 errorText = null,
                 streamInfo = PlaybackStreamInfo(),
+                // 新内容立即就位：清掉上一集的进度/倍速，面板随之切回对应形态
+                seekable = seekable,
+                positionMs = 0L,
+                durationMs = 0L,
+                playbackSpeed = if (seekable) speed else PODCAST_DEFAULT_PLAYBACK_SPEED,
+                ended = false,
             ).withTrackStatus(PlaybackTrackStatus.Resolving)
         }
         player.stop()
@@ -527,7 +548,8 @@ class PlaybackService : MediaLibraryService() {
                 }
                 _state.update { it.copy(resolving = false) }
                 // 点播单集：开始把播放位置同步给 UI（进度条）；直播不轮询
-                if (seekable) startPositionUpdates() else positionJob?.cancel()
+                // （positionJob 的取消已提前到 playStation 入口）
+                if (seekable) startPositionUpdates()
                 scheduleNoMetadataIfPlaybackStarted()
                 syncSession()
             }.onFailure { error ->
@@ -616,6 +638,7 @@ class PlaybackService : MediaLibraryService() {
                 streamInfo = PlaybackStreamInfo(),
                 positionMs = 0L,
                 durationMs = 0L,
+                seekable = false,
                 playbackSpeed = PODCAST_DEFAULT_PLAYBACK_SPEED,
                 ended = false,
             ).withTrackStatus(PlaybackTrackStatus.Stopped)
@@ -983,7 +1006,11 @@ class PlaybackService : MediaLibraryService() {
             resolveJob?.cancel()
             stopAfterPauseJob?.cancel()
             noMetadataJob?.cancel()
+            positionJob?.cancel()
             playbackRequested = false
+            currentItemSeekable = false
+            // 系统侧起播的队列只可能是电台：清掉点播语义，倍速回到 1.0×
+            applyPlaybackSpeed(PODCAST_DEFAULT_PLAYBACK_SPEED)
             player.stop()
             player.clearMediaItems()
             navigationQueueIds = mediaItems.mapNotNull { StationMediaLibrary.stationId(it.mediaId) }
@@ -992,6 +1019,11 @@ class PlaybackService : MediaLibraryService() {
                     selectedStation = station, selectedIndex = stations.indexOfFirst { item -> item.id == station.id },
                     previewing = false, resolving = false, buffering = false, isPlaying = false,
                     errorText = null, streamInfo = PlaybackStreamInfo(),
+                    seekable = false,
+                    positionMs = 0L,
+                    durationMs = 0L,
+                    playbackSpeed = PODCAST_DEFAULT_PLAYBACK_SPEED,
+                    ended = false,
                 ).withTrackStatus(PlaybackTrackStatus.Paused)
             }
             return Futures.immediateVoidFuture()
