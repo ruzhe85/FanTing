@@ -212,6 +212,8 @@ fun OmniBeatApp() {
         var onlineOptionsExpanded by remember { mutableStateOf(false) }
         // 播客页状态：当前打开的订阅（null = 订阅列表）、添加弹窗、加载与错误
         var openPodcastUrl by remember { mutableStateOf<String?>(null) }
+        // 正在编辑的订阅（按 feedUrl 定位；地址改动后会重定向到新地址）
+        var editPodcastUrl by remember { mutableStateOf<String?>(null) }
         var addPodcastDialogVisible by remember { mutableStateOf(false) }
         var podcastLoading by remember { mutableStateOf(false) }
         var podcastError by remember { mutableStateOf<String?>(null) }
@@ -734,6 +736,58 @@ fun OmniBeatApp() {
             return true
         }
 
+        /** 播放某订阅的最新一期（列表按期数倒序，第一条即最新） */
+        fun playLatestEpisode(subscription: PodcastSubscription) {
+            val latest = subscription.episodes.firstOrNull() ?: return
+            playPodcastEpisode(subscription, latest)
+        }
+
+        /**
+         * 保存订阅编辑。
+         * 地址没变 → 只改标题；地址变了 → 先用新地址拉取解析，成功才替换（进度按 guid 搬过去）。
+         */
+        fun savePodcastEdit(subscription: PodcastSubscription, title: String, feedUrl: String) {
+            if (podcastLoading) return
+            podcastError = null
+            if (feedUrl == subscription.feedUrl) {
+                scope.launch {
+                    podcastRepository.replaceSubscription(
+                        previousFeedUrl = subscription.feedUrl,
+                        subscription = subscription.copy(title = title),
+                    )
+                }
+                editPodcastUrl = null
+                return
+            }
+            if (!hasInternetOrToast()) return
+            podcastLoading = true
+            scope.launch {
+                runCatching { RssParser.load(feedUrl) }
+                    .onSuccess { parsed ->
+                        podcastRepository.replaceSubscription(
+                            previousFeedUrl = subscription.feedUrl,
+                            subscription = PodcastSubscription(
+                                feedUrl = feedUrl,
+                                // 没改过标题就跟随新源的标题，改过则保留用户填的
+                                title = if (title == subscription.title) parsed.title else title,
+                                imageUrl = parsed.imageUrl,
+                                lastFetchedAtMs = System.currentTimeMillis(),
+                                episodes = parsed.episodes,
+                            ),
+                        )
+                        if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = feedUrl
+                        editPodcastUrl = null
+                    }
+                    .onFailure { error ->
+                        podcastError = resources.appString(
+                            R.string.podcast_error_load,
+                            error.message ?: error.javaClass.simpleName,
+                        )
+                    }
+                podcastLoading = false
+            }
+        }
+
         // 通知栏 / 锁屏 / 耳机线控的上一集、下一集：服务只发计数，这里执行切集
         LaunchedEffect(playbackState.previousRequest) {
             if (playbackState.previousRequest > 0L) playAdjacentEpisode(-1)
@@ -1240,6 +1294,11 @@ fun OmniBeatApp() {
                                         onCloseSubscription = { openPodcastUrl = null },
                                         onDeleteSubscription = { pendingPodcastRemoval = it },
                                         onRefreshSubscription = { refreshPodcast(it, force = true) },
+                                        onEditSubscription = {
+                                            podcastError = null
+                                            editPodcastUrl = it.feedUrl
+                                        },
+                                        onPlayLatest = ::playLatestEpisode,
                                         onPlayEpisode = ::playPodcastEpisode,
                                         modifier = contentModifier,
                                     )
@@ -1406,6 +1465,21 @@ fun OmniBeatApp() {
                 onDismiss = {
                     if (!podcastLoading) {
                         addPodcastDialogVisible = false
+                        podcastError = null
+                    }
+                },
+            )
+        }
+
+        podcastSubscriptions.firstOrNull { it.feedUrl == editPodcastUrl }?.let { subscription ->
+            EditPodcastDialog(
+                subscription = subscription,
+                loading = podcastLoading,
+                errorText = podcastError,
+                onSave = { title, feedUrl -> savePodcastEdit(subscription, title, feedUrl) },
+                onDismiss = {
+                    if (!podcastLoading) {
+                        editPodcastUrl = null
                         podcastError = null
                     }
                 },

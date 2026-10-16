@@ -55,6 +55,30 @@ class PodcastRepository(private val context: Context) {
         }
     }
 
+    /**
+     * 一次性替换某个订阅（用于改标题 / 换订阅地址）。
+     * 按 [previousFeedUrl] 定位，替换后**保持它在列表中的位置**，并沿用原有的播放进度
+     * （按 guid 合并，因此换源后若 guid 相同，断点仍然有效）。
+     */
+    suspend fun replaceSubscription(previousFeedUrl: String, subscription: PodcastSubscription) {
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            val index = current.indexOfFirst { it.feedUrl == previousFeedUrl }
+            val previous = current.getOrNull(index)
+            val merged = if (previous == null) {
+                subscription
+            } else {
+                subscription.withPreservedProgress(previous.episodes)
+            }
+            val next = if (index == -1) {
+                current + merged
+            } else {
+                current.toMutableList().also { it[index] = merged }
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
     /** 保存单集播放倍速（越界值夹回可选项范围） */
     suspend fun savePlaybackSpeed(speed: Float) {
         val clamped = PODCAST_PLAYBACK_SPEEDS.minByOrNull { kotlin.math.abs(it - speed) }

@@ -305,4 +305,9 @@
     <string name="podcast_completed">Finished</string>
     <string name="podcast_skip_backward_label">15s</string>
     <string name="podcast_skip_forward_label">30s</string>
+    <string name="podcast_edit_title">Edit podcast</string>
+    <string name="podcast_title_hint">Title</string>
+    <string name="podcast_error_empty_title">Please enter a title</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_save">Save</string>
 </resources>

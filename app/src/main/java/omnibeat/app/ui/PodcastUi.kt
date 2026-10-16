@@ -3,6 +3,7 @@ package omnibeat.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +21,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -69,6 +73,8 @@ fun PodcastTabContent(
     onCloseSubscription: () -> Unit,
     onDeleteSubscription: (PodcastSubscription) -> Unit,
     onRefreshSubscription: (PodcastSubscription) -> Unit,
+    onEditSubscription: (PodcastSubscription) -> Unit,
+    onPlayLatest: (PodcastSubscription) -> Unit,
     onPlayEpisode: (PodcastSubscription, PodcastEpisode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -77,6 +83,8 @@ fun PodcastTabContent(
         PodcastSubscriptionsPage(
             subscriptions = subscriptions,
             onOpen = onOpenSubscription,
+            onPlayLatest = onPlayLatest,
+            onEdit = onEditSubscription,
             onDelete = onDeleteSubscription,
             modifier = modifier,
         )
@@ -113,6 +121,8 @@ fun EmptyPodcastsState(modifier: Modifier = Modifier) {
 fun PodcastSubscriptionsPage(
     subscriptions: List<PodcastSubscription>,
     onOpen: (PodcastSubscription) -> Unit,
+    onPlayLatest: (PodcastSubscription) -> Unit,
+    onEdit: (PodcastSubscription) -> Unit,
     onDelete: (PodcastSubscription) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -133,18 +143,27 @@ fun PodcastSubscriptionsPage(
             PodcastSubscriptionRow(
                 subscription = subscription,
                 onClick = { onOpen(subscription) },
+                onPlayLatest = { onPlayLatest(subscription) },
+                onEdit = { onEdit(subscription) },
                 onDelete = { onDelete(subscription) },
             )
         }
     }
 }
 
+/**
+ * 订阅卡片：点击进入期数页；右侧播放按钮播最新一期；长按弹出「编辑 / 删除」菜单。
+ * 删除不再常驻在卡片上（之前那个红色删除图标常驻很突兀）。
+ */
 @Composable
 private fun PodcastSubscriptionRow(
     subscription: PodcastSubscription,
     onClick: () -> Unit,
+    onPlayLatest: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val updatedText = if (subscription.lastFetchedAtMs > 0L) {
         stringResource(R.string.podcast_last_updated, formatStamp(subscription.lastFetchedAtMs))
     } else {
@@ -159,42 +178,97 @@ private fun PodcastSubscriptionRow(
         countText + " · " + updatedText
     }
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(RadioSurface, RoundedCornerShape(RadioCorners.medium))
-            .clickable(onClick = onClick)
-            .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.small),
-    ) {
-        StationArtwork(imageUrl = subscription.imageUrl)
-        Column(
-            verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .weight(1f)
-                .padding(start = RadioSpacing.medium),
+                .fillMaxWidth()
+                .background(RadioSurface, RoundedCornerShape(RadioCorners.medium))
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { menuExpanded = true },
+                )
+                .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.small),
         ) {
-            Text(
-                text = subscription.title,
-                color = RadioText,
-                fontSize = RadioTextSizes.stationTitle,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = subtitle,
-                color = RadioTextMuted,
-                fontSize = RadioTextSizes.caption,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            StationArtwork(imageUrl = subscription.imageUrl)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = RadioSpacing.medium),
+            ) {
+                Text(
+                    text = subscription.title,
+                    color = RadioText,
+                    fontSize = RadioTextSizes.stationTitle,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    color = RadioTextMuted,
+                    fontSize = RadioTextSizes.caption,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            OmniIconButton(
+                painter = painterResource(R.drawable.ic_play_arrow),
+                onClick = onPlayLatest,
+                tint = RadioPrimary,
             )
         }
-        OmniIconButton(
-            painter = painterResource(R.drawable.ic_delete),
-            onClick = onDelete,
-            tint = RadioDanger,
-        )
+
+        // 长按菜单：编辑 / 删除
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            containerColor = RadioSurface,
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = stringResource(R.string.action_edit),
+                        color = RadioText,
+                        fontSize = RadioTextSizes.body,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_edit),
+                        contentDescription = null,
+                        tint = RadioTextMuted,
+                        modifier = Modifier.size(RadioSizes.iconInline),
+                    )
+                },
+                onClick = {
+                    menuExpanded = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = stringResource(R.string.action_delete),
+                        color = RadioDanger,
+                        fontSize = RadioTextSizes.body,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_delete),
+                        contentDescription = null,
+                        tint = RadioDanger,
+                        modifier = Modifier.size(RadioSizes.iconInline),
+                    )
+                },
+                onClick = {
+                    menuExpanded = false
+                    onDelete()
+                },
+            )
+        }
     }
 }
 
@@ -437,6 +511,120 @@ fun AddPodcastDialog(
                             showEmptyError = true
                         } else {
                             onSubmit(trimmed)
+                        }
+                    },
+                )
+            }
+        },
+        dismissButton = {},
+        containerColor = RadioSurface,
+        titleContentColor = RadioText,
+        textContentColor = RadioTextMuted,
+    )
+}
+
+/**
+ * 编辑订阅：可改标题与订阅地址。
+ *
+ * 地址变化时由调用方先用新地址拉取解析、成功才替换；失败把错误回显在这里（不落库）。
+ */
+@Composable
+fun EditPodcastDialog(
+    subscription: PodcastSubscription,
+    loading: Boolean,
+    errorText: String?,
+    onSave: (title: String, feedUrl: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var title by remember(subscription.feedUrl) { mutableStateOf(subscription.title) }
+    var feedUrl by remember(subscription.feedUrl) { mutableStateOf(subscription.feedUrl) }
+    var titleError by remember { mutableStateOf(false) }
+    var urlError by remember { mutableStateOf(false) }
+    val textFieldColors = omniTextFieldColors()
+
+    AlertDialog(
+        onDismissRequest = { if (!loading) onDismiss() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = RadioSpacing.large)
+            .widthIn(max = 560.dp),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        title = { Text(stringResource(R.string.podcast_edit_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(RadioSpacing.medium)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = {
+                        title = it.take(PODCAST_TITLE_MAX_LENGTH)
+                        titleError = false
+                    },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.podcast_title_hint)) },
+                    isError = titleError,
+                    supportingText = if (titleError) {
+                        { Text(stringResource(R.string.podcast_error_empty_title)) }
+                    } else {
+                        null
+                    },
+                    colors = textFieldColors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = feedUrl,
+                    onValueChange = {
+                        feedUrl = it.take(PODCAST_FEED_URL_MAX_LENGTH)
+                        urlError = false
+                    },
+                    singleLine = false,
+                    minLines = 1,
+                    maxLines = 4,
+                    label = { Text(stringResource(R.string.podcast_feed_hint)) },
+                    isError = urlError || errorText != null,
+                    supportingText = when {
+                        urlError -> {
+                            { Text(stringResource(R.string.podcast_error_empty_url)) }
+                        }
+
+                        errorText != null -> {
+                            { Text(errorText) }
+                        }
+
+                        else -> null
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    colors = textFieldColors,
+                    modifier = Modifier
+                        .heightIn(min = RadioSizes.textFieldMinHeight)
+                        .fillMaxWidth(),
+                )
+                if (loading) {
+                    Text(
+                        text = stringResource(R.string.podcast_loading),
+                        color = RadioTextMuted,
+                        fontSize = RadioTextSizes.caption,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OmniSecondaryButton(
+                    text = stringResource(R.string.action_cancel),
+                    onClick = { if (!loading) onDismiss() },
+                )
+                Spacer(Modifier.weight(1f))
+                OmniPrimaryButton(
+                    text = stringResource(R.string.action_save),
+                    onClick = {
+                        val trimmedTitle = title.trim()
+                        val trimmedFeedUrl = feedUrl.trim()
+                        when {
+                            trimmedTitle.isEmpty() -> titleError = true
+                            trimmedFeedUrl.isEmpty() -> urlError = true
+                            else -> onSave(trimmedTitle, trimmedFeedUrl)
                         }
                     },
                 )
