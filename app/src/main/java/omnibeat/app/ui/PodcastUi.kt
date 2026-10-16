@@ -214,61 +214,62 @@ private fun PodcastSubscriptionRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            OmniIconButton(
-                painter = painterResource(R.drawable.ic_play_arrow),
-                onClick = onPlayLatest,
-                tint = RadioPrimary,
-            )
-        }
-
-        // 长按菜单：编辑 / 删除
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-            containerColor = RadioSurface,
-        ) {
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = stringResource(R.string.action_edit),
-                        color = RadioText,
-                        fontSize = RadioTextSizes.body,
+            // 菜单锚点跟着右侧按钮：长按后从右边弹出（弹在贴左位置不符合习惯）
+            Box {
+                OmniIconButton(
+                    painter = painterResource(R.drawable.ic_play_arrow),
+                    onClick = onPlayLatest,
+                    tint = RadioPrimary,
+                )
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    containerColor = RadioSurface,
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = stringResource(R.string.action_edit),
+                                color = RadioText,
+                                fontSize = RadioTextSizes.body,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_edit),
+                                contentDescription = null,
+                                tint = RadioTextMuted,
+                                modifier = Modifier.size(RadioSizes.iconInline),
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onEdit()
+                        },
                     )
-                },
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_edit),
-                        contentDescription = null,
-                        tint = RadioTextMuted,
-                        modifier = Modifier.size(RadioSizes.iconInline),
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = stringResource(R.string.action_delete),
+                                color = RadioDanger,
+                                fontSize = RadioTextSizes.body,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_delete),
+                                contentDescription = null,
+                                tint = RadioDanger,
+                                modifier = Modifier.size(RadioSizes.iconInline),
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        },
                     )
-                },
-                onClick = {
-                    menuExpanded = false
-                    onEdit()
-                },
-            )
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = stringResource(R.string.action_delete),
-                        color = RadioDanger,
-                        fontSize = RadioTextSizes.body,
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_delete),
-                        contentDescription = null,
-                        tint = RadioDanger,
-                        modifier = Modifier.size(RadioSizes.iconInline),
-                    )
-                },
-                onClick = {
-                    menuExpanded = false
-                    onDelete()
-                },
-            )
+                }
+            }
         }
     }
 }
