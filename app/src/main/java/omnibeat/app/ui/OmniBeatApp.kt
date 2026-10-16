@@ -52,6 +52,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import omnibeat.app.data.DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
@@ -454,31 +455,10 @@ fun OmniBeatApp() {
             }
         }
 
-        // 启动时按设置自动刷新全部订阅（静默：只拉间隔已到的，成功不提示、失败才提示）。
-        // 订阅列表从 DataStore 现读，避免组合首次时 collectAsState 还是空列表导致漏刷。
-        LaunchedEffect(Unit) {
-            if (!podcastAutoRefreshOnStart) return@LaunchedEffect
-            val saved = podcastRepository.subscriptions.first()
-            if (saved.isNotEmpty()) {
-                refreshAllPodcasts(saved, silent = true)
-            }
-        }
-
         LaunchedEffect(selectedPage, collapsePlayerPanelInSearch) {
             if (selectedPage == MainPage.SearchOnline && collapsePlayerPanelInSearch && !playerPanelCollapsed) {
                 playerPanelCollapsed = true
                 repository.savePlayerPanelCollapsed(true)
-            }
-        }
-
-        // 进入播客列表页（Tab 页且没打开某个订阅）时按设置自动刷新，同样静默 + 节流。
-        // 打开期数页（openPodcastUrl != null）不触发，那边走打开订阅时的单个节流刷新。
-        LaunchedEffect(selectedPage, openPodcastUrl) {
-            if (selectedPage != MainPage.Podcasts || openPodcastUrl != null) return@LaunchedEffect
-            if (!podcastAutoRefreshOnEnterList) return@LaunchedEffect
-            val saved = podcastRepository.subscriptions.first()
-            if (saved.isNotEmpty()) {
-                refreshAllPodcasts(saved, silent = true)
             }
         }
 
@@ -646,6 +626,16 @@ fun OmniBeatApp() {
             return System.currentTimeMillis() - subscription.lastFetchedAtMs >= intervalMs
         }
 
+        /** 单个订阅刷新失败的提示（RssParser 的异常 message 就是可展示文案） */
+        fun showPodcastRefreshError(error: Throwable) {
+            val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
+            Toast.makeText(
+                context,
+                resources.appString(R.string.podcast_refresh_failed, reason),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+
         /**
          * 刷新订阅的期数。
          * [force] = true 时忽略节流（下拉刷新 / 一键刷新用），否则按设置里的刷新间隔节流。
@@ -676,16 +666,6 @@ fun OmniBeatApp() {
                     }
                 podcastLoading = false
             }
-        }
-
-        /** 单个订阅刷新失败的提示（RssParser 的异常 message 就是可展示文案） */
-        fun showPodcastRefreshError(error: Throwable) {
-            val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
-            Toast.makeText(
-                context,
-                resources.appString(R.string.podcast_refresh_failed, reason),
-                Toast.LENGTH_LONG,
-            ).show()
         }
 
         /**
@@ -771,6 +751,28 @@ fun OmniBeatApp() {
         fun removePodcast(subscription: PodcastSubscription) {
             if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = null
             scope.launch { podcastRepository.removeSubscription(subscription.feedUrl) }
+        }
+
+        // 启动时按设置自动刷新全部订阅（静默：只拉间隔已到的，成功不提示、失败才提示）。
+        // 订阅列表从 DataStore 现读，避免组合首次时 collectAsState 还是空列表导致漏刷。
+        // 注意：本地函数必须先声明后使用，这两个 effect 放在刷新函数之后。
+        LaunchedEffect(Unit) {
+            if (!podcastAutoRefreshOnStart) return@LaunchedEffect
+            val saved = podcastRepository.subscriptions.first()
+            if (saved.isNotEmpty()) {
+                refreshAllPodcasts(saved, silent = true)
+            }
+        }
+
+        // 进入播客列表页（Tab 页且没打开某个订阅）时按设置自动刷新，同样静默 + 节流。
+        // 打开期数页（openPodcastUrl != null）不触发，那边走打开订阅时的单个节流刷新。
+        LaunchedEffect(selectedPage, openPodcastUrl) {
+            if (selectedPage != MainPage.Podcasts || openPodcastUrl != null) return@LaunchedEffect
+            if (!podcastAutoRefreshOnEnterList) return@LaunchedEffect
+            val saved = podcastRepository.subscriptions.first()
+            if (saved.isNotEmpty()) {
+                refreshAllPodcasts(saved, silent = true)
+            }
         }
 
         /**
