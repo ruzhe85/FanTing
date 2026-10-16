@@ -311,6 +311,8 @@
     <string name="podcast_refresh_auto_failed">%1$d subscriptions failed to refresh</string>
     <string name="podcast_refresh_summary">Refreshed %1$d subscriptions · %2$d new episodes · %3$d failed</string>
     <string name="podcast_refresh_all">Refresh all</string>
+    <string name="podcast_refresh_single_new">Refreshed · %1$d new episodes</string>
+    <string name="podcast_refresh_single_none">Refreshed · no new episodes</string>
     <string name="podcast_refresh_progress">%1$d/%2$d</string>
     <string name="podcast_episode_count">%1$d episodes</string>
     <string name="podcast_last_updated">Updated %1$s</string>

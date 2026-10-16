@@ -204,6 +204,8 @@
     <string name="podcast_refresh_auto_failed">Не удалось обновить подписок: %1$d</string>
     <string name="podcast_refresh_summary">Обновлено подписок: %1$d · новых выпусков: %2$d · ошибок: %3$d</string>
     <string name="podcast_refresh_all">Обновить все</string>
+    <string name="podcast_refresh_single_new">Обновлено · новых выпусков: %1$d</string>
+    <string name="podcast_refresh_single_none">Обновлено · новых выпусков нет</string>
     <string name="podcast_refresh_progress">%1$d/%2$d</string>
     <string name="settings_section_podcast">Подкасты</string>
     <string name="settings_podcast_refresh_on_start_title">Обновлять при запуске</string>

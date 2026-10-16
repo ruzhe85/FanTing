@@ -646,8 +646,11 @@ fun OmniBeatApp() {
             if (!NetworkStatus.isOnline(context)) return
             podcastLoading = true
             scope.launch {
+                // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」，用于手动刷新的结果反馈
+                val previousGuids = subscription.episodes.mapTo(mutableSetOf()) { it.guid }
                 runCatching { RssParser.load(subscription.feedUrl) }
                     .onSuccess { parsed ->
+                        val newEpisodes = parsed.episodes.count { it.guid !in previousGuids }
                         podcastRepository.upsertSubscription(
                             subscription.copy(
                                 title = parsed.title,
@@ -656,6 +659,16 @@ fun OmniBeatApp() {
                                 episodes = parsed.episodes,
                             ),
                         )
+                        // 手动刷新（期数页下拉）必须给结果反馈：新增几期 / 暂无新内容，
+                        // 否则用户拉完不知道到底刷没刷到东西；自动刷新（非 force）保持静默
+                        if (force) {
+                            val message = if (newEpisodes > 0) {
+                                resources.appString(R.string.podcast_refresh_single_new, newEpisodes)
+                            } else {
+                                resources.appString(R.string.podcast_refresh_single_none)
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        }
                     }
                     .onFailure { error ->
                         // 手动刷新失败必须说一声，否则用户分不清「没有新期」还是「拉取失败」；

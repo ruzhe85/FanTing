@@ -311,6 +311,8 @@
     <string name="podcast_refresh_auto_failed">%1$d 个订阅刷新失败</string>
     <string name="podcast_refresh_summary">已刷新 %1$d 个订阅 · 新增 %2$d 期 · 失败 %3$d 个</string>
     <string name="podcast_refresh_all">刷新全部</string>
+    <string name="podcast_refresh_single_new">已刷新 · 新增 %1$d 期</string>
+    <string name="podcast_refresh_single_none">已刷新 · 暂无新内容</string>
     <string name="podcast_refresh_progress">%1$d/%2$d</string>
     <string name="podcast_episode_count">%1$d 期</string>
     <string name="podcast_last_updated">更新于 %1$s</string>
