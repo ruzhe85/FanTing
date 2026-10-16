@@ -130,10 +130,12 @@ fun PodcastTabContent(
                 onEpisodeClick = onPlayEpisode,
                 onToggleFavorite = { onToggleFavorite(open, it) },
                 downloadStates = downloadStates,
-                onDownload = { onDownload(open, it) },
+                // 下载相关回调是两参类型，页面内部自己会用它自己的 subscription 配对，
+                // 这里直接透传（别再包一层，两参 lambda 没有隐式 it）
+                onDownload = onDownload,
                 onCancelDownload = onCancelDownload,
-                onDeleteDownload = { onDeleteDownload(open, it) },
-                onExportDownload = { onExportDownload(open, it) },
+                onDeleteDownload = onDeleteDownload,
+                onExportDownload = onExportDownload,
                 modifier = modifier,
             )
         }
