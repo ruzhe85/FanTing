@@ -26,13 +26,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -72,21 +72,30 @@ fun MainTopBar(
     // （屏宽 - 菜单键 - 排序键 - 添加键 - 边距），不滚动的话最后一个标签会被
     // 右侧按钮盖住、既看不见也点不到。
     val tabScrollState = rememberScrollState()
-    // 选中标签的位置（内容坐标，不受滚动影响），用于把它滚进视野
-    var selectedTabX by remember { mutableStateOf(0) }
-    var selectedTabWidth by remember { mutableStateOf(0) }
+    // 每个标签的文本宽度（px）：累加起来就能算出选中标签在滚动内容里的偏移，
+    // 用它把选中标签滚进视野（不依赖 LayoutCoordinates 的坐标 API）
+    val tabTextWidths = remember { mutableStateMapOf<MainPage, Int>() }
+    val tabPaddingPx = with(density) { (RadioSpacing.medium * 2).roundToPx() }
 
     // 选中的标签若滚出视野就自动滚回来：否则从抽屉进播客时，
     // 顶栏只剩两个未选中的标签可见，看不出当前在哪一页
-    LaunchedEffect(visualSelectedPage, selectedTabX, selectedTabWidth) {
+    LaunchedEffect(visualSelectedPage, tabTextWidths.size, tabScrollState.viewportSize) {
         val viewport = tabScrollState.viewportSize
-        if (viewport <= 0 || selectedTabWidth <= 0) return@LaunchedEffect
+        if (viewport <= 0) return@LaunchedEffect
+        val index = tabPages.indexOf(visualSelectedPage)
+        if (index == -1) return@LaunchedEffect
+        var offset = 0
+        for (i in 0 until index) {
+            // 宽度还没量到就等下一次重组
+            offset += (tabTextWidths[tabPages[i]] ?: return@LaunchedEffect) + tabPaddingPx
+        }
+        val ownWidth = (tabTextWidths[visualSelectedPage] ?: return@LaunchedEffect) + tabPaddingPx
         val visibleLeft = tabScrollState.value
         val visibleRight = visibleLeft + viewport
         when {
-            selectedTabX < visibleLeft -> tabScrollState.animateScrollTo(selectedTabX)
-            selectedTabX + selectedTabWidth > visibleRight -> tabScrollState.animateScrollTo(
-                (selectedTabX + selectedTabWidth - viewport).coerceAtMost(tabScrollState.maxValue),
+            offset < visibleLeft -> tabScrollState.animateScrollTo(offset)
+            offset + ownWidth > visibleRight -> tabScrollState.animateScrollTo(
+                (offset + ownWidth - viewport).coerceAtMost(tabScrollState.maxValue),
             )
         }
     }
@@ -141,12 +150,6 @@ fun MainTopBar(
                                     role = Role.Tab,
                                     onClick = { onPageSelected(tab) },
                                 )
-                                .onGloballyPositioned { coordinates ->
-                                    if (visualSelectedPage == tab) {
-                                        selectedTabX = coordinates.positionInParent().x.toInt()
-                                        selectedTabWidth = coordinates.size.width
-                                    }
-                                }
                                 .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.small),
                         ) {
                             Text(
@@ -158,6 +161,8 @@ fun MainTopBar(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.onSizeChanged { size ->
                                     tabTextWidth = with(density) { size.width.toDp() }
+                                    // 同一个宽度两用：画下划线 + 算标签在滚动内容里的偏移
+                                    tabTextWidths[tab] = size.width
                                 },
                             )
                             Box(
