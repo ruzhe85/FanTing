@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import omnibeat.app.R
 import omnibeat.app.model.PODCAST_FEED_URL_MAX_LENGTH
+import omnibeat.app.model.PODCAST_TITLE_MAX_LENGTH
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.ui.appStringResource as stringResource
