@@ -58,6 +58,7 @@ fun MainTopBar(
     onNavigateBack: () -> Unit,
     onAddStation: () -> Unit,
     onSearchOnline: () -> Unit,
+    onAddPodcast: () -> Unit,
     onlineSearchControl: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -142,30 +143,40 @@ fun MainTopBar(
             }
         }
         if (selectedPage in tabPages) {
-            if (reordering) {
-                OmniIconButton(
-                    painter = painterResource(R.drawable.ic_close),
-                    onClick = onCancelReorder,
-                    tint = Color(0xFFFF5C6C),
+            when {
+                reordering -> {
+                    OmniIconButton(
+                        painter = painterResource(R.drawable.ic_close),
+                        onClick = onCancelReorder,
+                        tint = Color(0xFFFF5C6C),
+                    )
+                    OmniIconButton(
+                        painter = painterResource(R.drawable.ic_check),
+                        onClick = onConfirmReorder,
+                        tint = Color(0xFF66D17A),
+                    )
+                }
+
+                // 播客页只需要「添加订阅」，没有排序与在线搜索
+                selectedPage == MainPage.Podcasts -> OmniIconButton(
+                    painter = painterResource(R.drawable.ic_add),
+                    onClick = onAddPodcast,
                 )
-                OmniIconButton(
-                    painter = painterResource(R.drawable.ic_check),
-                    onClick = onConfirmReorder,
-                    tint = Color(0xFF66D17A),
-                )
-            } else {
-                SortMenuButton(
-                    sortState = sortState,
-                    expanded = sortMenuExpanded,
-                    onExpandedChange = { sortMenuExpanded = it },
-                    onSortModeSelected = onSortModeSelected,
-                )
-                AddMenuButton(
-                    expanded = addMenuExpanded,
-                    onExpandedChange = { addMenuExpanded = it },
-                    onAddStation = onAddStation,
-                    onSearchOnline = onSearchOnline,
-                )
+
+                else -> {
+                    SortMenuButton(
+                        sortState = sortState,
+                        expanded = sortMenuExpanded,
+                        onExpandedChange = { sortMenuExpanded = it },
+                        onSortModeSelected = onSortModeSelected,
+                    )
+                    AddMenuButton(
+                        expanded = addMenuExpanded,
+                        onExpandedChange = { addMenuExpanded = it },
+                        onAddStation = onAddStation,
+                        onSearchOnline = onSearchOnline,
+                    )
+                }
             }
         }
     }

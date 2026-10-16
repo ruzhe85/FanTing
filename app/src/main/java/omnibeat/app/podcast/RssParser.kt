@@ -1,6 +1,8 @@
 package omnibeat.app.podcast
 
 import android.util.Xml
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import omnibeat.app.model.ParsedFeed
 import omnibeat.app.model.PodcastEpisode
 import org.xmlpull.v1.XmlPullParser
@@ -46,19 +48,22 @@ object RssParser {
         if (normalized.isEmpty()) {
             throw IOException("请填写订阅地址")
         }
-        val connection = open(normalized)
-        val body = try {
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                throw IOException("服务器返回 HTTP $code")
+        // 网络与解析都在 IO 线程：feed 可能几百 KB，别占主线程
+        return withContext(Dispatchers.IO) {
+            val connection = open(normalized)
+            val body = try {
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    throw IOException("服务器返回 HTTP $code")
+                }
+                connection.inputStream.use { stream ->
+                    stream.readBytes().toString(charsetOf(connection.contentType))
+                }
+            } finally {
+                connection.disconnect()
             }
-            connection.inputStream.use { stream ->
-                stream.readBytes().toString(charsetOf(connection.contentType))
-            }
-        } finally {
-            connection.disconnect()
+            parse(body, normalized)
         }
-        return parse(body, normalized)
     }
 
     /** 纯解析，便于离线验证 */

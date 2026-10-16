@@ -33,6 +33,7 @@ fun StationTabsPager(
     onFavoriteClick: (Station) -> Unit,
     onEditStation: (StationEditorState) -> Unit,
     onStationClick: (Station) -> Unit,
+    podcastContent: @Composable (Modifier) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     HorizontalPager(
@@ -111,6 +112,9 @@ fun StationTabsPager(
                         onStationClick = onStationClick,
                     )
                 }
+
+                // 播客页内容由外部注入（状态与对话框都宿主在 OmniBeatApp）
+                MainPage.Podcasts -> podcastContent(Modifier.fillMaxSize())
 
                 else -> Unit
             }

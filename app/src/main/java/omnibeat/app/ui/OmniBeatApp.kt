@@ -52,6 +52,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import omnibeat.app.data.DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
+import omnibeat.app.data.PodcastRepository
 import omnibeat.app.data.SimpleStationTextCodec
 import omnibeat.app.data.StationExportCodec
 import omnibeat.app.data.StationImportMode
@@ -62,6 +63,8 @@ import omnibeat.app.data.appString
 import omnibeat.app.data.removeTrackingParameters
 import omnibeat.app.data.normalizeStreamUrl
 import omnibeat.app.model.MainPage
+import omnibeat.app.model.PodcastEpisode
+import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.model.Station
 import omnibeat.app.model.StationEditorState
 import omnibeat.app.model.StationReorderDraft
@@ -72,6 +75,7 @@ import omnibeat.app.model.customSortedStations
 import omnibeat.app.model.sortedStations
 import omnibeat.app.network.NetworkStatus
 import omnibeat.app.playback.PlaybackService
+import omnibeat.app.podcast.RssParser
 import omnibeat.app.radio.RadioBrowserStation
 import omnibeat.app.radio.stationTags
 import java.time.Instant
@@ -80,10 +84,16 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.random.Random
 
+/** 进入订阅时的刷新节流：超过这个时间才重新拉 feed（避免每次点开都走网络） */
+private const val PODCAST_REFRESH_INTERVAL_MS = 30 * 60 * 1000L
+
 @Composable
 fun OmniBeatApp() {
     val context = LocalContext.current
     val repository = remember(context) { StationRepository(context.applicationContext) }
+    // 播客订阅存在独立的 DataStore 里，与电台库互不干扰
+    val podcastRepository = remember(context) { PodcastRepository(context.applicationContext) }
+    val podcastSubscriptions by podcastRepository.subscriptions.collectAsState(initial = emptyList())
     val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
     var translationLoaded by remember(repository) { mutableStateOf(false) }
     LaunchedEffect(repository) {
@@ -189,6 +199,12 @@ fun OmniBeatApp() {
         var onlineFilterRequest by remember { mutableStateOf<Deferred<List<String>>?>(null) }
         var onlineFilterErrorsHandledBySearch by remember { mutableStateOf(false) }
         var onlineOptionsExpanded by remember { mutableStateOf(false) }
+        // 播客页状态：当前打开的订阅（null = 订阅列表）、添加弹窗、加载与错误
+        var openPodcastUrl by remember { mutableStateOf<String?>(null) }
+        var addPodcastDialogVisible by remember { mutableStateOf(false) }
+        var podcastLoading by remember { mutableStateOf(false) }
+        var podcastError by remember { mutableStateOf<String?>(null) }
+        var pendingPodcastRemoval by remember { mutableStateOf<PodcastSubscription?>(null) }
         // 播客页始终可见；收藏页在「一条收藏都没有且设置里关掉空收藏页」时隐藏
         val visibleTabPages = MainPage.allTabPages.filter { page ->
             page != MainPage.Favorites || showEmptyFavoritesTab || stations.any { it.isFavorite }
@@ -548,6 +564,90 @@ fun OmniBeatApp() {
             if (!hasInternetOrToast()) return
             expandPlayerPanelForUserPlaybackRequest()
             PlaybackService.playPreview(context, stationFromOnlineResult(radioStation))
+        }
+
+        /** 添加订阅：先拉取解析，成功才写入；失败只提示，不落库 */
+        fun subscribePodcast(feedUrl: String) {
+            if (podcastLoading) return
+            if (!hasInternetOrToast()) return
+            podcastLoading = true
+            podcastError = null
+            scope.launch {
+                runCatching { RssParser.load(feedUrl) }
+                    .onSuccess { parsed ->
+                        podcastRepository.upsertSubscription(
+                            PodcastSubscription(
+                                feedUrl = feedUrl,
+                                title = parsed.title,
+                                imageUrl = parsed.imageUrl,
+                                lastFetchedAtMs = System.currentTimeMillis(),
+                                episodes = parsed.episodes,
+                            ),
+                        )
+                        addPodcastDialogVisible = false
+                    }
+                    .onFailure { error ->
+                        podcastError = resources.appString(
+                            R.string.podcast_error_load,
+                            error.message ?: error.javaClass.simpleName,
+                        )
+                    }
+                podcastLoading = false
+            }
+        }
+
+        /** 打开订阅时按需刷新（节流，避免每次点开都拉网络） */
+        fun refreshPodcast(subscription: PodcastSubscription) {
+            if (podcastLoading) return
+            if (System.currentTimeMillis() - subscription.lastFetchedAtMs < PODCAST_REFRESH_INTERVAL_MS) return
+            if (!NetworkStatus.isOnline(context)) return
+            podcastLoading = true
+            scope.launch {
+                runCatching { RssParser.load(subscription.feedUrl) }
+                    .onSuccess { parsed ->
+                        podcastRepository.upsertSubscription(
+                            subscription.copy(
+                                title = parsed.title,
+                                imageUrl = parsed.imageUrl ?: subscription.imageUrl,
+                                lastFetchedAtMs = System.currentTimeMillis(),
+                                episodes = parsed.episodes,
+                            ),
+                        )
+                    }
+                podcastLoading = false
+            }
+        }
+
+        fun openPodcast(subscription: PodcastSubscription) {
+            openPodcastUrl = subscription.feedUrl
+            refreshPodcast(subscription)
+        }
+
+        fun removePodcast(subscription: PodcastSubscription) {
+            if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = null
+            scope.launch { podcastRepository.removeSubscription(subscription.feedUrl) }
+        }
+
+        /**
+         * 播放单集：交给 PlaybackService 的独立入口（点播语义、可拖进度）。
+         * 单集只作为「播放描述」传过去，不写进电台库。
+         */
+        fun playPodcastEpisode(subscription: PodcastSubscription, episode: PodcastEpisode) {
+            if (episode.audioUrl.isBlank()) return
+            if (!hasInternetOrToast()) return
+            expandPlayerPanelForUserPlaybackRequest()
+            PlaybackService.playEpisode(
+                context,
+                Station(
+                    id = episode.guid,
+                    title = episode.title,
+                    streamUrl = episode.audioUrl,
+                    tags = emptyList(),
+                    imageUrl = subscription.imageUrl,
+                    isFavorite = false,
+                    dateAdded = "",
+                ),
+            )
         }
 
         fun addOnlineStation(radioStation: RadioBrowserStation) {
@@ -945,6 +1045,10 @@ fun OmniBeatApp() {
                         onSearchOnline = {
                             selectedPage = MainPage.SearchOnline
                         },
+                        onAddPodcast = {
+                            podcastError = null
+                            addPodcastDialogVisible = true
+                        },
                         onlineSearchControl = if (selectedPage == MainPage.SearchOnline) {
                             { controlModifier ->
                                 SearchOptionsTopBarControl(
@@ -974,10 +1078,13 @@ fun OmniBeatApp() {
                             showUnavailableBitrate = showUnavailableBitrate,
                             marqueeTrackTitle = marqueeTrackTitle,
                             collapsed = playerPanelCollapsed,
+                            positionMs = playbackState.positionMs,
+                            durationMs = playbackState.durationMs,
                             onCollapsedChange = { collapsed ->
                                 playerPanelCollapsed = collapsed
                                 scope.launch { repository.savePlayerPanelCollapsed(collapsed) }
                             },
+                            onSeek = { positionMs -> PlaybackService.seekTo(context, positionMs) },
                             onPlayPause = { playOrPause() },
                             onStop = { PlaybackService.stop(context) },
                             onPreviousStation = { playAdjacentStation(-1) },
@@ -998,7 +1105,8 @@ fun OmniBeatApp() {
                 ) {
                     when (selectedPage) {
                         MainPage.Stations,
-                        MainPage.Favorites -> {
+                        MainPage.Favorites,
+                        MainPage.Podcasts -> {
                             StationTabsPager(
                                 visibleTabPages = visibleTabPages,
                                 pagerState = pagerState,
@@ -1017,6 +1125,19 @@ fun OmniBeatApp() {
                                 onFavoriteClick = ::toggleFavorite,
                                 onEditStation = { editorState = it },
                                 onStationClick = ::playStation,
+                                podcastContent = { contentModifier ->
+                                    PodcastTabContent(
+                                        subscriptions = podcastSubscriptions,
+                                        openSubscriptionUrl = openPodcastUrl,
+                                        playingEpisodeId = playbackState.selectedStation?.id,
+                                        loading = podcastLoading,
+                                        onOpenSubscription = ::openPodcast,
+                                        onCloseSubscription = { openPodcastUrl = null },
+                                        onDeleteSubscription = { pendingPodcastRemoval = it },
+                                        onPlayEpisode = ::playPodcastEpisode,
+                                        modifier = contentModifier,
+                                    )
+                                },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -1168,6 +1289,34 @@ fun OmniBeatApp() {
             ErrorDialog(
                 message = message,
                 onDismiss = { errorDialog = null },
+            )
+        }
+
+        if (addPodcastDialogVisible) {
+            AddPodcastDialog(
+                loading = podcastLoading,
+                errorText = podcastError,
+                onSubmit = ::subscribePodcast,
+                onDismiss = {
+                    if (!podcastLoading) {
+                        addPodcastDialogVisible = false
+                        podcastError = null
+                    }
+                },
+            )
+        }
+
+        pendingPodcastRemoval?.let { subscription ->
+            OmniConfirmDialog(
+                title = resources.appString(R.string.podcast_remove_title),
+                text = resources.appString(R.string.podcast_remove_text, subscription.title),
+                confirmText = resources.appString(R.string.podcast_remove_confirm),
+                destructive = true,
+                onDismiss = { pendingPodcastRemoval = null },
+                onConfirm = {
+                    pendingPodcastRemoval = null
+                    removePodcast(subscription)
+                },
             )
         }
 

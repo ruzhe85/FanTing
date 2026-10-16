@@ -287,8 +287,9 @@ fun StationTagPills(
     }
 }
 
+/** 封面加载（电台与播客共用；缓存按 URL 共享） */
 @Composable
-private fun StationArtwork(
+internal fun StationArtwork(
     imageUrl: String?,
     modifier: Modifier = Modifier,
 ) {

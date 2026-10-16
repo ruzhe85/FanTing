@@ -40,10 +40,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -70,6 +73,7 @@ import omnibeat.app.playback.PlaybackTrackStatus
 import omnibeat.app.playback.PlaybackStreamInfo
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import java.util.Locale
 
 @Composable
 fun PlayerPanel(
@@ -85,6 +89,8 @@ fun PlayerPanel(
     showUnavailableBitrate: Boolean,
     marqueeTrackTitle: Boolean,
     collapsed: Boolean,
+    positionMs: Long = 0L,
+    durationMs: Long = 0L,
     onCollapsedChange: (Boolean) -> Unit,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
@@ -92,6 +98,7 @@ fun PlayerPanel(
     onNextStation: () -> Unit,
     onRandomStation: () -> Unit,
     onVolumeChange: (Float) -> Unit,
+    onSeek: (Long) -> Unit = {},
 ) {
     var showStreamInfo by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -234,6 +241,14 @@ fun PlayerPanel(
                         }
                     }
                 }
+                // 只有点播单集才有时长：显示可拖动的进度条（直播 durationMs = 0，不显示）
+                if (durationMs > 0L) {
+                    PlaybackProgress(
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        onSeek = onSeek,
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -315,6 +330,75 @@ fun PlayerPanel(
                 android.widget.Toast.makeText(context, streamInfoCopiedText, android.widget.Toast.LENGTH_SHORT).show()
             },
         )
+    }
+}
+
+/**
+ * 点播单集的进度条：拖动中只更新本地值，松手才真正跳转 ——
+ * 否则每移动一格都会往服务发一次 seek。
+ */
+@Composable
+private fun PlaybackProgress(
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+) {
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubFraction by remember { mutableFloatStateOf(0f) }
+    val totalMs = durationMs.coerceAtLeast(1L)
+    val playedFraction = (positionMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f)
+    val shownFraction = if (scrubbing) scrubFraction else playedFraction
+    val shownPosition = if (scrubbing) (scrubFraction * totalMs).toLong() else positionMs
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = RadioSpacing.large),
+    ) {
+        Slider(
+            value = shownFraction,
+            onValueChange = {
+                scrubbing = true
+                scrubFraction = it.coerceIn(0f, 1f)
+            },
+            onValueChangeFinished = {
+                scrubbing = false
+                onSeek((scrubFraction * totalMs).toLong())
+            },
+            colors = SliderDefaults.colors(
+                thumbColor = RadioPrimary,
+                activeTrackColor = RadioPrimary,
+                inactiveTrackColor = RadioOutline,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = formatPlaybackTime(shownPosition),
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.caption,
+            )
+            Text(
+                text = formatPlaybackTime(durationMs),
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.caption,
+            )
+        }
+    }
+}
+
+private fun formatPlaybackTime(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 }
 

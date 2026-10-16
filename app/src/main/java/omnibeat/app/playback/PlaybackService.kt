@@ -83,6 +83,9 @@ data class PlaybackState(
     val errorText: String? = null,
     val volume: Float = 0.75f,
     val streamInfo: PlaybackStreamInfo = PlaybackStreamInfo(),
+    /** 点播单集的播放进度与总时长（直播恒为 0）；播放面板据此画可拖动的进度条 */
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
 )
 
 data class PlaybackStreamInfo(
@@ -121,6 +124,9 @@ class PlaybackService : MediaLibraryService() {
     private var showAndroidAutoArtwork = false
     private var navigationQueueIds: List<String> = emptyList()
     private var stopAfterPauseJob: Job? = null
+
+    /** 点播单集的进度轮询（每秒把播放位置同步给 UI）；直播不启用 */
+    private var positionJob: Job? = null
 
     private fun trackText(status: PlaybackTrackStatus): String {
         return when (status) {
@@ -254,6 +260,7 @@ class PlaybackService : MediaLibraryService() {
             )
             ACTION_PLAY_PREVIEW -> playPreviewStation(intent.toPreviewStation())
             ACTION_PLAY_EPISODE -> playEpisodeStation(intent.toEpisodeStation())
+            ACTION_SEEK -> seekTo(intent.getLongExtra(EXTRA_SEEK_POSITION_MS, 0L))
             ACTION_PLAY_PAUSE -> playOrPause()
             ACTION_STOP -> stopPlaybackService()
         }
@@ -389,6 +396,12 @@ class PlaybackService : MediaLibraryService() {
         playStation(station = station, index = -1, previewing = true, seekable = true)
     }
 
+    /** 条目内跳转进度：只对点播单集生效，直播忽略 */
+    private fun seekTo(positionMs: Long) {
+        if (!currentItemSeekable) return
+        player.seekTo(positionMs.coerceAtLeast(0L))
+    }
+
     private fun playStation(
         station: Station,
         index: Int,
@@ -471,6 +484,8 @@ class PlaybackService : MediaLibraryService() {
                 player.prepare()
                 player.playWhenReady = playbackRequested
                 _state.update { it.copy(resolving = false) }
+                // 点播单集：开始把播放位置同步给 UI（进度条）；直播不轮询
+                if (seekable) startPositionUpdates() else positionJob?.cancel()
                 scheduleNoMetadataIfPlaybackStarted()
                 syncSession()
             }.onFailure { error ->
@@ -516,12 +531,34 @@ class PlaybackService : MediaLibraryService() {
         return queuedStations.ifEmpty { stations }
     }
 
+    /**
+     * 点播单集才开始轮询进度：面板与系统媒体控件靠它画进度条。
+     * 直播没有进度，保持不启用（避免无意义的每秒 StateFlow 更新）。
+     */
+    private fun startPositionUpdates() {
+        positionJob?.cancel()
+        positionJob = scope.launch {
+            while (true) {
+                val duration = player.duration
+                _state.update {
+                    it.copy(
+                        positionMs = player.currentPosition,
+                        durationMs = if (duration == C.TIME_UNSET || duration < 0) 0L else duration,
+                    )
+                }
+                delay(1000)
+            }
+        }
+    }
+
     private fun stopPlayback() {
         resolveJob?.cancel()
         noMetadataJob?.cancel()
         stopAfterPauseJob?.cancel()
+        positionJob?.cancel()
         playbackRequested = false
         currentStreamIsHls = false
+        currentItemSeekable = false
         navigationQueueIds = emptyList()
         player.stop()
         player.clearMediaItems()
@@ -535,6 +572,8 @@ class PlaybackService : MediaLibraryService() {
                 isPlaying = false,
                 errorText = null,
                 streamInfo = PlaybackStreamInfo(),
+                positionMs = 0L,
+                durationMs = 0L,
             ).withTrackStatus(PlaybackTrackStatus.Stopped)
         }
     }
@@ -967,9 +1006,11 @@ class PlaybackService : MediaLibraryService() {
         private const val EXTRA_EPISODE_TITLE = "episode_title"
         private const val EXTRA_EPISODE_STREAM_URL = "episode_stream_url"
         private const val EXTRA_EPISODE_IMAGE_URL = "episode_image_url"
+        private const val EXTRA_SEEK_POSITION_MS = "seek_position_ms"
         private const val ACTION_PLAY_STATION = "omnibeat.app.action.PLAY_STATION"
         private const val ACTION_PLAY_PREVIEW = "omnibeat.app.action.PLAY_PREVIEW"
         private const val ACTION_PLAY_EPISODE = "omnibeat.app.action.PLAY_EPISODE"
+        private const val ACTION_SEEK = "omnibeat.app.action.SEEK"
         private const val ACTION_PLAY_PAUSE = "omnibeat.app.action.PLAY_PAUSE"
         private const val ACTION_STOP = "omnibeat.app.action.STOP"
 
@@ -1018,6 +1059,15 @@ class PlaybackService : MediaLibraryService() {
                     .putExtra(EXTRA_EPISODE_TITLE, episode.title)
                     .putExtra(EXTRA_EPISODE_STREAM_URL, episode.streamUrl)
                     .putExtra(EXTRA_EPISODE_IMAGE_URL, episode.imageUrl.orEmpty()),
+            )
+        }
+
+        /** 拖动播放面板的进度条：跳转到指定位置（仅对播客单集生效） */
+        fun seekTo(context: Context, positionMs: Long) {
+            context.startService(
+                Intent(context, PlaybackService::class.java)
+                    .setAction(ACTION_SEEK)
+                    .putExtra(EXTRA_SEEK_POSITION_MS, positionMs),
             )
         }
 
