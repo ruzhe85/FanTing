@@ -7,7 +7,8 @@ data class AppLanguage(
     companion object {
         val System = AppLanguage(null, null)
         val English = AppLanguage("en", "English")
+        val Chinese = AppLanguage("zh", "简体中文")
         val Russian = AppLanguage("ru", "Русский")
-        val entries = listOf(System, English, Russian)
+        val entries = listOf(System, English, Chinese, Russian)
     }
 }
