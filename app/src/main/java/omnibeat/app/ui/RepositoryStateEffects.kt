@@ -138,7 +138,8 @@ fun RepositoryStateEffects(
 
     LaunchedEffect(repository, selectedPage, visibleTabPages) {
         repository.lastMainPage.collect { savedPage ->
-            val restoredPage = MainPage.tabPages.firstOrNull { it.name == savedPage } ?: MainPage.Stations
+            // 用 allTabPages：「上次停留页面」可能是播客页；tabPages 只表示电台区
+            val restoredPage = MainPage.allTabPages.firstOrNull { it.name == savedPage } ?: MainPage.Stations
             onLastMainPageChange(restoredPage)
             if (selectedPage in visibleTabPages) {
                 onSelectedPageRestore(restoredPage)

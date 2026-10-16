@@ -29,6 +29,7 @@ data class StationSortState(
 enum class MainPage {
     Stations,
     Favorites,
+    Podcasts,
     ExportImport,
     Translation,
     SearchOnline,
@@ -36,7 +37,16 @@ enum class MainPage {
     About;
 
     companion object {
+        /**
+         * 「电台区」的页：抽屉里「电台」入口的高亮范围（保持原语义，不含播客）。
+         */
         val tabPages = listOf(Stations, Favorites)
+
+        /**
+         * 顶部 Tab 的全集（含播客）。
+         * 实际可见性由 OmniBeatApp 过滤：收藏页可被设置隐藏，播客页始终显示。
+         */
+        val allTabPages = listOf(Stations, Favorites, Podcasts)
     }
 }
 

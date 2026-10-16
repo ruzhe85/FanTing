@@ -189,10 +189,9 @@ fun OmniBeatApp() {
         var onlineFilterRequest by remember { mutableStateOf<Deferred<List<String>>?>(null) }
         var onlineFilterErrorsHandledBySearch by remember { mutableStateOf(false) }
         var onlineOptionsExpanded by remember { mutableStateOf(false) }
-        val visibleTabPages = if (showEmptyFavoritesTab || stations.any { it.isFavorite }) {
-            MainPage.tabPages
-        } else {
-            listOf(MainPage.Stations)
+        // 播客页始终可见；收藏页在「一条收藏都没有且设置里关掉空收藏页」时隐藏
+        val visibleTabPages = MainPage.allTabPages.filter { page ->
+            page != MainPage.Favorites || showEmptyFavoritesTab || stations.any { it.isFavorite }
         }
         val pagerState = rememberPagerState(pageCount = { visibleTabPages.size })
         val visualSelectedPage by remember(pagerState, visibleTabPages, selectedPage) {
