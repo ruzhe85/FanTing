@@ -141,6 +141,7 @@ fun SettingsPage(
     themeMode: ThemeMode,
     appLanguage: AppLanguage,
     rememberLastStation: Boolean,
+    autoPlayNextEpisode: Boolean,
     stopServiceAfterPauseMinutes: Int,
     keepMediaCard: Boolean,
     showStationArtwork: Boolean,
@@ -158,6 +159,7 @@ fun SettingsPage(
     onThemeModeChange: (ThemeMode) -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
     onRememberLastStationChange: (Boolean) -> Unit,
+    onAutoPlayNextEpisodeChange: (Boolean) -> Unit,
     onStopServiceAfterPauseMinutesChange: (Int) -> Unit,
     onKeepMediaCardChange: (Boolean) -> Unit,
     onShowStationArtworkChange: (Boolean) -> Unit,
@@ -220,6 +222,16 @@ fun SettingsPage(
                 },
                 checked = rememberLastStation,
                 onCheckedChange = onRememberLastStationChange,
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_autoplay_next_episode_title),
+                subtitle = if (autoPlayNextEpisode) {
+                    stringResource(R.string.settings_autoplay_next_episode_on)
+                } else {
+                    stringResource(R.string.settings_autoplay_next_episode_off)
+                },
+                checked = autoPlayNextEpisode,
+                onCheckedChange = onAutoPlayNextEpisodeChange,
             )
             SettingsPauseTimeoutRow(
                 title = stringResource(R.string.settings_stop_service_after_pause_title),

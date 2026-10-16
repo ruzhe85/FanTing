@@ -310,4 +310,7 @@
     <string name="podcast_error_empty_title">Please enter a title</string>
     <string name="action_edit">Edit</string>
     <string name="action_save">Save</string>
+    <string name="settings_autoplay_next_episode_title">Auto-play next episode</string>
+    <string name="settings_autoplay_next_episode_on">When an episode ends, continue with the previous one</string>
+    <string name="settings_autoplay_next_episode_off">Stop when an episode ends</string>
 </resources>

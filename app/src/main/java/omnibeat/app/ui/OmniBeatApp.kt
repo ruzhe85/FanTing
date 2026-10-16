@@ -171,6 +171,7 @@ fun OmniBeatApp() {
         var stations by remember { mutableStateOf(emptyList<Station>()) }
         var appVolume by remember { mutableFloatStateOf(0.75f) }
         var rememberLastStation by remember { mutableStateOf(true) }
+        var autoPlayNextEpisode by remember { mutableStateOf(true) }
         var stopServiceAfterPauseMinutes by remember { mutableIntStateOf(DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES) }
         var keepMediaCard by remember { mutableStateOf(repository.keepMediaCard.value) }
         var showStationArtwork by remember { mutableStateOf(true) }
@@ -240,6 +241,7 @@ fun OmniBeatApp() {
             onStationsChange = { stations = it },
             onAppVolumeChange = { appVolume = it },
             onRememberLastStationChange = { rememberLastStation = it },
+            onAutoPlayNextEpisodeChange = { autoPlayNextEpisode = it },
             onStopServiceAfterPauseMinutesChange = { stopServiceAfterPauseMinutes = it },
             onKeepMediaCardChange = { keepMediaCard = it },
             onShowStationArtworkChange = { showStationArtwork = it },
@@ -796,6 +798,14 @@ fun OmniBeatApp() {
             if (playbackState.nextRequest > 0L) playAdjacentEpisode(1)
         }
 
+        // 一期播完：先记为「已听完」，再按设置自动播下一集（更早一期；最后一集自然到头忽略）
+        LaunchedEffect(playbackState.ended) {
+            if (!playbackState.ended) return@LaunchedEffect
+            if (currentEpisode() == null) return@LaunchedEffect
+            saveEpisodeProgress()
+            if (autoPlayNextEpisode) playAdjacentEpisode(1)
+        }
+
         fun addOnlineStation(radioStation: RadioBrowserStation) {
             val station = stationFromOnlineResult(radioStation)
             if (station.streamUrl.isBlank() || stations.any { it.streamUrl == station.streamUrl }) return
@@ -1094,8 +1104,19 @@ fun OmniBeatApp() {
         }
 
         fun playOrPause() {
-            val pageStations = navigationStations()
             val hasActivePlaybackRequest = playbackState.isPlaying || playbackState.resolving || playbackState.buffering
+            // 播客页：还没选过具体一期时，点播放就播当前订阅的最新一期（避免"点了没反应"）
+            if (selectedPage == MainPage.Podcasts &&
+                !hasActivePlaybackRequest &&
+                playbackState.selectedStation == null
+            ) {
+                val openSubscription = podcastSubscriptions.firstOrNull { it.feedUrl == openPodcastUrl }
+                if (openSubscription != null) {
+                    playLatestEpisode(openSubscription)
+                    return
+                }
+            }
+            val pageStations = navigationStations()
             if (!hasActivePlaybackRequest && playbackState.selectedStation == null && pageStations.isNotEmpty()) {
                 val rememberedStation = if (rememberLastStation && selectedPage != MainPage.SearchOnline) {
                     lastPlayedStationId
@@ -1212,7 +1233,14 @@ fun OmniBeatApp() {
                     )
                 },
                 bottomBar = {
-                    if (selectedPage in visibleTabPages || selectedPage == MainPage.SearchOnline) {
+                    // 播客 Tab 且未点进订阅、同时没有内容在播时隐藏面板（避免出现"点了没反应"的播放按钮）；
+                    // 若正在播电台或某一期则保留面板，否则无法暂停/停止
+                    val showPlayerPanel =
+                        (selectedPage in visibleTabPages || selectedPage == MainPage.SearchOnline) &&
+                            !(selectedPage == MainPage.Podcasts &&
+                                openPodcastUrl == null &&
+                                playbackState.selectedStation == null)
+                    if (showPlayerPanel) {
                         PlayerPanel(
                             station = playbackState.selectedStation,
                             trackText = playbackState.trackText,
@@ -1352,6 +1380,7 @@ fun OmniBeatApp() {
                                 themeMode = themeMode,
                                 appLanguage = appLanguage,
                                 rememberLastStation = rememberLastStation,
+                                autoPlayNextEpisode = autoPlayNextEpisode,
                                 stopServiceAfterPauseMinutes = stopServiceAfterPauseMinutes,
                                 keepMediaCard = keepMediaCard,
                                 showStationArtwork = showStationArtwork,
@@ -1375,6 +1404,10 @@ fun OmniBeatApp() {
                                 onRememberLastStationChange = { remember ->
                                     rememberLastStation = remember
                                     scope.launch { repository.saveRememberLastStation(remember) }
+                                },
+                                onAutoPlayNextEpisodeChange = { autoPlay ->
+                                    autoPlayNextEpisode = autoPlay
+                                    scope.launch { repository.saveAutoPlayNextEpisode(autoPlay) }
                                 },
                                 onStopServiceAfterPauseMinutesChange = { minutes ->
                                     stopServiceAfterPauseMinutes = minutes

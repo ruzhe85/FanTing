@@ -44,6 +44,7 @@ private val showBitrateInControlPanelKey = booleanPreferencesKey("show_bitrate_i
 private val showUnavailableBitrateKey = booleanPreferencesKey("show_unavailable_bitrate")
 private val marqueeTrackTitleKey = booleanPreferencesKey("marquee_track_title")
 private val autoExpandPlayerPanelOnPlaybackKey = booleanPreferencesKey("auto_expand_player_panel_on_playback")
+private val autoPlayNextEpisodeKey = booleanPreferencesKey("auto_play_next_episode")
 private val collapsePlayerPanelInSearchKey = booleanPreferencesKey("collapse_player_panel_in_search")
 private val addRadioBrowserTagsKey = booleanPreferencesKey("add_radio_browser_tags")
 private val removeTrackingParametersKey = booleanPreferencesKey("remove_tracking_parameters")
@@ -116,6 +117,10 @@ class StationRepository(private val context: Context) {
 
     val rememberLastStation: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[rememberLastStationKey] ?: true }
+
+    /** 播客：一期播完是否自动播下一集（更早的一期）。默认开启 */
+    val autoPlayNextEpisode: Flow<Boolean> = context.stationDataStore.data
+        .map { preferences -> preferences[autoPlayNextEpisodeKey] ?: true }
 
     val stopServiceAfterPauseMinutes: Flow<Int> = context.stationDataStore.data
         .map { preferences -> preferences[stopServiceAfterPauseMinutesKey] ?: DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES }
@@ -199,6 +204,12 @@ class StationRepository(private val context: Context) {
     suspend fun saveRememberLastStation(remember: Boolean) {
         context.stationDataStore.edit { preferences ->
             preferences[rememberLastStationKey] = remember
+        }
+    }
+
+    suspend fun saveAutoPlayNextEpisode(autoPlay: Boolean) {
+        context.stationDataStore.edit { preferences ->
+            preferences[autoPlayNextEpisodeKey] = autoPlay
         }
     }
 

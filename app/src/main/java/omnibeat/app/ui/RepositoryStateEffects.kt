@@ -15,6 +15,7 @@ fun RepositoryStateEffects(
     onStationsChange: (List<Station>) -> Unit,
     onAppVolumeChange: (Float) -> Unit,
     onRememberLastStationChange: (Boolean) -> Unit,
+    onAutoPlayNextEpisodeChange: (Boolean) -> Unit,
     onStopServiceAfterPauseMinutesChange: (Int) -> Unit,
     onKeepMediaCardChange: (Boolean) -> Unit,
     onShowStationArtworkChange: (Boolean) -> Unit,
@@ -51,6 +52,12 @@ fun RepositoryStateEffects(
     LaunchedEffect(repository) {
         repository.rememberLastStation.collect { savedRememberLastStation ->
             onRememberLastStationChange(savedRememberLastStation)
+        }
+    }
+
+    LaunchedEffect(repository) {
+        repository.autoPlayNextEpisode.collect { savedAutoPlayNextEpisode ->
+            onAutoPlayNextEpisodeChange(savedAutoPlayNextEpisode)
         }
     }
 
