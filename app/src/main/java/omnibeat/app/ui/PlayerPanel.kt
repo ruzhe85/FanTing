@@ -83,6 +83,12 @@ import java.util.Locale
 private const val SKIP_BACKWARD_MS = 15_000L
 private const val SKIP_FORWARD_MS = 30_000L
 
+/**
+ * 时间行里倍速 / 音量两颗次要按钮的直径。
+ * 它们紧贴在总时长左侧，比播放控制按钮（53dp）小一档，避免抢戏。
+ */
+private val AUX_BUTTON_SIZE = 38.dp
+
 
 
 @Composable
@@ -118,7 +124,14 @@ fun PlayerPanel(
     val trackCopiedText = stringResource(R.string.player_track_copied)
     val streamInfoClipboardLabel = stringResource(R.string.player_clipboard_stream_info_label)
     val streamInfoCopiedText = stringResource(R.string.player_stream_info_copied)
-    val displayTrackText = errorText ?: trackStatus?.let { trackStatusText(it) } ?: trackText
+    // 播客单集是 HLS 点播，**没有 ICY 元数据这一层**：服务端等不到元数据会把第二行
+    // 永久停在「无元数据」，所以单集时第二行只在出错时出现；电台保留原来的
+    // 「曲目名 / 播放状态」逻辑（那边有 ICY 元数据，是有信息量的）。
+    val displayTrackText: String? = if (durationMs > 0L) {
+        errorText?.takeIf { it.isNotBlank() }
+    } else {
+        errorText ?: trackStatus?.let { trackStatusText(it) } ?: trackText
+    }
     val bitrateText = if (showBitrate) {
         streamInfo.bitrateKbps?.let { bitrate ->
             stringResource(R.string.player_bitrate_format, bitrate)
@@ -222,26 +235,28 @@ fun PlayerPanel(
                             .fillMaxWidth()
                             .padding(top = RadioSpacing.extraSmall),
                     ) {
-                        Text(
-                            text = displayTrackText,
-                            color = RadioTextMuted,
-                            fontSize = RadioTextSizes.body,
-                            maxLines = 1,
-                            overflow = if (marqueeTrackTitle) TextOverflow.Clip else TextOverflow.Ellipsis,
-                            softWrap = false,
-                            modifier = Modifier
-                                .weight(1f)
-                                .then(
-                                    if (marqueeTrackTitle) {
-                                        Modifier.basicMarquee(
-                                            iterations = Int.MAX_VALUE,
-                                            repeatDelayMillis = 1_500,
-                                        )
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                        )
+                        displayTrackText?.let { trackText ->
+                            Text(
+                                text = trackText,
+                                color = RadioTextMuted,
+                                fontSize = RadioTextSizes.body,
+                                maxLines = 1,
+                                overflow = if (marqueeTrackTitle) TextOverflow.Clip else TextOverflow.Ellipsis,
+                                softWrap = false,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .then(
+                                        if (marqueeTrackTitle) {
+                                            Modifier.basicMarquee(
+                                                iterations = Int.MAX_VALUE,
+                                                repeatDelayMillis = 1_500,
+                                            )
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                            )
+                        }
                         bitrateText?.let { bitrate ->
                             Text(
                                 text = bitrate,
@@ -451,6 +466,8 @@ private fun PlaybackProgress(
                 thumbColor = RadioPrimary,
                 activeTrackColor = RadioPrimary,
                 inactiveTrackColor = RadioOutline,
+                // M3 默认在轨道末端画一个"停止点"小圆点，音频进度条上会被误读成标记，去掉
+                stopIndicatorColor = Color.Transparent,
             ),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -464,21 +481,24 @@ private fun PlaybackProgress(
                 fontSize = RadioTextSizes.caption,
             )
             Spacer(Modifier.weight(1f))
-            Text(
-                text = formatPlaybackTime(durationMs),
-                color = RadioTextMuted,
-                fontSize = RadioTextSizes.caption,
-            )
-            Spacer(Modifier.width(RadioSpacing.medium))
-            // 倍速与音量右对齐：控制行放不下（五控 288 + 这两个 106 > 316）
+            // 顺序：已播（左）→ 倍速 → 音量 → 总时长（最右）。
+            // 两颗次要按钮紧贴总时长，总时长落在行尾 —— 一眼就能看出哪里是结尾
             PlaybackSpeedButton(
                 speed = playbackSpeed,
                 onSpeedChange = onSpeedChange,
             )
-            Spacer(Modifier.width(RadioSpacing.extraSmall))
+            Spacer(Modifier.width(RadioSpacing.labelGap))
             VolumeButton(
                 volume = appVolume,
                 onVolumeChange = onVolumeChange,
+                buttonSize = AUX_BUTTON_SIZE,
+                iconSize = RadioSizes.iconInline,
+            )
+            Spacer(Modifier.width(RadioSpacing.small))
+            Text(
+                text = formatPlaybackTime(durationMs),
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.caption,
             )
         }
     }
@@ -497,8 +517,8 @@ private fun formatPlaybackTime(millis: Long): String {
 }
 
 /**
- * 文字式圆形按钮：倍速（`1×`）与快退/快进（`15s` / `30s`）共用。
- * 项目里没有这类图标，且全仓不使用 Material Icons，所以统一用文字，与周围圆形按钮同高。
+ * 文字式圆形按钮：快退 / 快进（`15s` / `30s`）用。
+ * 项目里没有这类图标，且全仓不使用 Material Icons，所以用文字；尺寸与周围圆形按钮一致。
  */
 @Composable
 private fun PlayerTextButton(
@@ -527,14 +547,26 @@ private fun PlayerTextButton(
 private fun PlaybackSpeedButton(
     speed: Float,
     onSpeedChange: (Float) -> Unit,
+    buttonSize: androidx.compose.ui.unit.Dp = AUX_BUTTON_SIZE,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Box {
-        PlayerTextButton(
-            label = formatSpeedLabel(speed),
+        // 与音量按钮同款同尺寸的圆形按钮（不做胶囊，避免两颗次要按钮割裂）；
+        // 圆里是文字，字号要比图标小一档，否则「1.25×」会擦到圆弧
+        PlayerIconButton(
+            enabled = true,
             onClick = { expanded = true },
-        )
+            modifier = Modifier.size(buttonSize),
+        ) {
+            Text(
+                text = formatSpeedLabel(speed),
+                color = RadioPrimary,
+                fontSize = RadioTextSizes.badge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+        }
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
@@ -733,6 +765,8 @@ private fun VolumeButton(
     volume: Float,
     onVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    buttonSize: androidx.compose.ui.unit.Dp = RadioSizes.button,
+    iconSize: androidx.compose.ui.unit.Dp = RadioSizes.icon,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val sliderHeight = RadioSizes.volumeSliderHeight
@@ -746,12 +780,12 @@ private fun VolumeButton(
         OmniFilledIconButton(
             enabled = true,
             onClick = { expanded = !expanded },
-            modifier = Modifier.size(RadioSizes.button),
+            modifier = Modifier.size(buttonSize),
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_volume),
                 contentDescription = null,
-                modifier = Modifier.size(RadioSizes.icon),
+                modifier = Modifier.size(iconSize),
             )
         }
 
