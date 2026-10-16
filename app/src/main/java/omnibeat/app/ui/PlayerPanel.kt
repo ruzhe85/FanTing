@@ -79,6 +79,10 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import java.util.Locale
 
+/** 播客单集的快退 / 快进步长 */
+private const val SKIP_BACKWARD_MS = 15_000L
+private const val SKIP_FORWARD_MS = 30_000L
+
 @Composable
 fun PlayerPanel(
     station: Station?,
@@ -247,37 +251,25 @@ fun PlayerPanel(
                         }
                     }
                 }
-                // 只有点播单集才有时长：显示可拖动的进度条（直播 durationMs = 0，不显示）
+                // durationMs > 0 说明在播点播单集（直播没有时长）。两种形态分开：
                 if (durationMs > 0L) {
+                    // 单集：进度条 + 常规播放器控制（快退 15 秒 / 上一集 / 播放暂停 / 下一集 / 快进 30 秒）
                     PlaybackProgress(
                         positionMs = positionMs,
                         durationMs = durationMs,
                         onSeek = onSeek,
                     )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = RadioSpacing.large),
-                ) {
-                    PlayerIconButton(
-                        enabled = true,
-                        onClick = onRandomStation,
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .size(RadioSizes.button),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_shuffle),
-                            contentDescription = null,
-                            modifier = Modifier.size(RadioSizes.icon),
-                        )
-                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.fieldGap),
-                        modifier = Modifier.align(Alignment.Center),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = RadioSpacing.large),
                     ) {
+                        PlayerTextButton(
+                            label = stringResource(R.string.podcast_skip_backward_label),
+                            onClick = { onSeek((positionMs - SKIP_BACKWARD_MS).coerceAtLeast(0L)) },
+                        )
                         PlayerIconButton(
                             enabled = true,
                             onClick = onPreviousStation,
@@ -314,22 +306,94 @@ fun PlayerPanel(
                                 modifier = Modifier.size(RadioSizes.icon),
                             )
                         }
+                        PlayerTextButton(
+                            label = stringResource(R.string.podcast_skip_forward_label),
+                            onClick = { onSeek((positionMs + SKIP_FORWARD_MS).coerceAtMost(durationMs)) },
+                        )
                     }
+                    // 次要控制：倍速与音量
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.small),
-                        modifier = Modifier.align(Alignment.CenterEnd),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = RadioSpacing.medium),
                     ) {
-                        // 倍速只对点播单集有意义（直播 durationMs = 0，不显示）
-                        if (durationMs > 0L) {
-                            PlaybackSpeedButton(
-                                speed = playbackSpeed,
-                                onSpeedChange = onSpeedChange,
+                        PlaybackSpeedButton(
+                            speed = playbackSpeed,
+                            onSpeedChange = onSpeedChange,
+                        )
+                        VolumeButton(
+                            volume = appVolume,
+                            onVolumeChange = onVolumeChange,
+                        )
+                    }
+                } else {
+                    // 电台直播：面板维持原样（随机 / 上一台 / 播放暂停 / 下一台 / 音量）
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = RadioSpacing.large),
+                    ) {
+                        PlayerIconButton(
+                            enabled = true,
+                            onClick = onRandomStation,
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .size(RadioSizes.button),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_shuffle),
+                                contentDescription = null,
+                                modifier = Modifier.size(RadioSizes.icon),
                             )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(RadioSpacing.fieldGap),
+                            modifier = Modifier.align(Alignment.Center),
+                        ) {
+                            PlayerIconButton(
+                                enabled = true,
+                                onClick = onPreviousStation,
+                                modifier = Modifier.size(RadioSizes.button),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_skip_previous),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(RadioSizes.icon),
+                                )
+                            }
+                            PlayerIconButton(
+                                enabled = true,
+                                onClick = onPlayPause,
+                                onLongClick = onStop,
+                                modifier = Modifier.size(RadioSizes.primaryPlaybackButton),
+                            ) {
+                                Icon(
+                                    painter = painterResource(
+                                        if (hasActivePlaybackRequest) R.drawable.ic_pause else R.drawable.ic_play_arrow,
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(RadioSizes.iconPlayback),
+                                )
+                            }
+                            PlayerIconButton(
+                                enabled = true,
+                                onClick = onNextStation,
+                                modifier = Modifier.size(RadioSizes.button),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_skip_next),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(RadioSizes.icon),
+                                )
+                            }
                         }
                         VolumeButton(
                             volume = appVolume,
                             onVolumeChange = onVolumeChange,
+                            modifier = Modifier.align(Alignment.CenterEnd),
                         )
                     }
                 }
@@ -421,8 +485,31 @@ private fun formatPlaybackTime(millis: Long): String {
 }
 
 /**
- * 单集倍速按钮：用纯文字显示当前倍速（项目里没有倍速相关图标，全仓也不用 Material Icons），
- * 点开是速率菜单，当前项带对勾。
+ * 文字式圆形按钮：倍速（`1×`）与快退/快进（`15s` / `30s`）共用。
+ * 项目里没有这类图标，且全仓不使用 Material Icons，所以统一用文字，与周围圆形按钮同高。
+ */
+@Composable
+private fun PlayerTextButton(
+    label: String,
+    onClick: () -> Unit,
+) {
+    PlayerIconButton(
+        enabled = true,
+        onClick = onClick,
+        modifier = Modifier.size(RadioSizes.button),
+    ) {
+        Text(
+            text = label,
+            color = RadioText,
+            fontSize = RadioTextSizes.bodySmall,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * 单集倍速按钮：用纯文字显示当前倍速，点开是速率菜单，当前项带对勾。
  */
 @Composable
 private fun PlaybackSpeedButton(
@@ -432,19 +519,10 @@ private fun PlaybackSpeedButton(
     var expanded by remember { mutableStateOf(false) }
 
     Box {
-        PlayerIconButton(
-            enabled = true,
+        PlayerTextButton(
+            label = formatSpeedLabel(speed),
             onClick = { expanded = true },
-            modifier = Modifier.size(RadioSizes.button),
-        ) {
-            Text(
-                text = formatSpeedLabel(speed),
-                color = RadioText,
-                fontSize = RadioTextSizes.bodySmall,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
-        }
+        )
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
