@@ -7,9 +7,10 @@ val translationAssets = tasks.register<Sync>("prepareTranslationAssets") {
     into(layout.buildDirectory.dir("generated/translationAssets/translations"))
 }
 
-// 签名：keystore 不入库。CI 用 Secrets 解码出 keystore/omnibeatp.jks 并注入下面几个环境变量；
+// 签名：keystore 不入库。CI 用 Secrets 解码出仓库根下的 keystore/omnibeatp.jks 并注入这几个环境变量；
 // 本地没有 keystore 时自动跳过签名，不影响编译与 debug 构建。
-val signingKeystore = file(System.getenv("OMNIBEATP_KEYSTORE") ?: "keystore/omnibeatp.jks")
+// 注意用 rootProject.file(...)：这里的相对路径按**仓库根**解析，否则会去 app/keystore/ 找而找不到。
+val signingKeystore = rootProject.file(System.getenv("OMNIBEATP_KEYSTORE") ?: "keystore/omnibeatp.jks")
 val signingEnabled =
     signingKeystore.exists() && !System.getenv("OMNIBEATP_KEYSTORE_PASSWORD").isNullOrBlank()
 

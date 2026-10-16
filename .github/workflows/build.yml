@@ -101,11 +101,21 @@ jobs:
       - name: Build release APK
         run: ./gradlew assembleGithubRelease --no-daemon --stacktrace
 
+      # 必须让签名校验真正决定成败：之前用 `| head -8` 把 apksigner 的失败退出码吞掉了，
+      # 结果未签名包一路发到了 Release 里。
       - name: Verify APK signature
         run: |
+          set -euo pipefail
           ls -la app/build/outputs/apk/github/release/
+          APK=$(ls app/build/outputs/apk/github/release/*.apk | head -1)
+          case "$APK" in
+            *unsigned*) echo "::error::APK 未签名，签名配置没生效：$APK"; exit 1 ;;
+          esac
           APKSIGNER=$(ls "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | tail -1)
-          "$APKSIGNER" verify --print-certs app/build/outputs/apk/github/release/*.apk | head -8
+          "$APKSIGNER" verify --print-certs "$APK"
+          # 顺带打印包名与 SDK 版本，用于核对「与官方版共存」的前提（包名必须不同）
+          AAPT2=$(ls "$ANDROID_SDK_ROOT"/build-tools/*/aapt2 | tail -1)
+          "$AAPT2" dump badging "$APK" | head -4
 
       - name: Upload APK (artifact)
         uses: actions/upload-artifact@v4
