@@ -17,6 +17,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Metadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -52,6 +53,7 @@ import omnibeat.app.data.DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
 import omnibeat.app.data.StationRepository
 import omnibeat.app.data.StationArtworkCache
 import omnibeat.app.data.STOP_SERVICE_AFTER_PAUSE_NEVER
+import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.Station
 import omnibeat.app.network.NetworkStatus
 import omnibeat.app.stream.IcyMetadataParser
@@ -86,6 +88,8 @@ data class PlaybackState(
     /** 点播单集的播放进度与总时长（直播恒为 0）；播放面板据此画可拖动的进度条 */
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    /** 当前播放倍速（直播恒为 1.0）；面板按它显示倍速按钮文案 */
+    val playbackSpeed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
 )
 
 data class PlaybackStreamInfo(
@@ -259,8 +263,15 @@ class PlaybackService : MediaLibraryService() {
                 queueIds = intent.getStringArrayListExtra(EXTRA_QUEUE_IDS).orEmpty(),
             )
             ACTION_PLAY_PREVIEW -> playPreviewStation(intent.toPreviewStation())
-            ACTION_PLAY_EPISODE -> playEpisodeStation(intent.toEpisodeStation())
+            ACTION_PLAY_EPISODE -> playEpisodeStation(
+                station = intent.toEpisodeStation(),
+                startPositionMs = intent.getLongExtra(EXTRA_EPISODE_POSITION_MS, 0L),
+                speed = intent.getFloatExtra(EXTRA_EPISODE_SPEED, PODCAST_DEFAULT_PLAYBACK_SPEED),
+            )
             ACTION_SEEK -> seekTo(intent.getLongExtra(EXTRA_SEEK_POSITION_MS, 0L))
+            ACTION_SET_PLAYBACK_SPEED -> if (currentItemSeekable) {
+                applyPlaybackSpeed(intent.getFloatExtra(EXTRA_PLAYBACK_SPEED, PODCAST_DEFAULT_PLAYBACK_SPEED))
+            }
             ACTION_PLAY_PAUSE -> playOrPause()
             ACTION_STOP -> stopPlaybackService()
         }
@@ -391,9 +402,23 @@ class PlaybackService : MediaLibraryService() {
      * previewing = true 表示它不在电台库里 —— 不写播放历史、不缓存封面、队列里只有它自己，
      * 这正是单集需要的语义。
      */
-    private fun playEpisodeStation(station: Station?) {
+    private fun playEpisodeStation(station: Station?, startPositionMs: Long, speed: Float) {
         if (station == null) return
-        playStation(station = station, index = -1, previewing = true, seekable = true)
+        playStation(
+            station = station,
+            index = -1,
+            previewing = true,
+            seekable = true,
+            startPositionMs = startPositionMs,
+            speed = speed,
+        )
+    }
+
+    /** 单集倍速：只在点播单集上生效，电台直播恒为 1.0× */
+    private fun applyPlaybackSpeed(speed: Float) {
+        val target = if (speed > 0f) speed else PODCAST_DEFAULT_PLAYBACK_SPEED
+        if (player.playbackParameters.speed == target) return
+        player.setPlaybackParameters(PlaybackParameters(target))
     }
 
     /** 条目内跳转进度：只对点播单集生效，直播忽略 */
@@ -408,12 +433,16 @@ class PlaybackService : MediaLibraryService() {
         previewing: Boolean,
         startPlayback: Boolean = true,
         seekable: Boolean = false,
+        startPositionMs: Long = 0L,
+        speed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
     ) {
         resolveJob?.cancel()
         stopAfterPauseJob?.cancel()
         noMetadataJob?.cancel()
         playbackRequested = startPlayback
         currentItemSeekable = seekable
+        // 倍速只跟随单集；切回电台时立即恢复 1.0×，直播行为不受影响
+        applyPlaybackSpeed(if (seekable) speed else PODCAST_DEFAULT_PLAYBACK_SPEED)
         if (!previewing) {
             lastPlayedStationId = station.id
             scope.launch { repository.saveLastPlayedStationId(station.id) }
@@ -483,6 +512,10 @@ class PlaybackService : MediaLibraryService() {
                 )
                 player.prepare()
                 player.playWhenReady = playbackRequested
+                // 断点续播：必须在 prepare 之后 seek，否则会被忽略而从头发起
+                if (seekable && startPositionMs > 0L) {
+                    player.seekTo(startPositionMs)
+                }
                 _state.update { it.copy(resolving = false) }
                 // 点播单集：开始把播放位置同步给 UI（进度条）；直播不轮询
                 if (seekable) startPositionUpdates() else positionJob?.cancel()
@@ -574,6 +607,7 @@ class PlaybackService : MediaLibraryService() {
                 streamInfo = PlaybackStreamInfo(),
                 positionMs = 0L,
                 durationMs = 0L,
+                playbackSpeed = PODCAST_DEFAULT_PLAYBACK_SPEED,
             ).withTrackStatus(PlaybackTrackStatus.Stopped)
         }
     }
@@ -649,6 +683,10 @@ class PlaybackService : MediaLibraryService() {
                 recordedStationId = stationId
                 scope.launch { repository.recordStationPlayed(stationId) }
             }
+        }
+
+        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+            _state.update { it.copy(playbackSpeed = playbackParameters.speed) }
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -1006,11 +1044,15 @@ class PlaybackService : MediaLibraryService() {
         private const val EXTRA_EPISODE_TITLE = "episode_title"
         private const val EXTRA_EPISODE_STREAM_URL = "episode_stream_url"
         private const val EXTRA_EPISODE_IMAGE_URL = "episode_image_url"
+        private const val EXTRA_EPISODE_POSITION_MS = "episode_position_ms"
+        private const val EXTRA_EPISODE_SPEED = "episode_speed"
         private const val EXTRA_SEEK_POSITION_MS = "seek_position_ms"
+        private const val EXTRA_PLAYBACK_SPEED = "playback_speed"
         private const val ACTION_PLAY_STATION = "omnibeat.app.action.PLAY_STATION"
         private const val ACTION_PLAY_PREVIEW = "omnibeat.app.action.PLAY_PREVIEW"
         private const val ACTION_PLAY_EPISODE = "omnibeat.app.action.PLAY_EPISODE"
         private const val ACTION_SEEK = "omnibeat.app.action.SEEK"
+        private const val ACTION_SET_PLAYBACK_SPEED = "omnibeat.app.action.SET_PLAYBACK_SPEED"
         private const val ACTION_PLAY_PAUSE = "omnibeat.app.action.PLAY_PAUSE"
         private const val ACTION_STOP = "omnibeat.app.action.STOP"
 
@@ -1051,14 +1093,30 @@ class PlaybackService : MediaLibraryService() {
          *
          * 与 [playPreview] 的关键区别：单集是点播内容，按可拖动进度播放。
          */
-        fun playEpisode(context: Context, episode: Station) {
+        fun playEpisode(
+            context: Context,
+            episode: Station,
+            startPositionMs: Long = 0L,
+            speed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
+        ) {
             context.startService(
                 Intent(context, PlaybackService::class.java)
                     .setAction(ACTION_PLAY_EPISODE)
                     .putExtra(EXTRA_EPISODE_ID, episode.id)
                     .putExtra(EXTRA_EPISODE_TITLE, episode.title)
                     .putExtra(EXTRA_EPISODE_STREAM_URL, episode.streamUrl)
-                    .putExtra(EXTRA_EPISODE_IMAGE_URL, episode.imageUrl.orEmpty()),
+                    .putExtra(EXTRA_EPISODE_IMAGE_URL, episode.imageUrl.orEmpty())
+                    .putExtra(EXTRA_EPISODE_POSITION_MS, startPositionMs)
+                    .putExtra(EXTRA_EPISODE_SPEED, speed),
+            )
+        }
+
+        /** 切换单集播放倍速（电台直播会忽略） */
+        fun setPlaybackSpeed(context: Context, speed: Float) {
+            context.startService(
+                Intent(context, PlaybackService::class.java)
+                    .setAction(ACTION_SET_PLAYBACK_SPEED)
+                    .putExtra(EXTRA_PLAYBACK_SPEED, speed),
             )
         }
 

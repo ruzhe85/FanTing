@@ -3,6 +3,11 @@ package omnibeat.app.model
 const val PODCAST_FEED_URL_MAX_LENGTH = 2048
 const val PODCAST_TITLE_MAX_LENGTH = 200
 
+/** 单集倍速的可选项（面板菜单按此顺序展示） */
+val PODCAST_PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
+
+const val PODCAST_DEFAULT_PLAYBACK_SPEED = 1.0f
+
 /**
  * 一个播客单集。
  *
@@ -15,6 +20,10 @@ data class PodcastEpisode(
     val audioUrl: String,
     val publishedAtMs: Long,
     val durationSec: Int,
+    /** 断点续播位置（毫秒）。听完的期会归零，下次点开即从头（符合"重听"直觉） */
+    val positionMs: Long = 0L,
+    /** 是否已听到结尾 */
+    val completed: Boolean = false,
 )
 
 /**
