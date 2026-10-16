@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">OmniBeat</string>
+    <string name="app_name" translatable="false">OmniBeatP</string>
 
     <string name="action_add_manually">Add manually</string>
     <string name="action_search_online">Search online</string>
