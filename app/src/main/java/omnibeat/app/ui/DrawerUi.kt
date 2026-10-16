@@ -48,6 +48,7 @@ fun DrawerContent(
     onToggleTranslation: () -> Unit,
     onTranslationClick: () -> Unit,
     onStationsClick: () -> Unit = {},
+    onPodcastClick: () -> Unit = {},
     onExportImportClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onAboutClick: () -> Unit = {},
@@ -114,6 +115,14 @@ fun DrawerContent(
                     iconRes = R.drawable.ic_list,
                     selected = selectedPage in MainPage.tabPages,
                     onClick = onStationsClick,
+                )
+                // 播客也放一个入口：顶栏标签栏在窄屏上放不下三个标签，
+                // 从这里进最稳妥（标签栏本身也改成可横向滚动了）
+                DrawerItem(
+                    text = stringResource(R.string.page_podcasts),
+                    iconRes = R.drawable.ic_play_arrow,
+                    selected = selectedPage == MainPage.Podcasts,
+                    onClick = onPodcastClick,
                 )
                 DrawerItem(
                     text = stringResource(R.string.page_export_import),

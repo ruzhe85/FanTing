@@ -1161,7 +1161,12 @@ fun OmniBeatApp() {
                         scope.launch { drawerState.close() }
                     },
                     onStationsClick = {
-                        selectedPage = lastMainPage
+                        // lastMainPage 可能是播客页（它不属于电台区）：那就回到电台首页
+                        selectedPage = lastMainPage.takeIf { it in MainPage.tabPages } ?: MainPage.Stations
+                        scope.launch { drawerState.close() }
+                    },
+                    onPodcastClick = {
+                        selectMainPage(MainPage.Podcasts)
                         scope.launch { drawerState.close() }
                     },
                     onExportImportClick = {

@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +24,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -64,6 +68,28 @@ fun MainTopBar(
     val density = LocalDensity.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var addMenuExpanded by remember { mutableStateOf(false) }
+    // 标签栏可横向滚动：三个标签在 20sp 字号下约 341dp，而中间只剩约 202dp
+    // （屏宽 - 菜单键 - 排序键 - 添加键 - 边距），不滚动的话最后一个标签会被
+    // 右侧按钮盖住、既看不见也点不到。
+    val tabScrollState = rememberScrollState()
+    // 选中标签的位置（内容坐标，不受滚动影响），用于把它滚进视野
+    var selectedTabX by remember { mutableStateOf(0) }
+    var selectedTabWidth by remember { mutableStateOf(0) }
+
+    // 选中的标签若滚出视野就自动滚回来：否则从抽屉进播客时，
+    // 顶栏只剩两个未选中的标签可见，看不出当前在哪一页
+    LaunchedEffect(visualSelectedPage, selectedTabX, selectedTabWidth) {
+        val viewport = tabScrollState.viewportSize
+        if (viewport <= 0 || selectedTabWidth <= 0) return@LaunchedEffect
+        val visibleLeft = tabScrollState.value
+        val visibleRight = visibleLeft + viewport
+        when {
+            selectedTabX < visibleLeft -> tabScrollState.animateScrollTo(selectedTabX)
+            selectedTabX + selectedTabWidth > visibleRight -> tabScrollState.animateScrollTo(
+                (selectedTabX + selectedTabWidth - viewport).coerceAtMost(tabScrollState.maxValue),
+            )
+        }
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -94,7 +120,15 @@ fun MainTopBar(
         } else {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (selectedPage in tabPages) {
+                            Modifier.horizontalScroll(tabScrollState)
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
                 if (selectedPage in tabPages) {
                     tabPages.forEach { tab ->
@@ -107,6 +141,12 @@ fun MainTopBar(
                                     role = Role.Tab,
                                     onClick = { onPageSelected(tab) },
                                 )
+                                .onGloballyPositioned { coordinates ->
+                                    if (visualSelectedPage == tab) {
+                                        selectedTabX = coordinates.positionInParent().x.toInt()
+                                        selectedTabWidth = coordinates.size.width
+                                    }
+                                }
                                 .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.small),
                         ) {
                             Text(
