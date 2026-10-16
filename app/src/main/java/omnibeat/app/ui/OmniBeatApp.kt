@@ -1154,6 +1154,12 @@ fun OmniBeatApp() {
                                 scope.launch { repository.savePlayerPanelCollapsed(collapsed) }
                             },
                             onSeek = { positionMs -> PlaybackService.seekTo(context, positionMs) },
+                            playbackSpeed = playbackState.playbackSpeed,
+                            onSpeedChange = { speed ->
+                                // 立即生效 + 记住，下次播放单集仍是这个倍速
+                                PlaybackService.setPlaybackSpeed(context, speed)
+                                scope.launch { podcastRepository.savePlaybackSpeed(speed) }
+                            },
                             onPlayPause = { playOrPause() },
                             onStop = {
                                 // 主动停止前先把单集进度存下来

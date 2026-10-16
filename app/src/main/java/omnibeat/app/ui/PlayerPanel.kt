@@ -39,6 +39,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -68,6 +70,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
+import omnibeat.app.model.PODCAST_PLAYBACK_SPEEDS
 import omnibeat.app.model.Station
 import omnibeat.app.playback.PlaybackTrackStatus
 import omnibeat.app.playback.PlaybackStreamInfo
@@ -91,6 +95,7 @@ fun PlayerPanel(
     collapsed: Boolean,
     positionMs: Long = 0L,
     durationMs: Long = 0L,
+    playbackSpeed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
     onCollapsedChange: (Boolean) -> Unit,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
@@ -99,6 +104,7 @@ fun PlayerPanel(
     onRandomStation: () -> Unit,
     onVolumeChange: (Float) -> Unit,
     onSeek: (Long) -> Unit = {},
+    onSpeedChange: (Float) -> Unit = {},
 ) {
     var showStreamInfo by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -309,11 +315,23 @@ fun PlayerPanel(
                             )
                         }
                     }
-                    VolumeButton(
-                        volume = appVolume,
-                        onVolumeChange = onVolumeChange,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.small),
                         modifier = Modifier.align(Alignment.CenterEnd),
-                    )
+                    ) {
+                        // 倍速只对点播单集有意义（直播 durationMs = 0，不显示）
+                        if (durationMs > 0L) {
+                            PlaybackSpeedButton(
+                                speed = playbackSpeed,
+                                onSpeedChange = onSpeedChange,
+                            )
+                        }
+                        VolumeButton(
+                            volume = appVolume,
+                            onVolumeChange = onVolumeChange,
+                        )
+                    }
                 }
             }
         }
@@ -400,6 +418,77 @@ private fun formatPlaybackTime(millis: Long): String {
     } else {
         String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
+}
+
+/**
+ * 单集倍速按钮：用纯文字显示当前倍速（项目里没有倍速相关图标，全仓也不用 Material Icons），
+ * 点开是速率菜单，当前项带对勾。
+ */
+@Composable
+private fun PlaybackSpeedButton(
+    speed: Float,
+    onSpeedChange: (Float) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        PlayerIconButton(
+            enabled = true,
+            onClick = { expanded = true },
+            modifier = Modifier.size(RadioSizes.button),
+        ) {
+            Text(
+                text = formatSpeedLabel(speed),
+                color = RadioText,
+                fontSize = RadioTextSizes.bodySmall,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = RadioSurface,
+        ) {
+            PODCAST_PLAYBACK_SPEEDS.forEach { option ->
+                val selected = option == speed
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = formatSpeedLabel(option),
+                            color = if (selected) RadioPrimary else RadioText,
+                            fontSize = RadioTextSizes.body,
+                        )
+                    },
+                    leadingIcon = if (selected) {
+                        {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_check),
+                                contentDescription = null,
+                                tint = RadioPrimary,
+                                modifier = Modifier.size(RadioSizes.iconInline),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        expanded = false
+                        onSpeedChange(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun formatSpeedLabel(speed: Float): String {
+    val value = if (speed % 1f == 0f) {
+        String.format(Locale.US, "%.0f", speed)
+    } else {
+        String.format(Locale.US, "%.2f", speed).trimEnd('0').trimEnd('.')
+    }
+    return "$value×"
 }
 
 @Composable
