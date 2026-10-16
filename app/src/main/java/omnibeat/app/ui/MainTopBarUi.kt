@@ -59,7 +59,6 @@ fun MainTopBar(
     onCancelReorder: () -> Unit,
     onConfirmReorder: () -> Unit,
     onOpenDrawer: () -> Unit,
-    onNavigateBack: () -> Unit,
     onAddStation: () -> Unit,
     onSearchOnline: () -> Unit,
     onAddPodcast: () -> Unit,
@@ -109,17 +108,13 @@ fun MainTopBar(
             .height(RadioSizes.topBarHeight)
             .padding(start = RadioSpacing.extraSmall, end = RadioSpacing.small),
     ) {
-        if (selectedPage in tabPages) {
-            OmniIconButton(
-                painter = painterResource(R.drawable.ic_menu),
-                onClick = onOpenDrawer,
-            )
-        } else {
-            OmniIconButton(
-                painter = painterResource(R.drawable.ic_arrow_back),
-                onClick = onNavigateBack,
-            )
-        }
+        // 左上角所有页面统一是抽屉键：非 Tab 页（设置 / 关于 / 导出导入 / 在线搜索）不再放返回键，
+        // 否则在设置页点同一位置只会先退回上一页，抽屉反而够不着。
+        // 返回能力不丢：系统返回手势/按键由 OmniBeatApp 的 BackHandler 接管（回 lastMainPage）。
+        OmniIconButton(
+            painter = painterResource(R.drawable.ic_menu),
+            onClick = onOpenDrawer,
+        )
         if (selectedPage == MainPage.SearchOnline && onlineSearchControl != null) {
             onlineSearchControl(
                 Modifier
