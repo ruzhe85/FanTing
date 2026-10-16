@@ -415,7 +415,7 @@ fun PlayerPanel(
     if (showStreamInfo) {
         StreamInfoDialog(
             stationTitle = station?.title.orEmpty(),
-            trackText = displayTrackText,
+            trackText = displayTrackText.orEmpty(),
             streamInfo = streamInfo,
             onDismiss = { showStreamInfo = false },
             onCopyInfo = { info ->
@@ -466,8 +466,6 @@ private fun PlaybackProgress(
                 thumbColor = RadioPrimary,
                 activeTrackColor = RadioPrimary,
                 inactiveTrackColor = RadioOutline,
-                // M3 默认在轨道末端画一个"停止点"小圆点，音频进度条上会被误读成标记，去掉
-                stopIndicatorColor = Color.Transparent,
             ),
             modifier = Modifier.fillMaxWidth(),
         )
