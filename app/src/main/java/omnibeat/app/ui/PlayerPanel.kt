@@ -272,11 +272,15 @@ fun PlayerPanel(
                     )
                     // 上一集 / 后退 15 秒 / 播放暂停 / 前进 30 秒 / 下一集 / 倍速 / 音量
                     // 七个控件排一行：面板左右各 22dp 内边距，360dp 屏只剩约 316dp，
-                    // 因此次级按钮 36dp、主按钮 60dp（6×36 + 60 = 276 ≤ 316），
-                    // 用 SpaceBetween 把富余空间平均分配到间隔上，窄屏不挤、宽屏舒展。
+                    // 所以次级按钮 36dp、主按钮 60dp（6×36 + 60 = 276 + 间隔 ≈ 303 ≤ 316）。
+                    // 间隔固定、整组居中 —— 不能用 SpaceBetween（会把按钮摊到整行两端，
+                    // 宽屏上每个按钮之间空出一大截，观感很散）。
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(
+                            RadioSpacing.extraSmall,
+                            Alignment.CenterHorizontally,
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = RadioSpacing.large),
