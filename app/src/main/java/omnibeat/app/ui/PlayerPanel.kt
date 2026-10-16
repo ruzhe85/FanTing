@@ -83,16 +83,7 @@ import java.util.Locale
 private const val SKIP_BACKWARD_MS = 15_000L
 private const val SKIP_FORWARD_MS = 30_000L
 
-/**
- * 单集控制行（一行七个控件）的按钮尺寸。
- * 面板内容区左右各 22dp 内边距，360dp 手机上只剩约 316dp；
- * 六个次级按钮 36dp + 主按钮 60dp = 276dp，留出约 40dp 给间隔。
- */
-private val SECONDARY_BUTTON_SIZE = 36.dp
-private val PRIMARY_BUTTON_SIZE = 60.dp
 
-/** 小尺寸文字按钮（15s / 30s / 倍速）的字号：36dp 圆里放不下 15sp 的「1.25×」 */
-private val SECONDARY_BUTTON_LABEL_SIZE = RadioTextSizes.badge
 
 @Composable
 fun PlayerPanel(
@@ -264,17 +255,20 @@ fun PlayerPanel(
                 }
                 // durationMs > 0 说明在播点播单集（直播没有时长）。两种形态分开：
                 if (durationMs > 0L) {
-                    // 单集：进度条 + 一行排开的常规播放器控制
+                    // 单集：进度条（右端挂倍速与音量）+ 一行播放控制
                     PlaybackProgress(
                         positionMs = positionMs,
                         durationMs = durationMs,
+                        playbackSpeed = playbackSpeed,
+                        appVolume = appVolume,
                         onSeek = onSeek,
+                        onSpeedChange = onSpeedChange,
+                        onVolumeChange = onVolumeChange,
                     )
-                    // 上一集 / 后退 15 秒 / 播放暂停 / 前进 30 秒 / 下一集 / 倍速 / 音量
-                    // 七个控件排一行：面板左右各 22dp 内边距，360dp 屏只剩约 316dp，
-                    // 所以次级按钮 36dp、主按钮 60dp（6×36 + 60 = 276 + 间隔 ≈ 303 ≤ 316）。
-                    // 间隔固定、整组居中 —— 不能用 SpaceBetween（会把按钮摊到整行两端，
-                    // 宽屏上每个按钮之间空出一大截，观感很散）。
+                    // 播放控制（原始尺寸，整组居中）：上一集 / 后退 15 秒 / 播放暂停 / 前进 30 秒 / 下一集
+                    // 倍速与音量不在这里 —— 五控 288dp + 倍速音量 106dp = 394dp，
+                    // 超过 360dp 屏可用的 316dp 会重叠，所以那两个右对齐挂在进度条那一行。
+                    // 间隔用固定值 + 整组居中：SpaceBetween 会把按钮摊到整行两端，观感很散。
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(
@@ -288,25 +282,23 @@ fun PlayerPanel(
                         PlayerIconButton(
                             enabled = true,
                             onClick = onPreviousStation,
-                            modifier = Modifier.size(SECONDARY_BUTTON_SIZE),
+                            modifier = Modifier.size(RadioSizes.button),
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_skip_previous),
                                 contentDescription = null,
-                                modifier = Modifier.size(RadioSizes.iconInline),
+                                modifier = Modifier.size(RadioSizes.icon),
                             )
                         }
                         PlayerTextButton(
                             label = stringResource(R.string.podcast_skip_backward_label),
                             onClick = { onSeek((positionMs - SKIP_BACKWARD_MS).coerceAtLeast(0L)) },
-                            buttonSize = SECONDARY_BUTTON_SIZE,
-                            labelSize = SECONDARY_BUTTON_LABEL_SIZE,
                         )
                         PlayerIconButton(
                             enabled = true,
                             onClick = onPlayPause,
                             onLongClick = onStop,
-                            modifier = Modifier.size(PRIMARY_BUTTON_SIZE),
+                            modifier = Modifier.size(RadioSizes.primaryPlaybackButton),
                         ) {
                             Icon(
                                 painter = painterResource(
@@ -319,32 +311,18 @@ fun PlayerPanel(
                         PlayerTextButton(
                             label = stringResource(R.string.podcast_skip_forward_label),
                             onClick = { onSeek((positionMs + SKIP_FORWARD_MS).coerceAtMost(durationMs)) },
-                            buttonSize = SECONDARY_BUTTON_SIZE,
-                            labelSize = SECONDARY_BUTTON_LABEL_SIZE,
                         )
                         PlayerIconButton(
                             enabled = true,
                             onClick = onNextStation,
-                            modifier = Modifier.size(SECONDARY_BUTTON_SIZE),
+                            modifier = Modifier.size(RadioSizes.button),
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_skip_next),
                                 contentDescription = null,
-                                modifier = Modifier.size(RadioSizes.iconInline),
+                                modifier = Modifier.size(RadioSizes.icon),
                             )
                         }
-                        PlaybackSpeedButton(
-                            speed = playbackSpeed,
-                            onSpeedChange = onSpeedChange,
-                            buttonSize = SECONDARY_BUTTON_SIZE,
-                            labelSize = SECONDARY_BUTTON_LABEL_SIZE,
-                        )
-                        VolumeButton(
-                            volume = appVolume,
-                            onVolumeChange = onVolumeChange,
-                            buttonSize = SECONDARY_BUTTON_SIZE,
-                            iconSize = RadioSizes.iconInline,
-                        )
                     }
                 } else {
                     // 电台直播：面板维持原样（随机 / 上一台 / 播放暂停 / 下一台 / 音量）
@@ -441,7 +419,11 @@ fun PlayerPanel(
 private fun PlaybackProgress(
     positionMs: Long,
     durationMs: Long,
+    playbackSpeed: Float,
+    appVolume: Float,
     onSeek: (Long) -> Unit,
+    onSpeedChange: (Float) -> Unit,
+    onVolumeChange: (Float) -> Unit,
 ) {
     var scrubbing by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
@@ -473,7 +455,7 @@ private fun PlaybackProgress(
             modifier = Modifier.fillMaxWidth(),
         )
         Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
@@ -481,10 +463,22 @@ private fun PlaybackProgress(
                 color = RadioTextMuted,
                 fontSize = RadioTextSizes.caption,
             )
+            Spacer(Modifier.weight(1f))
             Text(
                 text = formatPlaybackTime(durationMs),
                 color = RadioTextMuted,
                 fontSize = RadioTextSizes.caption,
+            )
+            Spacer(Modifier.width(RadioSpacing.medium))
+            // 倍速与音量右对齐：控制行放不下（五控 288 + 这两个 106 > 316）
+            PlaybackSpeedButton(
+                speed = playbackSpeed,
+                onSpeedChange = onSpeedChange,
+            )
+            Spacer(Modifier.width(RadioSpacing.extraSmall))
+            VolumeButton(
+                volume = appVolume,
+                onVolumeChange = onVolumeChange,
             )
         }
     }
@@ -510,18 +504,16 @@ private fun formatPlaybackTime(millis: Long): String {
 private fun PlayerTextButton(
     label: String,
     onClick: () -> Unit,
-    buttonSize: androidx.compose.ui.unit.Dp = RadioSizes.button,
-    labelSize: androidx.compose.ui.unit.TextUnit = RadioTextSizes.bodySmall,
 ) {
     PlayerIconButton(
         enabled = true,
         onClick = onClick,
-        modifier = Modifier.size(buttonSize),
+        modifier = Modifier.size(RadioSizes.button),
     ) {
         Text(
             text = label,
             color = RadioText,
-            fontSize = labelSize,
+            fontSize = RadioTextSizes.bodySmall,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
@@ -535,8 +527,6 @@ private fun PlayerTextButton(
 private fun PlaybackSpeedButton(
     speed: Float,
     onSpeedChange: (Float) -> Unit,
-    buttonSize: androidx.compose.ui.unit.Dp = RadioSizes.button,
-    labelSize: androidx.compose.ui.unit.TextUnit = RadioTextSizes.bodySmall,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -544,8 +534,6 @@ private fun PlaybackSpeedButton(
         PlayerTextButton(
             label = formatSpeedLabel(speed),
             onClick = { expanded = true },
-            buttonSize = buttonSize,
-            labelSize = labelSize,
         )
         DropdownMenu(
             expanded = expanded,
@@ -745,8 +733,6 @@ private fun VolumeButton(
     volume: Float,
     onVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
-    buttonSize: androidx.compose.ui.unit.Dp = RadioSizes.button,
-    iconSize: androidx.compose.ui.unit.Dp = RadioSizes.icon,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val sliderHeight = RadioSizes.volumeSliderHeight
@@ -760,12 +746,12 @@ private fun VolumeButton(
         OmniFilledIconButton(
             enabled = true,
             onClick = { expanded = !expanded },
-            modifier = Modifier.size(buttonSize),
+            modifier = Modifier.size(RadioSizes.button),
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_volume),
                 contentDescription = null,
-                modifier = Modifier.size(iconSize),
+                modifier = Modifier.size(RadioSizes.icon),
             )
         }
 
