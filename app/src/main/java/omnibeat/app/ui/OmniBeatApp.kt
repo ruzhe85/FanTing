@@ -717,6 +717,31 @@ fun OmniBeatApp() {
             )
         }
 
+        /**
+         * 切换订阅内相邻的一期。
+         *
+         * 期数列表按时间倒序（最新在上），所以 direction = +1 取列表下一条 = **更早一期**（"下一集"），
+         * -1 取更新的一期（"上一集"）。
+         * 当前在播的不是订阅内单集时返回 false，调用方回落到电台切台逻辑；
+         * 若是单集但已到列表尽头，返回 true（不回落，避免按"下一集"却切了电台）。
+         */
+        fun playAdjacentEpisode(direction: Int): Boolean {
+            val (subscription, episode) = currentEpisode() ?: return false
+            val index = subscription.episodes.indexOfFirst { it.guid == episode.guid }
+            if (index == -1) return false
+            val target = subscription.episodes.getOrNull(index + direction) ?: return true
+            playPodcastEpisode(subscription, target)
+            return true
+        }
+
+        // 通知栏 / 锁屏 / 耳机线控的上一集、下一集：服务只发计数，这里执行切集
+        LaunchedEffect(playbackState.previousRequest) {
+            if (playbackState.previousRequest > 0L) playAdjacentEpisode(-1)
+        }
+        LaunchedEffect(playbackState.nextRequest) {
+            if (playbackState.nextRequest > 0L) playAdjacentEpisode(1)
+        }
+
         fun addOnlineStation(radioStation: RadioBrowserStation) {
             val station = stationFromOnlineResult(radioStation)
             if (station.streamUrl.isBlank() || stations.any { it.streamUrl == station.streamUrl }) return
@@ -1166,8 +1191,9 @@ fun OmniBeatApp() {
                                 saveEpisodeProgress()
                                 PlaybackService.stop(context)
                             },
-                            onPreviousStation = { playAdjacentStation(-1) },
-                            onNextStation = { playAdjacentStation(1) },
+                            // 单集时切相邻一期；否则维持原来的电台切台
+                            onPreviousStation = { if (!playAdjacentEpisode(-1)) playAdjacentStation(-1) },
+                            onNextStation = { if (!playAdjacentEpisode(1)) playAdjacentStation(1) },
                             onRandomStation = { playRandomStation() },
                             onVolumeChange = { volume ->
                                 appVolume = volume

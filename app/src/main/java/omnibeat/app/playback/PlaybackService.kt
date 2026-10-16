@@ -90,6 +90,15 @@ data class PlaybackState(
     val durationMs: Long = 0L,
     /** 当前播放倍速（直播恒为 1.0）；面板按它显示倍速按钮文案 */
     val playbackSpeed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
+    /** 当前条目已播到结尾（STATE_ENDED）；准备新条目时会自动清零，供 UI 做「标记听完 + 自动下一集」 */
+    val ended: Boolean = false,
+    /**
+     * 系统侧（通知栏 / 锁屏 / 耳机线控）请求上一集/下一集的单调递增计数。
+     * 单集模式下服务不知道整季列表，只递增计数发信号，由 App 侧执行实际切集；
+     * 电台模式不走这里，仍由服务直接切台。
+     */
+    val previousRequest: Long = 0L,
+    val nextRequest: Long = 0L,
 )
 
 data class PlaybackStreamInfo(
@@ -608,6 +617,7 @@ class PlaybackService : MediaLibraryService() {
                 positionMs = 0L,
                 durationMs = 0L,
                 playbackSpeed = PODCAST_DEFAULT_PLAYBACK_SPEED,
+                ended = false,
             ).withTrackStatus(PlaybackTrackStatus.Stopped)
         }
     }
@@ -668,6 +678,8 @@ class PlaybackService : MediaLibraryService() {
                 it.copy(
                     buffering = playbackState == Player.STATE_BUFFERING,
                     isPlaying = player.isPlaying,
+                    // 播到结尾时置位；准备下一条目时会回到 BUFFERING/READY，从而自动清零
+                    ended = playbackState == Player.STATE_ENDED,
                 )
             }
             scheduleNoMetadataIfPlaybackStarted()
@@ -1010,8 +1022,18 @@ class PlaybackService : MediaLibraryService() {
 
         override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
             when (seekCommand) {
-                COMMAND_SEEK_TO_PREVIOUS, COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> playAdjacentStation(-1)
-                COMMAND_SEEK_TO_NEXT, COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> playAdjacentStation(1)
+                // 单集：服务不知道整季列表，只递增计数把请求转给 App 侧；电台仍按原逻辑切台
+                COMMAND_SEEK_TO_PREVIOUS, COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> if (currentItemSeekable) {
+                    _state.update { it.copy(previousRequest = it.previousRequest + 1L) }
+                } else {
+                    playAdjacentStation(-1)
+                }
+
+                COMMAND_SEEK_TO_NEXT, COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> if (currentItemSeekable) {
+                    _state.update { it.copy(nextRequest = it.nextRequest + 1L) }
+                } else {
+                    playAdjacentStation(1)
+                }
                 COMMAND_SEEK_TO_MEDIA_ITEM -> navigationStations().getOrNull(mediaItemIndex)?.let { station ->
                     val index = stations.indexOfFirst { it.id == station.id }
                     if (index >= 0) playStationAt(index)
