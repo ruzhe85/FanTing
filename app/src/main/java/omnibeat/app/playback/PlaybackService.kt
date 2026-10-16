@@ -109,6 +109,12 @@ class PlaybackService : MediaLibraryService() {
     private var playbackRequested = false
     private var recordedStationId: String? = null
     private var currentStreamIsHls = false
+
+    /**
+     * 当前播放的是点播内容（播客单集）。
+     * 为 true 时不带直播语义、会话报告可 seek —— 这是「进度条能拖」的关键。
+     */
+    private var currentItemSeekable = false
     private var lastPlayedStationId: String? = null
     private var rememberLastStation = true
     private var stopServiceAfterPauseMinutes = DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
@@ -247,6 +253,7 @@ class PlaybackService : MediaLibraryService() {
                 queueIds = intent.getStringArrayListExtra(EXTRA_QUEUE_IDS).orEmpty(),
             )
             ACTION_PLAY_PREVIEW -> playPreviewStation(intent.toPreviewStation())
+            ACTION_PLAY_EPISODE -> playEpisodeStation(intent.toEpisodeStation())
             ACTION_PLAY_PAUSE -> playOrPause()
             ACTION_STOP -> stopPlaybackService()
         }
@@ -371,16 +378,29 @@ class PlaybackService : MediaLibraryService() {
         playStation(station = station, index = -1, previewing = true)
     }
 
+    /**
+     * 播放播客单集：点播内容，进度必须可拖。
+     *
+     * previewing = true 表示它不在电台库里 —— 不写播放历史、不缓存封面、队列里只有它自己，
+     * 这正是单集需要的语义。
+     */
+    private fun playEpisodeStation(station: Station?) {
+        if (station == null) return
+        playStation(station = station, index = -1, previewing = true, seekable = true)
+    }
+
     private fun playStation(
         station: Station,
         index: Int,
         previewing: Boolean,
         startPlayback: Boolean = true,
+        seekable: Boolean = false,
     ) {
         resolveJob?.cancel()
         stopAfterPauseJob?.cancel()
         noMetadataJob?.cancel()
         playbackRequested = startPlayback
+        currentItemSeekable = seekable
         if (!previewing) {
             lastPlayedStationId = station.id
             scope.launch { repository.saveLastPlayedStationId(station.id) }
@@ -439,7 +459,13 @@ class PlaybackService : MediaLibraryService() {
                         .setMediaId(StationMediaLibrary.stationItem(this@PlaybackService, station).mediaId)
                         .setUri(resolvedStream.playableUrl)
                         .setMimeType(resolvedStream.playableUrl.mediaMimeType())
-                        .setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+                        .apply {
+                            // 只有电台直播才标记 LiveConfiguration；
+                            // 点播单集标了会被播放器当成直播流，时长未知且进度不可拖
+                            if (!seekable) {
+                                setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+                            }
+                        }
                         .build(),
                 )
                 player.prepare()
@@ -801,6 +827,10 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
             val error = reportedError
+            // 点播单集：报告真实时长与播放位置，系统媒体控件/播放面板的进度条才会跟着走、才能拖
+            val seekable = currentItemSeekable
+            val positionMs = if (seekable) player.currentPosition else 0L
+            val durationMs = player.duration
             return State.Builder()
                 .setAvailableCommands(Player.Commands.Builder().addAll(
                     COMMAND_PLAY_PAUSE, COMMAND_PREPARE, COMMAND_STOP, COMMAND_RELEASE,
@@ -809,7 +839,10 @@ class PlaybackService : MediaLibraryService() {
                     COMMAND_GET_TIMELINE, COMMAND_GET_METADATA,
                     COMMAND_SEEK_TO_PREVIOUS, COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
                     COMMAND_SEEK_TO_NEXT, COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
-                ).build())
+                ).apply {
+                    // 只有点播单集暴露「条目内 seek」：电台直播保持不可拖，避免行为变化
+                    if (seekable) add(COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                }.build())
                 .setPlaylist(queue.map { station ->
                     MediaItemData.Builder(station.id)
                         .setMediaItem(StationMediaLibrary.stationItem(
@@ -818,8 +851,17 @@ class PlaybackService : MediaLibraryService() {
                         .setMediaMetadata(buildSessionMetadata(
                             station, current.trackText.takeIf { station.id == selected?.id && current.trackStatus == null },
                         ))
-                        .setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
-                        .setIsDynamic(true).setIsSeekable(false).build()
+                        .apply {
+                            // 点播单集：不带直播配置，改为报告真实时长，并标记为可 seek
+                            if (seekable) {
+                                if (durationMs != C.TIME_UNSET && durationMs > 0) setDurationUs(durationMs * 1000)
+                            } else {
+                                setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+                            }
+                        }
+                        .setIsDynamic(!seekable)
+                        .setIsSeekable(seekable)
+                        .build()
                 })
                 .setCurrentMediaItemIndex(queue.indexOfFirst { it.id == selected?.id })
                 .setRepeatMode(REPEAT_MODE_ALL)
@@ -836,7 +878,7 @@ class PlaybackService : MediaLibraryService() {
                 .setPlayerError(error)
                 .setAudioAttributes(player.audioAttributes)
                 .setVolume(player.volume)
-                .setContentPositionMs(0)
+                .setContentPositionMs(positionMs)
                 .build()
         }
 
@@ -897,6 +939,8 @@ class PlaybackService : MediaLibraryService() {
                     val index = stations.indexOfFirst { it.id == station.id }
                     if (index >= 0) playStationAt(index)
                 }
+                // 点播单集：条目内跳转进度（真正的 seek，不是切台）
+                COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM -> if (currentItemSeekable) player.seekTo(positionMs)
                 else -> Unit
             }
             return Futures.immediateVoidFuture()
@@ -919,8 +963,13 @@ class PlaybackService : MediaLibraryService() {
         private const val EXTRA_PREVIEW_STREAM_URL = "preview_stream_url"
         private const val EXTRA_PREVIEW_TAGS = "preview_tags"
         private const val EXTRA_PREVIEW_IMAGE_URL = "preview_image_url"
+        private const val EXTRA_EPISODE_ID = "episode_id"
+        private const val EXTRA_EPISODE_TITLE = "episode_title"
+        private const val EXTRA_EPISODE_STREAM_URL = "episode_stream_url"
+        private const val EXTRA_EPISODE_IMAGE_URL = "episode_image_url"
         private const val ACTION_PLAY_STATION = "omnibeat.app.action.PLAY_STATION"
         private const val ACTION_PLAY_PREVIEW = "omnibeat.app.action.PLAY_PREVIEW"
+        private const val ACTION_PLAY_EPISODE = "omnibeat.app.action.PLAY_EPISODE"
         private const val ACTION_PLAY_PAUSE = "omnibeat.app.action.PLAY_PAUSE"
         private const val ACTION_STOP = "omnibeat.app.action.STOP"
 
@@ -949,6 +998,26 @@ class PlaybackService : MediaLibraryService() {
                     .putExtra(EXTRA_PREVIEW_STREAM_URL, station.streamUrl)
                     .putExtra(EXTRA_PREVIEW_TAGS, station.tags.joinToString(","))
                     .putExtra(EXTRA_PREVIEW_IMAGE_URL, station.imageUrl.orEmpty()),
+            )
+        }
+
+        /**
+         * 播放一个播客单集。
+         *
+         * [episode] 只是「播放描述」：id 用单集 guid、title 用单集标题、
+         * streamUrl 用已选好的音源地址（优先 `gdtv:hls`，兜底 `enclosure`）、imageUrl 用订阅封面。
+         * 它**不会**写进电台库。
+         *
+         * 与 [playPreview] 的关键区别：单集是点播内容，按可拖动进度播放。
+         */
+        fun playEpisode(context: Context, episode: Station) {
+            context.startService(
+                Intent(context, PlaybackService::class.java)
+                    .setAction(ACTION_PLAY_EPISODE)
+                    .putExtra(EXTRA_EPISODE_ID, episode.id)
+                    .putExtra(EXTRA_EPISODE_TITLE, episode.title)
+                    .putExtra(EXTRA_EPISODE_STREAM_URL, episode.streamUrl)
+                    .putExtra(EXTRA_EPISODE_IMAGE_URL, episode.imageUrl.orEmpty()),
             )
         }
 
@@ -982,6 +1051,24 @@ class PlaybackService : MediaLibraryService() {
                     .map { it.trim() }
                     .filter { it.isNotEmpty() },
                 imageUrl = extras?.getString(EXTRA_PREVIEW_IMAGE_URL)?.trim()?.takeIf { it.isNotBlank() },
+                isFavorite = false,
+                dateAdded = "",
+            )
+        }
+
+        /** 把 Intent 里的单集信息还原成「播放描述」（不落库） */
+        private fun Intent.toEpisodeStation(): Station? {
+            val title = extras?.getString(EXTRA_EPISODE_TITLE)?.trim().orEmpty()
+            val streamUrl = extras?.getString(EXTRA_EPISODE_STREAM_URL)?.trim().orEmpty()
+            if (title.isBlank() || streamUrl.isBlank()) {
+                return null
+            }
+            return Station(
+                id = extras?.getString(EXTRA_EPISODE_ID)?.takeIf { it.isNotBlank() } ?: "episode:$streamUrl",
+                title = title,
+                streamUrl = streamUrl,
+                tags = emptyList(),
+                imageUrl = extras?.getString(EXTRA_EPISODE_IMAGE_URL)?.trim()?.takeIf { it.isNotBlank() },
                 isFavorite = false,
                 dateAdded = "",
             )
