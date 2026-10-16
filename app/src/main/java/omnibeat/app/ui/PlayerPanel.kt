@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -407,7 +408,7 @@ private fun LiveBadge(modifier: Modifier = Modifier) {
         maxLines = 1,
         modifier = modifier
             .padding(start = RadioSpacing.medium)
-            .clip(RadioCorners.pill)
+            .clip(RoundedCornerShape(RadioCorners.pill))
             .background(RadioPrimary)
             .padding(horizontal = RadioSpacing.compact, vertical = RadioSpacing.extraSmall),
     )
