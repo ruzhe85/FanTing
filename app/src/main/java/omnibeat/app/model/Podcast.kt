@@ -30,6 +30,8 @@ data class PodcastEpisode(
     val positionMs: Long = 0L,
     /** 是否已听到结尾 */
     val completed: Boolean = false,
+    /** 是否收藏：刷新换期数时按 guid 保留，删订阅才随之消失 */
+    val favorite: Boolean = false,
 )
 
 /**

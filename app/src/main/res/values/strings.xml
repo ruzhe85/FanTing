@@ -314,6 +314,9 @@
     <string name="podcast_refresh_single_new">Refreshed · %1$d new episodes</string>
     <string name="podcast_refresh_single_none">Refreshed · no new episodes</string>
     <string name="podcast_refresh_progress">%1$d/%2$d</string>
+    <string name="podcast_favorites_title">Favorite episodes</string>
+    <string name="podcast_favorites_count">%1$d episodes</string>
+    <string name="podcast_favorites_empty">No favorite episodes yet.\nTap the heart on an episode to keep it here.</string>
     <string name="podcast_episode_count">%1$d episodes</string>
     <string name="podcast_last_updated">Updated %1$s</string>
     <string name="podcast_never_updated">Not updated yet</string>

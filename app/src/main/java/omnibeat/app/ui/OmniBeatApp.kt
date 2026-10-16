@@ -109,6 +109,15 @@ fun OmniBeatApp() {
         .collectAsState(initial = true)
     val podcastRefreshIntervalMinutes by podcastRepository.refreshIntervalMinutes
         .collectAsState(initial = PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES)
+    // 收藏的期：跨订阅聚合，按发布时间倒序（与订阅内排序一致）。
+    // 纯读派生——数据源就是各订阅里 favorite = true 的期，不额外落库。
+    val favoriteEpisodes = remember(podcastSubscriptions) {
+        podcastSubscriptions
+            .flatMap { subscription ->
+                subscription.episodes.filter { it.favorite }.map { subscription to it }
+            }
+            .sortedByDescending { it.second.publishedAtMs }
+    }
     val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
     var translationLoaded by remember(repository) { mutableStateOf(false) }
     LaunchedEffect(repository) {
@@ -219,6 +228,8 @@ fun OmniBeatApp() {
         var onlineOptionsExpanded by remember { mutableStateOf(false) }
         // 播客页状态：当前打开的订阅（null = 订阅列表）、添加弹窗、加载与错误
         var openPodcastUrl by remember { mutableStateOf<String?>(null) }
+        // 收藏的期列表是否打开（跨订阅聚合页）；与 openPodcastUrl 互斥显示
+        var openPodcastFavorites by remember { mutableStateOf(false) }
         // 正在编辑的订阅（按 feedUrl 定位；地址改动后会重定向到新地址）
         var editPodcastUrl by remember { mutableStateOf<String?>(null) }
         var addPodcastDialogVisible by remember { mutableStateOf(false) }
@@ -1477,6 +1488,19 @@ fun OmniBeatApp() {
                                             podcastRefreshAllDone to podcastRefreshAllTotal
                                         } else {
                                             null
+                                        },
+                                        favoriteEpisodes = favoriteEpisodes,
+                                        favoritesOpen = openPodcastFavorites,
+                                        onOpenFavorites = { openPodcastFavorites = true },
+                                        onCloseFavorites = { openPodcastFavorites = false },
+                                        onToggleFavorite = { subscription, episode ->
+                                            scope.launch {
+                                                podcastRepository.setEpisodeFavorite(
+                                                    feedUrl = subscription.feedUrl,
+                                                    guid = episode.guid,
+                                                    favorite = !episode.favorite,
+                                                )
+                                            }
                                         },
                                         onEditSubscription = {
                                             podcastError = null

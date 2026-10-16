@@ -68,9 +68,9 @@ class PodcastRepository(private val context: Context) {
             val next = if (index == -1) {
                 current + subscription
             } else {
-                // 刷新时解析结果会整批换掉期数，而解析结果里没有进度：
-                // 按 guid 把已存的续播位置与听完标记搬回来，否则每次刷新都会丢进度。
-                val merged = subscription.withPreservedProgress(current[index].episodes)
+                // 刷新时解析结果会整批换掉期数，而解析结果里没有用户状态：
+                // 按 guid 把已存的续播位置、听完标记与收藏搬回来，否则每次刷新都会丢。
+                val merged = subscription.withPreservedEpisodeState(current[index].episodes)
                 current.toMutableList().also { it[index] = merged }
             }
             preferences[podcastsJsonKey] = encodeSubscriptions(next)
@@ -90,7 +90,7 @@ class PodcastRepository(private val context: Context) {
             val merged = if (previous == null) {
                 subscription
             } else {
-                subscription.withPreservedProgress(previous.episodes)
+                subscription.withPreservedEpisodeState(previous.episodes)
             }
             val next = if (index == -1) {
                 current + merged
@@ -177,19 +177,56 @@ class PodcastRepository(private val context: Context) {
         }
     }
 
-    /** 把 [previous] 里同 guid 的进度搬到本期数上（新出现的期保持默认值） */
-    private fun PodcastSubscription.withPreservedProgress(
+    /**
+     * 收藏 / 取消收藏某一期。
+     * 与 [updateEpisodeProgress] 同一套写法：值没变化就不整表重写。
+     */
+    suspend fun setEpisodeFavorite(
+        feedUrl: String,
+        guid: String,
+        favorite: Boolean,
+    ) {
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            val subscriptionIndex = current.indexOfFirst { it.feedUrl == feedUrl }
+            if (subscriptionIndex == -1) return@edit
+            val subscription = current[subscriptionIndex]
+            val episodeIndex = subscription.episodes.indexOfFirst { it.guid == guid }
+            if (episodeIndex == -1) return@edit
+            val episode = subscription.episodes[episodeIndex]
+            if (episode.favorite == favorite) return@edit
+            val updatedEpisodes = subscription.episodes.toMutableList().also {
+                it[episodeIndex] = episode.copy(favorite = favorite)
+            }
+            val next = current.toMutableList().also {
+                it[subscriptionIndex] = subscription.copy(episodes = updatedEpisodes)
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
+    /**
+     * 把 [previous] 里同 guid 的期状态搬到本期数上（新出现的期保持默认值）。
+     * 保留三样：续播位置、听完标记、收藏 —— 刷新换掉的只是期数列表，
+     * 这三样是用户行为产生的，不能因为重新拉了一次 feed 就丢。
+     */
+    private fun PodcastSubscription.withPreservedEpisodeState(
         previous: List<PodcastEpisode>,
     ): PodcastSubscription {
         if (episodes.isEmpty() || previous.isEmpty()) return this
-        val progressByGuid = previous.associateBy { it.guid }
+        val previousByGuid = previous.associateBy { it.guid }
         return copy(
             episodes = episodes.map { episode ->
-                val saved = progressByGuid[episode.guid] ?: return@map episode
-                if (saved.positionMs == 0L && !saved.completed) {
-                    episode
+                val saved = previousByGuid[episode.guid] ?: return@map episode
+                val hasState = saved.positionMs != 0L || saved.completed || saved.favorite
+                if (hasState) {
+                    episode.copy(
+                        positionMs = saved.positionMs,
+                        completed = saved.completed,
+                        favorite = saved.favorite,
+                    )
                 } else {
-                    episode.copy(positionMs = saved.positionMs, completed = saved.completed)
+                    episode
                 }
             },
         )
@@ -216,7 +253,8 @@ class PodcastRepository(private val context: Context) {
                         .put("publishedAtMs", episode.publishedAtMs)
                         .put("durationSec", episode.durationSec)
                         .put("positionMs", episode.positionMs)
-                        .put("completed", episode.completed),
+                        .put("completed", episode.completed)
+                        .put("favorite", episode.favorite),
                 )
             }
             items.put(
@@ -283,6 +321,8 @@ class PodcastRepository(private val context: Context) {
                             // 旧数据没有这两个字段：走默认值（无进度、未听完）
                             positionMs = item.optLong("positionMs", 0L),
                             completed = item.optBoolean("completed", false),
+                            // 旧数据没有收藏字段：默认未收藏
+                            favorite = item.optBoolean("favorite", false),
                         ),
                     )
                 }
