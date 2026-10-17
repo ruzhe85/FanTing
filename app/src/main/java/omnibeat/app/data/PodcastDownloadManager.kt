@@ -2,6 +2,7 @@ package omnibeat.app.data
 
 import android.content.Context
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -390,7 +391,8 @@ object PodcastDownloadManager {
             var copied = 0L
             var lastReport = 0L
             target.parentFile?.mkdirs()
-            target.outputStream(append = resumed).use { output ->
+            // 续传必须 append 写（kotlin.io 的 outputStream 只有覆盖写，没有 append 重载）
+            FileOutputStream(target, resumed).use { output ->
                 connection.inputStream.use { input ->
                     val buffer = ByteArray(BUFFER_SIZE)
                     while (true) {
