@@ -151,10 +151,13 @@ fun ErrorDialog(
 @Composable
 fun ImportStationsDialog(
     stationCount: Int,
+    podcastCount: Int,
+    episodeCount: Int,
     onImport: (StationImportMode) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val hasPodcasts = podcastCount > 0
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = modifier
@@ -165,14 +168,23 @@ fun ImportStationsDialog(
         containerColor = RadioSurface,
         title = {
             Text(
-                text = stringResource(R.string.dialog_import_stations_title),
+                text = stringResource(
+                    if (hasPodcasts) R.string.dialog_import_backup_title
+                    else R.string.dialog_import_stations_title,
+                ),
                 color = RadioText,
                 fontWeight = FontWeight.SemiBold,
             )
         },
         text = {
             Text(
-                text = AnnotatedString.fromHtml(stringResource(R.string.dialog_import_stations_text, stationCount)),
+                text = AnnotatedString.fromHtml(
+                    if (hasPodcasts) {
+                        stringResource(R.string.dialog_import_backup_text, stationCount, podcastCount, episodeCount)
+                    } else {
+                        stringResource(R.string.dialog_import_stations_text, stationCount)
+                    },
+                ),
                 color = RadioTextMuted,
                 lineHeight = RadioTextSizes.bodyLineHeight,
             )

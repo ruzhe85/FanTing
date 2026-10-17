@@ -25,7 +25,6 @@
 
     <string name="page_stations">Станции</string>
     <string name="page_favorites">Избранное</string>
-    <string name="page_export_import">Экспорт / Импорт</string>
     <string name="page_settings">Настройки</string>
     <string name="page_about">О приложении</string>
 
@@ -52,9 +51,6 @@
     <string name="settings_language_system">Использовать язык системы</string>
     <string name="settings_language_selected">Использовать выбранный язык</string>
     <string name="settings_section_playback">Воспроизведение</string>
-    <string name="settings_remember_last_station_title">Запоминать последнюю станцию</string>
-    <string name="settings_remember_last_station_on">Воспроизведение начнётся с последней станции</string>
-    <string name="settings_remember_last_station_off">Воспроизведение начнётся с первой станции из списка</string>
     <string name="settings_stop_service_after_pause_title">Остановить сервис после паузы</string>
     <string name="settings_stop_service_after_pause_subtitle">Уведомление останется на %1$d мин после паузы</string>
     <string name="settings_stop_service_after_pause_never_subtitle">Уведомление останется, пока вы не остановите приложение</string>
@@ -63,14 +59,13 @@
     <string name="settings_keep_media_card_title">Сохранять плеер после остановки сервиса</string>
     <string name="settings_keep_media_card_on">Android будет сохранять плеер в панели быстрых настроек</string>
     <string name="settings_keep_media_card_off">Android не будет сохранять плеер в панели быстрых настроек</string>
-    <string name="settings_keep_media_card_note">Возобновляйте воспроизведение прямо из панели быстрых настроек, нажав Play, даже когда OmniBeat не запущен.\nВыключите эту настройку, если не хотите видеть там последнюю прослушанную станцию.\n\nИзменения могут вступить в силу не сразу. Может потребоваться перезагрузка устройства.</string>
-    <string name="settings_section_artwork">Обложки</string>
+    <string name="settings_keep_media_card_note">Возобновляйте воспроизведение прямо из панели быстрых настроек, нажав Play, даже когда OmniBeatP не запущен.\nВыключите эту настройку, если не хотите видеть там последнюю прослушанную станцию.\n\nИзменения могут вступить в силу не сразу. Может потребоваться перезагрузка устройства.</string>
     <string name="settings_station_covers_title">Обложки станций</string>
     <string name="settings_station_covers_on">В списке станций будут отображаться обложки</string>
     <string name="settings_station_covers_off">В списке станций обложки отображаться не будут</string>
     <string name="settings_sync_artwork_title">Загрузить обложки станций</string>
     <string name="settings_sync_artwork_subtitle">Попробовать найти обложки для всех станций онлайн</string>
-    <string name="settings_section_library">Библиотека</string>
+    <string name="settings_section_library">Станции</string>
     <string name="settings_show_empty_favorites_title">Показывать пустую вкладку «Избранное»</string>
     <string name="settings_show_empty_favorites_on">Вкладка «Избранное» будет видна, даже если она пуста</string>
     <string name="settings_show_empty_favorites_off">Пустая вкладка «Избранное» будет скрыта</string>
@@ -78,15 +73,12 @@
     <string name="settings_confirm_station_deletion_on">Перед удалением станции появится запрос на подтверждение</string>
     <string name="settings_confirm_station_deletion_off">Станции будут удаляться без подтверждения</string>
     <string name="settings_section_control_panel">Панель управления</string>
-    <string name="settings_show_player_metadata_title">Показывать метаданные на панели управления</string>
-    <string name="settings_show_player_metadata_on">На панели будет отображаться трек или состояние воспроизведения</string>
-    <string name="settings_show_player_metadata_off">На панели трек и состояние воспроизведения отображаться не будут</string>
+    <string name="settings_show_player_metadata_title">Показывать метаданные во время воспроизведения станции</string>
+    <string name="settings_show_player_metadata_on">Показывать метаданные, если они доступны</string>
+    <string name="settings_show_player_metadata_off">Скрывать метаданные</string>
     <string name="settings_show_bitrate_title">Показывать битрейт на панели управления</string>
     <string name="settings_show_bitrate_on">На панели управления будет отображаться битрейт стрима</string>
     <string name="settings_show_bitrate_off">На панели управления битрейт стрима отображаться не будет</string>
-    <string name="settings_show_unavailable_bitrate_title">Показывать отсутствие битрейта</string>
-    <string name="settings_show_unavailable_bitrate_on">Если битрейт недоступен, на панели управления будет отображаться N/A</string>
-    <string name="settings_show_unavailable_bitrate_off">Если битрейт недоступен, он не будет отображаться на панели управления</string>
     <string name="settings_marquee_track_title_title">Прокручивать длинные названия</string>
     <string name="settings_marquee_track_title_on">Длинные названия будут прокручиваться</string>
     <string name="settings_marquee_track_title_off">Длинные названия будут обрезаться</string>
@@ -96,19 +88,16 @@
     <string name="settings_collapse_player_panel_search_title">Сворачивать панель в онлайн-поиске</string>
     <string name="settings_collapse_player_panel_search_on">Онлайн-поиск будет открываться со свёрнутой панелью управления</string>
     <string name="settings_collapse_player_panel_search_off">Онлайн-поиск будет сохранять текущее состояние панели</string>
-    <string name="settings_section_online_search">Онлайн-поиск</string>
     <string name="settings_save_radio_browser_tags_title">Сохранять теги Radio Browser</string>
     <string name="settings_save_radio_browser_tags_on">Станции из онлайн-поиска будут сохраняться с тегами</string>
     <string name="settings_save_radio_browser_tags_off">Станции из онлайн-поиска будут сохраняться без тегов</string>
-    <string name="settings_section_urls">Ссылки</string>
     <string name="settings_remove_tracking_title">Удалять трекеры из URL</string>
     <string name="settings_remove_tracking_on">Из URL новых станций будут удаляться метки трекеров</string>
     <string name="settings_remove_tracking_off">URL новых станций будут сохраняться без изменений</string>
-    <string name="settings_android_auto_artwork_title">Обложки станций</string>
-    <string name="settings_android_auto_artwork_on">Android Auto и уведомление плеера будут показывать обложки</string>
-    <string name="settings_android_auto_artwork_off">Android Auto и уведомление плеера будут скрывать обложки</string>
-    <string name="settings_section_danger_zone">Опасная зона</string>
-    <string name="settings_clear_library_title">Очистить библиотеку</string>
+    <string name="settings_android_auto_artwork_title">Обложки</string>
+    <string name="settings_android_auto_artwork_on">Уведомление плеера будет показывать обложки</string>
+    <string name="settings_android_auto_artwork_off">Уведомление плеера будет скрывать обложки</string>
+    <string name="settings_clear_library_title">Очистить все станции</string>
 
     <string name="auto_all_stations">Все станции</string>
     <string name="auto_recently_played">Недавно прослушанные</string>
@@ -116,12 +105,14 @@
     <string name="auto_no_stations">Библиотека пуста. Добавьте станции на телефоне, когда это будет безопасно.</string>
     <string name="auto_station_not_found">Станция не найдена в библиотеке</string>
 
-    <string name="dialog_clear_library_title">Очистить библиотеку?</string>
-    <string name="dialog_clear_library_text">Все станции, избранное и сортировка будут удалены</string>
+    <string name="dialog_clear_library_title">Очистить все станции?</string>
+    <string name="dialog_clear_library_text">Все станции, избранное и сортировка будут удалены. Подписки на подкасты, прогресс и загрузки не затрагиваются.</string>
     <string name="dialog_error_title">Ошибка</string>
     <string name="toast_error_copied">Ошибка скопирована</string>
     <string name="dialog_import_stations_title">Импорт станций</string>
     <string name="dialog_import_stations_text">Импортировать %1$d станций?&lt;br/&gt;&lt;b&gt;Замена&lt;/b&gt; сначала очищает текущую библиотеку.&lt;br/&gt;&lt;b&gt;Объединение&lt;/b&gt; сохраняет текущую библиотеку и обновляет станции с совпадающими URL стримов.</string>
+    <string name="dialog_import_backup_title">Импорт резервной копии</string>
+    <string name="dialog_import_backup_text">Копия содержит %1$d станций, %2$d подкастов и %3$d выпусков.&lt;br/&gt;&lt;b&gt;Замена&lt;/b&gt; сначала очистит текущие станции и подкасты.&lt;br/&gt;&lt;b&gt;Объединение&lt;/b&gt; сохранит ваши данные и использует более новый прогресс.&lt;br/&gt;Скачанные аудиофайлы не будут удалены.</string>
 
     <string name="toast_export_json">JSON-файл экспортирован</string>
     <string name="toast_export_txt">TXT-файл экспортирован</string>
@@ -130,7 +121,7 @@
     <string name="toast_download_export_failed">Не удалось экспортировать</string>
     <string name="toast_import_failed">Не удалось импортировать: %1$s</string>
     <string name="toast_stations_imported">Станции импортированы</string>
-    <string name="toast_library_deleted">Библиотека удалена</string>
+    <string name="toast_library_deleted">Все станции удалены</string>
     <string name="toast_playback_error">Ошибка воспроизведения</string>
     <string name="toast_no_internet">Нет подключения к интернету</string>
     <string name="toast_search_failed">Ошибка поиска</string>
@@ -149,20 +140,15 @@
     <string name="track_text_waiting_metadata">Ожидание метаданных...</string>
     <string name="track_text_no_metadata">Нет метаданных</string>
 
-    <string name="export_import_library_title">Библиотека</string>
-    <string name="export_import_library_summary">станций: %1$d, в избранном: %2$d</string>
-    <string name="export_import_json_title">OmniBeat JSON</string>
-    <string name="export_import_json_description">Полная резервная копия OmniBeat: станции, избранное и сортировка.</string>
-    <string name="export_import_json_export_title">Экспорт OmniBeat JSON</string>
-    <string name="export_import_json_export_subtitle">Сохранить в родном JSON формате со всеми полями</string>
-    <string name="export_import_json_import_title">Импорт OmniBeat JSON</string>
-    <string name="export_import_json_import_subtitle">Объединить с библиотекой или заменить её из резервной копии</string>
-    <string name="export_import_txt_title">Простой TXT</string>
-    <string name="export_import_txt_description">Текстовый формат для ручного редактирования. Станции записываются отдельными строками: название, URL стрима и опционально теги (через запятую). Станции разделяются пустой строкой. Экспортируйте TXT, чтобы получить образец.</string>
-    <string name="export_import_txt_export_title">Экспорт TXT</string>
-    <string name="export_import_txt_export_subtitle">Сохранить названия, URL стримов и теги</string>
-    <string name="export_import_txt_import_title">Импорт TXT</string>
-    <string name="export_import_txt_import_subtitle">Объединить с библиотекой или заменить её из резервной копии</string>
+    <string name="settings_section_backup_restore">Резервная копия</string>
+    <string name="settings_backup_export_title">Экспорт копии (JSON)</string>
+    <string name="settings_backup_export_subtitle">Станций: %1$d · подкастов: %2$d · выпусков: %3$d</string>
+    <string name="settings_backup_import_title">Импорт копии (JSON)</string>
+    <string name="settings_backup_import_subtitle">Объединить с текущими данными или заменить их</string>
+    <string name="settings_txt_export_title">Экспорт TXT</string>
+    <string name="settings_txt_export_subtitle">Только станции, можно править вручную</string>
+    <string name="settings_txt_import_title">Импорт TXT</string>
+    <string name="settings_txt_import_subtitle">Объединить с текущими данными или заменить их</string>
 
     <string name="empty_stations_prefix">Станций пока нет.</string>
     <string name="empty_stations_suffix_start">Нажмите</string>
@@ -233,7 +219,6 @@
     <string name="station_editor_delete_text">Эта станция будет удалена из библиотеки</string>
 
     <string name="player_bitrate_format">%1$d кбит/с</string>
-    <string name="player_bitrate_unavailable">N/A кбит/с</string>
     <string name="player_live_badge">LIVE</string>
     <string name="podcast_refresh_failed">Не удалось обновить: %1$s</string>
     <string name="podcast_refresh_nothing">Нет подписок для обновления</string>
@@ -274,13 +259,13 @@
     <string name="settings_podcast_refresh_on_enter_list_on">Обновлять все подписки при открытии вкладки «Подкасты»</string>
     <string name="settings_podcast_refresh_on_enter_list_off">Не обновлять при открытии вкладки «Подкасты»</string>
     <string name="settings_podcast_refresh_interval_title">Интервал обновления</string>
-    <string name="settings_podcast_refresh_interval_subtitle">Автообновление перезапрашивает ленты старше этого срока</string>
+    <string name="settings_podcast_refresh_interval_subtitle">Автообновление затрагивает только подписки, не обновлявшиеся дольше этого интервала; ручное обновление не ограничено</string>
     <string name="settings_podcast_refresh_interval_10m">10 минут</string>
     <string name="settings_podcast_refresh_interval_1h">1 час</string>
     <string name="settings_podcast_refresh_interval_6h">6 часов</string>
     <string name="settings_podcast_refresh_interval_1d">1 день</string>
     <string name="settings_podcast_search_region_title">Регион поиска</string>
-    <string name="settings_podcast_search_region_subtitle">Магазин iTunes для поиска подкастов</string>
+    <string name="settings_podcast_search_region_subtitle">Регион для поиска подкастов</string>
     <string name="settings_podcast_search_region_us">США</string>
     <string name="settings_podcast_search_region_cn">Китай</string>
     <string name="settings_podcast_search_region_tw">Тайвань</string>
@@ -355,7 +340,7 @@
     <string name="toast_link_copied">Ссылка скопирована</string>
 
     <string name="update_available_title">Доступно обновление</string>
-    <string name="update_available_text">Доступна версия OmniBeat %1$s. Скачать новую версию?</string>
+    <string name="update_available_text">Доступна версия OmniBeatP %1$s. Скачать новую версию?</string>
     <string name="update_downloaded_title">Обновление скачано</string>
     <string name="update_downloaded_text">APK сохранён в Downloads. Открыть его для установки обновления?</string>
     <string name="update_checking">Проверка обновлений...</string>
@@ -363,7 +348,7 @@
     <string name="update_downloading">Обновление скачивается в Downloads</string>
     <string name="update_downloading_title">Скачивание обновления</string>
     <string name="update_download_progress">%1$d%%</string>
-    <string name="update_failed">Не удалось обновить OmniBeat\n%1$s</string>
+    <string name="update_failed">Не удалось обновить OmniBeatP\n%1$s</string>
 
     <string name="page_translation">Перевод</string>
     <string name="translation_enabled">Раздел перевода включён</string>

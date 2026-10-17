@@ -224,6 +224,8 @@ class PodcastRepository(private val context: Context) {
                     positionMs = normalizedPosition,
                     // 听过结尾就不再撤销：重听途中暂停只更新位置，不掉"已听完"标记
                     completed = completed || episode.completed,
+                    // 备份合并靠这个时间戳判断哪边更新
+                    stateUpdatedAtMs = System.currentTimeMillis(),
                 )
             }
             val next = current.toMutableList().also {
@@ -318,7 +320,10 @@ class PodcastRepository(private val context: Context) {
             val episode = subscription.episodes[episodeIndex]
             if (episode.favorite == favorite) return@edit
             val updatedEpisodes = subscription.episodes.toMutableList().also {
-                it[episodeIndex] = episode.copy(favorite = favorite)
+                it[episodeIndex] = episode.copy(
+                    favorite = favorite,
+                    stateUpdatedAtMs = System.currentTimeMillis(),
+                )
             }
             val next = current.toMutableList().also {
                 it[subscriptionIndex] = subscription.copy(episodes = updatedEpisodes)
@@ -347,6 +352,7 @@ class PodcastRepository(private val context: Context) {
                         positionMs = saved.positionMs,
                         completed = saved.completed,
                         favorite = saved.favorite,
+                        stateUpdatedAtMs = saved.stateUpdatedAtMs,
                         localFileName = saved.localFileName,
                     )
                 } else {
@@ -365,99 +371,116 @@ class PodcastRepository(private val context: Context) {
     }
 
     private fun encodeSubscriptions(subscriptions: List<PodcastSubscription>): String {
-        val items = JSONArray()
-        subscriptions.forEach { subscription ->
-            val episodes = JSONArray()
-            subscription.episodes.forEach { episode ->
-                episodes.put(
-                    JSONObject()
-                        .put("guid", episode.guid)
-                        .put("title", episode.title)
-                        .put("audioUrl", episode.audioUrl)
-                        .put("publishedAtMs", episode.publishedAtMs)
-                        .put("durationSec", episode.durationSec)
-                        .put("positionMs", episode.positionMs)
-                        .put("completed", episode.completed)
-                        .put("favorite", episode.favorite)
-                        .put("localFileName", episode.localFileName.orEmpty()),
-                )
-            }
-            items.put(
-                JSONObject()
-                    .put("feedUrl", subscription.feedUrl)
-                    .put("title", subscription.title)
-                    .put("imageUrl", subscription.imageUrl.orEmpty())
-                    .put("imageUrlManual", subscription.imageUrlManual)
-                    .put("pinned", subscription.pinned)
-                    .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
-                    .put("episodes", episodes),
-            )
-        }
-        return items.toString()
+        return encodePodcastSubscriptions(subscriptions)
     }
 
     private fun decodeSubscriptions(subscriptionsJson: String): List<PodcastSubscription> {
-        if (subscriptionsJson.isBlank()) {
-            return emptyList()
-        }
-        return runCatching {
-            val items = JSONArray(subscriptionsJson)
-            buildList {
-                repeat(items.length()) { index ->
-                    val item = items.getJSONObject(index)
-                    val feedUrl = item.optString("feedUrl").trim()
-                    val title = item.optString("title").trim()
-                    // 地址或标题为空视为坏数据：跳过这一条而不是整个订阅列表报废
-                    if (feedUrl.isNotEmpty() && title.isNotEmpty()) {
-                        add(
-                            PodcastSubscription(
-                                feedUrl = feedUrl,
-                                title = title,
-                                imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
-                                imageUrlManual = item.optBoolean("imageUrlManual", false),
-                                // 旧数据没有置顶字段：默认不置顶
-                                pinned = item.optBoolean("pinned", false),
-                                lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
-                                episodes = decodeEpisodes(item.optJSONArray("episodes")),
-                            ),
-                        )
-                    }
-                }
-            }
-        }.getOrElse {
-            emptyList()
-        }
+        return decodePodcastSubscriptions(subscriptionsJson)
     }
 
-    private fun decodeEpisodes(episodesJson: JSONArray?): List<PodcastEpisode> {
-        if (episodesJson == null) {
-            return emptyList()
+    /** 备份恢复用：整表覆盖（调用方负责先算好合并 / 替换结果） */
+    suspend fun restoreAll(subscriptions: List<PodcastSubscription>) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[podcastsJsonKey] = encodeSubscriptions(subscriptions)
         }
-        return buildList {
-            repeat(episodesJson.length()) { index ->
-                val item = episodesJson.optJSONObject(index) ?: return@repeat
-                val audioUrl = item.optString("audioUrl").trim()
+    }
+}
+
+/** 播客订阅列表 ⇄ JSON 文本；备份编解码与 DataStore 读写共用同一套格式 */
+internal fun encodePodcastSubscriptions(subscriptions: List<PodcastSubscription>): String {
+    val items = JSONArray()
+    subscriptions.forEach { subscription ->
+        val episodes = JSONArray()
+        subscription.episodes.forEach { episode ->
+            episodes.put(
+                JSONObject()
+                    .put("guid", episode.guid)
+                    .put("title", episode.title)
+                    .put("audioUrl", episode.audioUrl)
+                    .put("publishedAtMs", episode.publishedAtMs)
+                    .put("durationSec", episode.durationSec)
+                    .put("positionMs", episode.positionMs)
+                    .put("completed", episode.completed)
+                    .put("favorite", episode.favorite)
+                    .put("stateUpdatedAtMs", episode.stateUpdatedAtMs)
+                    .put("localFileName", episode.localFileName.orEmpty()),
+            )
+        }
+        items.put(
+            JSONObject()
+                .put("feedUrl", subscription.feedUrl)
+                .put("title", subscription.title)
+                .put("imageUrl", subscription.imageUrl.orEmpty())
+                .put("imageUrlManual", subscription.imageUrlManual)
+                .put("pinned", subscription.pinned)
+                .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
+                .put("episodes", episodes),
+        )
+    }
+    return items.toString()
+}
+
+internal fun decodePodcastSubscriptions(subscriptionsJson: String): List<PodcastSubscription> {
+    if (subscriptionsJson.isBlank()) {
+        return emptyList()
+    }
+    return runCatching {
+        val items = JSONArray(subscriptionsJson)
+        buildList {
+            repeat(items.length()) { index ->
+                val item = items.getJSONObject(index)
+                val feedUrl = item.optString("feedUrl").trim()
                 val title = item.optString("title").trim()
-                val guid = item.optString("guid").trim()
-                // 没有可播地址的单集直接丢弃：点开也只会报错
-                if (audioUrl.isNotEmpty() && title.isNotEmpty()) {
+                // 地址或标题为空视为坏数据：跳过这一条而不是整个订阅列表报废
+                if (feedUrl.isNotEmpty() && title.isNotEmpty()) {
                     add(
-                        PodcastEpisode(
-                            guid = guid.ifEmpty { audioUrl },
+                        PodcastSubscription(
+                            feedUrl = feedUrl,
                             title = title,
-                            audioUrl = audioUrl,
-                            publishedAtMs = item.optLong("publishedAtMs", 0L),
-                            durationSec = item.optInt("durationSec", 0),
-                            // 旧数据没有这两个字段：走默认值（无进度、未听完）
-                            positionMs = item.optLong("positionMs", 0L),
-                            completed = item.optBoolean("completed", false),
-                            // 旧数据没有收藏与下载字段：默认未收藏、未下载
-                            favorite = item.optBoolean("favorite", false),
-                            localFileName = item.optString("localFileName").trim()
-                                .takeIf { it.isNotBlank() },
+                            imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
+                            imageUrlManual = item.optBoolean("imageUrlManual", false),
+                            // 旧数据没有置顶字段：默认不置顶
+                            pinned = item.optBoolean("pinned", false),
+                            lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
+                            episodes = decodePodcastEpisodes(item.optJSONArray("episodes")),
                         ),
                     )
                 }
+            }
+        }
+    }.getOrElse {
+        emptyList()
+    }
+}
+
+internal fun decodePodcastEpisodes(episodesJson: JSONArray?): List<PodcastEpisode> {
+    if (episodesJson == null) {
+        return emptyList()
+    }
+    return buildList {
+        repeat(episodesJson.length()) { index ->
+            val item = episodesJson.optJSONObject(index) ?: return@repeat
+            val audioUrl = item.optString("audioUrl").trim()
+            val title = item.optString("title").trim()
+            val guid = item.optString("guid").trim()
+            // 没有可播地址的单集直接丢弃：点开也只会报错
+            if (audioUrl.isNotEmpty() && title.isNotEmpty()) {
+                add(
+                    PodcastEpisode(
+                        guid = guid.ifEmpty { audioUrl },
+                        title = title,
+                        audioUrl = audioUrl,
+                        publishedAtMs = item.optLong("publishedAtMs", 0L),
+                        durationSec = item.optInt("durationSec", 0),
+                        // 旧数据没有这些字段：走默认值（无进度、未听完、无时间戳）
+                        positionMs = item.optLong("positionMs", 0L),
+                        completed = item.optBoolean("completed", false),
+                        favorite = item.optBoolean("favorite", false),
+                        stateUpdatedAtMs = item.optLong("stateUpdatedAtMs", 0L),
+                        localFileName = item.optString("localFileName").trim()
+                            .takeIf { it.isNotBlank() },
+                    ),
+                )
             }
         }
     }

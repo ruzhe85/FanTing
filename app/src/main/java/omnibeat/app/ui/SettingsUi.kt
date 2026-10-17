@@ -153,7 +153,6 @@ fun SettingsPage(
     themeMode: ThemeMode,
     accentPalette: AccentPalette,
     appLanguage: AppLanguage,
-    rememberLastStation: Boolean,
     autoPlayNextEpisode: Boolean,
     stopServiceAfterPauseMinutes: Int,
     keepMediaCard: Boolean,
@@ -162,7 +161,6 @@ fun SettingsPage(
     showEmptyFavoritesTab: Boolean,
     confirmStationDeletion: Boolean,
     showBitrateInControlPanel: Boolean,
-    showUnavailableBitrate: Boolean,
     showPlayerMetadata: Boolean,
     marqueeTrackTitle: Boolean,
     autoExpandPlayerPanelOnPlayback: Boolean,
@@ -176,10 +174,12 @@ fun SettingsPage(
     podcastSearchRegion: String,
     podcastCompactList: Boolean,
     podcastWifiOnlyDownload: Boolean,
+    stationCount: Int,
+    podcastCount: Int,
+    episodeCount: Int,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAccentPaletteChange: (AccentPalette) -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
-    onRememberLastStationChange: (Boolean) -> Unit,
     onAutoPlayNextEpisodeChange: (Boolean) -> Unit,
     onStopServiceAfterPauseMinutesChange: (Int) -> Unit,
     onKeepMediaCardChange: (Boolean) -> Unit,
@@ -188,7 +188,6 @@ fun SettingsPage(
     onShowEmptyFavoritesTabChange: (Boolean) -> Unit,
     onConfirmStationDeletionChange: (Boolean) -> Unit,
     onShowBitrateInControlPanelChange: (Boolean) -> Unit,
-    onShowUnavailableBitrateChange: (Boolean) -> Unit,
     onShowPlayerMetadataChange: (Boolean) -> Unit,
     onMarqueeTrackTitleChange: (Boolean) -> Unit,
     onAutoExpandPlayerPanelOnPlaybackChange: (Boolean) -> Unit,
@@ -202,6 +201,10 @@ fun SettingsPage(
     onPodcastSearchRegionChange: (String) -> Unit,
     onPodcastCompactListChange: (Boolean) -> Unit,
     onPodcastWifiOnlyDownloadChange: (Boolean) -> Unit,
+    onExportBackup: () -> Unit,
+    onImportBackup: () -> Unit,
+    onExportSimpleText: () -> Unit,
+    onImportSimpleText: () -> Unit,
     onClearLibrary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -244,19 +247,29 @@ fun SettingsPage(
                 appLanguage = appLanguage,
                 onAppLanguageChange = onAppLanguageChange,
             )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_show_empty_favorites_title),
+                subtitle = if (showEmptyFavoritesTab) {
+                    stringResource(R.string.settings_show_empty_favorites_on)
+                } else {
+                    stringResource(R.string.settings_show_empty_favorites_off)
+                },
+                checked = showEmptyFavoritesTab,
+                onCheckedChange = onShowEmptyFavoritesTabChange,
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_android_auto_artwork_title),
+                subtitle = if (showAndroidAutoArtwork) {
+                    stringResource(R.string.settings_android_auto_artwork_on)
+                } else {
+                    stringResource(R.string.settings_android_auto_artwork_off)
+                },
+                checked = showAndroidAutoArtwork,
+                onCheckedChange = onShowAndroidAutoArtworkChange,
+            )
             SettingsDivider()
 
             SettingsSectionHeader(title = stringResource(R.string.settings_section_playback))
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_remember_last_station_title),
-                subtitle = if (rememberLastStation) {
-                    stringResource(R.string.settings_remember_last_station_on)
-                } else {
-                    stringResource(R.string.settings_remember_last_station_off)
-                },
-                checked = rememberLastStation,
-                onCheckedChange = onRememberLastStationChange,
-            )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_autoplay_next_episode_title),
                 subtitle = if (autoPlayNextEpisode) {
@@ -296,7 +309,7 @@ fun SettingsPage(
             )
             SettingsDivider()
 
-            SettingsSectionHeader(title = stringResource(R.string.settings_section_artwork))
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_library))
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_station_covers_title),
                 subtitle = if (showStationArtwork) {
@@ -313,19 +326,6 @@ fun SettingsPage(
                 syncing = syncingStationArtwork,
                 onClick = onSyncStationArtwork,
             )
-            SettingsDivider()
-
-            SettingsSectionHeader(title = stringResource(R.string.settings_section_library))
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_show_empty_favorites_title),
-                subtitle = if (showEmptyFavoritesTab) {
-                    stringResource(R.string.settings_show_empty_favorites_on)
-                } else {
-                    stringResource(R.string.settings_show_empty_favorites_off)
-                },
-                checked = showEmptyFavoritesTab,
-                onCheckedChange = onShowEmptyFavoritesTabChange,
-            )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_confirm_station_deletion_title),
                 subtitle = if (confirmStationDeletion) {
@@ -335,6 +335,30 @@ fun SettingsPage(
                 },
                 checked = confirmStationDeletion,
                 onCheckedChange = onConfirmStationDeletionChange,
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_remove_tracking_title),
+                subtitle = if (removeTrackingParameters) {
+                    stringResource(R.string.settings_remove_tracking_on)
+                } else {
+                    stringResource(R.string.settings_remove_tracking_off)
+                },
+                checked = removeTrackingParameters,
+                onCheckedChange = onRemoveTrackingParametersChange,
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_save_radio_browser_tags_title),
+                subtitle = if (addRadioBrowserTags) {
+                    stringResource(R.string.settings_save_radio_browser_tags_on)
+                } else {
+                    stringResource(R.string.settings_save_radio_browser_tags_off)
+                },
+                checked = addRadioBrowserTags,
+                onCheckedChange = onAddRadioBrowserTagsChange,
+            )
+            SettingsDangerRow(
+                title = stringResource(R.string.settings_clear_library_title),
+                onClick = { confirmClearLibrary = true },
             )
             SettingsDivider()
 
@@ -413,17 +437,6 @@ fun SettingsPage(
                 onCheckedChange = onShowBitrateInControlPanelChange,
             )
             SettingsSwitchRow(
-                title = stringResource(R.string.settings_show_unavailable_bitrate_title),
-                subtitle = if (showUnavailableBitrate) {
-                    stringResource(R.string.settings_show_unavailable_bitrate_on)
-                } else {
-                    stringResource(R.string.settings_show_unavailable_bitrate_off)
-                },
-                checked = showUnavailableBitrate,
-                onCheckedChange = onShowUnavailableBitrateChange,
-                enabled = showBitrateInControlPanel,
-            )
-            SettingsSwitchRow(
                 title = stringResource(R.string.settings_marquee_track_title_title),
                 subtitle = if (marqueeTrackTitle) {
                     stringResource(R.string.settings_marquee_track_title_on)
@@ -455,49 +468,35 @@ fun SettingsPage(
             )
             SettingsDivider()
 
-            SettingsSectionHeader(title = stringResource(R.string.settings_section_online_search))
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_save_radio_browser_tags_title),
-                subtitle = if (addRadioBrowserTags) {
-                    stringResource(R.string.settings_save_radio_browser_tags_on)
-                } else {
-                    stringResource(R.string.settings_save_radio_browser_tags_off)
-                },
-                checked = addRadioBrowserTags,
-                onCheckedChange = onAddRadioBrowserTagsChange,
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_backup_restore))
+            SettingsFileActionRow(
+                iconRes = R.drawable.ic_file_export,
+                title = stringResource(R.string.settings_backup_export_title),
+                subtitle = stringResource(
+                    R.string.settings_backup_export_subtitle,
+                    stationCount,
+                    podcastCount,
+                    episodeCount,
+                ),
+                onClick = onExportBackup,
             )
-            SettingsDivider()
-
-            SettingsSectionHeader(title = stringResource(R.string.settings_section_urls))
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_remove_tracking_title),
-                subtitle = if (removeTrackingParameters) {
-                    stringResource(R.string.settings_remove_tracking_on)
-                } else {
-                    stringResource(R.string.settings_remove_tracking_off)
-                },
-                checked = removeTrackingParameters,
-                onCheckedChange = onRemoveTrackingParametersChange,
+            SettingsFileActionRow(
+                iconRes = R.drawable.ic_file_import,
+                title = stringResource(R.string.settings_backup_import_title),
+                subtitle = stringResource(R.string.settings_backup_import_subtitle),
+                onClick = onImportBackup,
             )
-            SettingsDivider()
-
-            SettingsSectionHeader(title = stringResource(R.string.settings_section_android_auto))
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_android_auto_artwork_title),
-                subtitle = if (showAndroidAutoArtwork) {
-                    stringResource(R.string.settings_android_auto_artwork_on)
-                } else {
-                    stringResource(R.string.settings_android_auto_artwork_off)
-                },
-                checked = showAndroidAutoArtwork,
-                onCheckedChange = onShowAndroidAutoArtworkChange,
+            SettingsFileActionRow(
+                iconRes = R.drawable.ic_file_export,
+                title = stringResource(R.string.settings_txt_export_title),
+                subtitle = stringResource(R.string.settings_txt_export_subtitle),
+                onClick = onExportSimpleText,
             )
-            SettingsDivider()
-
-            SettingsSectionHeader(title = stringResource(R.string.settings_section_danger_zone), color = RadioDanger)
-            SettingsDangerRow(
-                title = stringResource(R.string.settings_clear_library_title),
-                onClick = { confirmClearLibrary = true },
+            SettingsFileActionRow(
+                iconRes = R.drawable.ic_file_import,
+                title = stringResource(R.string.settings_txt_import_title),
+                subtitle = stringResource(R.string.settings_txt_import_subtitle),
+                onClick = onImportSimpleText,
             )
         }
         OmniScrollIndicator(
@@ -1155,5 +1154,44 @@ private fun SettingsActionRow(
                 )
             }
         }
+    }
+}
+
+/** 备份与恢复的分组行：左侧文案 + 右侧文件操作图标 */
+@Composable
+private fun SettingsFileActionRow(
+    iconRes: Int,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.groupGap),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = RadioSpacing.fieldGap),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(
+                text = title,
+                color = RadioText,
+                fontSize = RadioTextSizes.bodyLarge,
+            )
+            Text(
+                text = subtitle,
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.bodySmall,
+            )
+        }
+        OmniIconButton(
+            painter = painterResource(iconRes),
+            onClick = onClick,
+            tint = RadioPrimary,
+        )
     }
 }

@@ -14,7 +14,6 @@ fun RepositoryStateEffects(
     visibleTabPages: List<MainPage>,
     onStationsChange: (List<Station>) -> Unit,
     onAppVolumeChange: (Float) -> Unit,
-    onRememberLastStationChange: (Boolean) -> Unit,
     onAutoPlayNextEpisodeChange: (Boolean) -> Unit,
     onStopServiceAfterPauseMinutesChange: (Int) -> Unit,
     onKeepMediaCardChange: (Boolean) -> Unit,
@@ -22,7 +21,6 @@ fun RepositoryStateEffects(
     onShowEmptyFavoritesTabChange: (Boolean) -> Unit,
     onConfirmStationDeletionChange: (Boolean) -> Unit,
     onShowBitrateInControlPanelChange: (Boolean) -> Unit,
-    onShowUnavailableBitrateChange: (Boolean) -> Unit,
     onMarqueeTrackTitleChange: (Boolean) -> Unit,
     onShowPlayerMetadataChange: (Boolean) -> Unit,
     onAutoExpandPlayerPanelOnPlaybackChange: (Boolean) -> Unit,
@@ -37,6 +35,7 @@ fun RepositoryStateEffects(
     onCustomStationOrderChange: (List<String>) -> Unit,
     onCustomFavoriteOrderChange: (List<String>) -> Unit,
     onLastPlayedStationIdChange: (String?) -> Unit,
+    onRecentlyPlayedStationIdsChange: (List<String>) -> Unit,
 ) {
     LaunchedEffect(repository) {
         repository.stations.collect { savedStations ->
@@ -47,12 +46,6 @@ fun RepositoryStateEffects(
     LaunchedEffect(repository) {
         repository.appVolume.collect { savedVolume ->
             onAppVolumeChange(savedVolume)
-        }
-    }
-
-    LaunchedEffect(repository) {
-        repository.rememberLastStation.collect { savedRememberLastStation ->
-            onRememberLastStationChange(savedRememberLastStation)
         }
     }
 
@@ -95,12 +88,6 @@ fun RepositoryStateEffects(
     LaunchedEffect(repository) {
         repository.showBitrateInControlPanel.collect { savedShowBitrate ->
             onShowBitrateInControlPanelChange(savedShowBitrate)
-        }
-    }
-
-    LaunchedEffect(repository) {
-        repository.showUnavailableBitrate.collect { savedShowUnavailableBitrate ->
-            onShowUnavailableBitrateChange(savedShowUnavailableBitrate)
         }
     }
 
@@ -182,6 +169,12 @@ fun RepositoryStateEffects(
     LaunchedEffect(repository) {
         repository.lastPlayedStationId.collect { savedStationId ->
             onLastPlayedStationIdChange(savedStationId)
+        }
+    }
+
+    LaunchedEffect(repository) {
+        repository.recentlyPlayedStationIds.collect { savedIds ->
+            onRecentlyPlayedStationIdsChange(savedIds)
         }
     }
 }

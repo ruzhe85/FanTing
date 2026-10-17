@@ -254,7 +254,7 @@ internal class StationMediaLibrary(
     }
 
     private suspend fun resumeStation(library: Library): Station? {
-        val lastId = if (repository.rememberLastStation.first()) repository.lastPlayedStationId.first() else null
+        val lastId = repository.lastPlayedStationId.first()
         return library.stations.find { it.id == lastId } ?: library.stations.firstOrNull()
     }
 

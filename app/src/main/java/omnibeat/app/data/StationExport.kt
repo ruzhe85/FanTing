@@ -1,5 +1,7 @@
 package omnibeat.app.data
 
+import omnibeat.app.model.PodcastEpisode
+import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.model.STATION_STREAM_URL_MAX_LENGTH
 import omnibeat.app.model.STATION_TITLE_MAX_LENGTH
 import omnibeat.app.model.Station
@@ -11,16 +13,29 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 
-private const val EXPORT_SCHEMA_VERSION = 1
+private const val EXPORT_SCHEMA_VERSION = 2
+private const val EXPORT_SCHEMA_VERSION_V1 = 1
 private const val EXPORT_APP_NAME = "OmniBeat"
 
+/**
+ * 一份完整备份：电台 + 排序 + 播客订阅（含每期进度/收藏）+ 播放历史。
+ *
+ * 不含设置项、音量、倍速与已下载的音频文件；单集的 localFileName 只在本地合并时保留。
+ */
 data class StationExportData(
     val stations: List<Station>,
     val sortState: StationSortState = StationSortState(),
     val customStationOrder: List<String> = emptyList(),
     val customFavoriteOrder: List<String> = emptyList(),
+    val podcasts: List<PodcastSubscription> = emptyList(),
+    val lastPlayedStationId: String? = null,
+    val recentlyPlayedStationIds: List<String> = emptyList(),
+    /** true 表示来自 v2 JSON 备份；TXT / v1 JSON 只含电台，不能据此清空播客与播放历史 */
+    val isFullBackup: Boolean = false,
     val exportedAt: String = Instant.now().toString(),
-)
+) {
+    val episodeCount: Int get() = podcasts.sumOf { it.episodes.size }
+}
 
 enum class StationImportMode {
     Merge,
@@ -49,25 +64,139 @@ object StationExportCodec {
                     .put("customStationOrder", JSONArray(data.customStationOrder))
                     .put("customFavoriteOrder", JSONArray(data.customFavoriteOrder)),
             )
+            .put("podcasts", JSONArray(encodePodcastSubscriptions(data.podcasts)))
+            .put(
+                "playback",
+                JSONObject()
+                    .put("lastPlayedStationId", data.lastPlayedStationId.orEmpty())
+                    .put("recentlyPlayedStationIds", JSONArray(data.recentlyPlayedStationIds)),
+            )
             .toString(2)
     }
 
     fun decode(json: String): StationExportData {
         val root = JSONObject(json)
         val schemaVersion = root.optInt("schemaVersion", -1)
-        require(schemaVersion == EXPORT_SCHEMA_VERSION) {
+        // v1 只有电台，仍要能导入；后续版本在新增字段时继续保持向后兼容
+        require(schemaVersion == EXPORT_SCHEMA_VERSION || schemaVersion == EXPORT_SCHEMA_VERSION_V1) {
             "Unsupported export schema version: $schemaVersion"
         }
 
         val stations = decodeStations(root.optJSONArray("stations"))
         val sort = root.optJSONObject("sort")
+        val playback = root.optJSONObject("playback")
         return StationExportData(
             stations = stations,
             sortState = decodeSortState(sort),
             customStationOrder = sanitizeOrder(decodeStringList(sort?.optJSONArray("customStationOrder")), stations),
             customFavoriteOrder = sanitizeOrder(decodeStringList(sort?.optJSONArray("customFavoriteOrder")), stations),
+            podcasts = root.optJSONArray("podcasts")
+                ?.let { decodePodcastSubscriptions(it.toString()) }
+                .orEmpty(),
+            lastPlayedStationId = playback?.optString("lastPlayedStationId")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() },
+            recentlyPlayedStationIds = decodeStringList(playback?.optJSONArray("recentlyPlayedStationIds")),
+            isFullBackup = schemaVersion >= EXPORT_SCHEMA_VERSION,
             exportedAt = root.optString("exportedAt").takeIf { it.isNotBlank() } ?: Instant.now().toString(),
         )
+    }
+
+    /** 合并播客订阅：按 feedUrl 对齐，单集按 guid 对齐，进度取时间戳较新的一边 */
+    fun mergePodcasts(
+        current: List<PodcastSubscription>,
+        imported: List<PodcastSubscription>,
+    ): List<PodcastSubscription> {
+        if (imported.isEmpty()) return current
+        val merged = current.toMutableList()
+        val indexByFeedUrl = current
+            .mapIndexed { index, subscription -> subscription.feedUrl to index }
+            .toMap()
+            .toMutableMap()
+        imported.forEach { incoming ->
+            val index = indexByFeedUrl[incoming.feedUrl]
+            if (index == null) {
+                merged += incoming.copy(
+                    episodes = incoming.episodes.map { it.copy(localFileName = null) },
+                )
+                indexByFeedUrl[incoming.feedUrl] = merged.lastIndex
+            } else {
+                val local = merged[index]
+                merged[index] = local.copy(
+                    title = incoming.title.ifBlank { local.title },
+                    // 手动封面与置顶属于本地决定，备份不得覆盖
+                    imageUrl = if (local.imageUrlManual) local.imageUrl else incoming.imageUrl ?: local.imageUrl,
+                    imageUrlManual = local.imageUrlManual || incoming.imageUrlManual,
+                    pinned = local.pinned,
+                    lastFetchedAtMs = maxOf(local.lastFetchedAtMs, incoming.lastFetchedAtMs),
+                    episodes = mergeEpisodes(local.episodes, incoming.episodes),
+                )
+            }
+        }
+        return merged
+    }
+
+    /**
+     * 播放历史合并：上次电台以本地为准，本地没有才用备份的；
+     * 最近播放以本地顺序为主，备份中本地没有的追加到后面。
+     */
+    fun mergePlaybackHistory(
+        localLastPlayedStationId: String?,
+        localRecentlyPlayedStationIds: List<String>,
+        importedLastPlayedStationId: String?,
+        importedRecentlyPlayedStationIds: List<String>,
+    ): Pair<String?, List<String>> {
+        val lastPlayed = localLastPlayedStationId?.takeIf { it.isNotBlank() }
+            ?: importedLastPlayedStationId?.takeIf { it.isNotBlank() }
+        val recent = (localRecentlyPlayedStationIds + importedRecentlyPlayedStationIds)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(50)
+        return lastPlayed to recent
+    }
+
+    /**
+     * 单集合并规则：
+     * 1. 比较 stateUpdatedAtMs，较新的一边提供 position / favorite；
+     * 2. completed 取「或」（听完不可撤销，旧备份不能把它抹掉）；
+     * 3. 两边都没有时间戳（旧数据）时退回保守规则：位置取大、收藏取或。
+     */
+    private fun mergeEpisodes(
+        local: List<PodcastEpisode>,
+        imported: List<PodcastEpisode>,
+    ): List<PodcastEpisode> {
+        if (imported.isEmpty()) return local
+        val localByGuid = local.associateBy { it.guid }
+        val mergedImported = imported.map { incoming ->
+            val saved = localByGuid[incoming.guid] ?: return@map incoming.copy(localFileName = null)
+            val useImported = incoming.stateUpdatedAtMs > saved.stateUpdatedAtMs
+            val hasTimestamp = saved.stateUpdatedAtMs > 0L || incoming.stateUpdatedAtMs > 0L
+            val completed = saved.completed || incoming.completed
+            val position = when {
+                useImported -> incoming.positionMs
+                hasTimestamp -> saved.positionMs
+                else -> maxOf(saved.positionMs, incoming.positionMs)
+            }
+            val favorite = when {
+                useImported -> incoming.favorite
+                hasTimestamp -> saved.favorite
+                else -> saved.favorite || incoming.favorite
+            }
+            saved.copy(
+                title = incoming.title.ifBlank { saved.title },
+                audioUrl = incoming.audioUrl,
+                publishedAtMs = incoming.publishedAtMs,
+                durationSec = incoming.durationSec,
+                positionMs = if (completed) 0L else position,
+                completed = completed,
+                favorite = favorite,
+                stateUpdatedAtMs = maxOf(saved.stateUpdatedAtMs, incoming.stateUpdatedAtMs),
+                // 下载标记不随备份迁移，但本地已有的继续保留
+                localFileName = saved.localFileName,
+            )
+        }
+        val importedGuids = mergedImported.mapTo(mutableSetOf()) { it.guid }
+        return mergedImported + local.filter { it.guid !in importedGuids }
     }
 
     fun buildImportResult(

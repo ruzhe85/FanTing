@@ -143,7 +143,6 @@ class PlaybackService : MediaLibraryService() {
      */
     private var pausedPositionMs: Long = 0L
     private var lastPlayedStationId: String? = null
-    private var rememberLastStation = true
     private var stopServiceAfterPauseMinutes = DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
     private var showAndroidAutoArtwork = false
     private var navigationQueueIds: List<String> = emptyList()
@@ -239,11 +238,6 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             repository.lastPlayedStationId.collect { stationId ->
                 lastPlayedStationId = stationId
-            }
-        }
-        scope.launch {
-            repository.rememberLastStation.collect { remember ->
-                rememberLastStation = remember
             }
         }
         scope.launch {
@@ -360,14 +354,11 @@ class PlaybackService : MediaLibraryService() {
             if (stations.isEmpty()) {
                 stations = repository.stations.first()
             }
-            val nextIndex = if (rememberLastStation) {
-                lastPlayedStationId
-                    ?.let { stationId -> stations.indexOfFirst { it.id == stationId } }
-                    ?.takeIf { it >= 0 }
-                    ?: 0
-            } else {
-                0
-            }
+            // 没选中电台时固定接着上次播放的电台；取不到（首次使用 / 已删除）从第一个开始
+            val nextIndex = lastPlayedStationId
+                ?.let { stationId -> stations.indexOfFirst { it.id == stationId } }
+                ?.takeIf { it >= 0 }
+                ?: 0
             playStationAt(nextIndex)
         }
     }

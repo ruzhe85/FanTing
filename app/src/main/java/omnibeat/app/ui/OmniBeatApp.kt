@@ -242,7 +242,6 @@ fun OmniBeatApp() {
 
         var stations by remember { mutableStateOf(emptyList<Station>()) }
         var appVolume by remember { mutableFloatStateOf(0.75f) }
-        var rememberLastStation by remember { mutableStateOf(true) }
         var autoPlayNextEpisode by remember { mutableStateOf(true) }
         var stopServiceAfterPauseMinutes by remember { mutableIntStateOf(DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES) }
         var keepMediaCard by remember { mutableStateOf(repository.keepMediaCard.value) }
@@ -252,7 +251,6 @@ fun OmniBeatApp() {
         var showEmptyFavoritesTab by remember { mutableStateOf(false) }
         var confirmStationDeletion by remember { mutableStateOf(true) }
         var showBitrateInControlPanel by remember { mutableStateOf(true) }
-        var showUnavailableBitrate by remember { mutableStateOf(false) }
         var showPlayerMetadata by remember { mutableStateOf(true) }
         var marqueeTrackTitle by remember { mutableStateOf(true) }
         var autoExpandPlayerPanelOnPlayback by remember { mutableStateOf(true) }
@@ -271,6 +269,7 @@ fun OmniBeatApp() {
         var scrollToSelectedRequest by remember { mutableIntStateOf(0) }
         var scrollToStationId by remember { mutableStateOf<String?>(null) }
         var lastPlayedStationId by remember { mutableStateOf<String?>(null) }
+        var recentlyPlayedStationIds by remember { mutableStateOf(emptyList<String>()) }
         var pendingExportContent by remember { mutableStateOf<String?>(null) }
         var pendingImportData by remember { mutableStateOf<StationExportData?>(null) }
         var onlineSearchState by remember { mutableStateOf(OnlineStationSearchState()) }
@@ -354,7 +353,6 @@ fun OmniBeatApp() {
             visibleTabPages = visibleTabPages,
             onStationsChange = { stations = it },
             onAppVolumeChange = { appVolume = it },
-            onRememberLastStationChange = { rememberLastStation = it },
             onAutoPlayNextEpisodeChange = { autoPlayNextEpisode = it },
             onStopServiceAfterPauseMinutesChange = { stopServiceAfterPauseMinutes = it },
             onKeepMediaCardChange = { keepMediaCard = it },
@@ -362,7 +360,6 @@ fun OmniBeatApp() {
             onShowEmptyFavoritesTabChange = { showEmptyFavoritesTab = it },
             onConfirmStationDeletionChange = { confirmStationDeletion = it },
             onShowBitrateInControlPanelChange = { showBitrateInControlPanel = it },
-            onShowUnavailableBitrateChange = { showUnavailableBitrate = it },
             onShowPlayerMetadataChange = { showPlayerMetadata = it },
             onMarqueeTrackTitleChange = { marqueeTrackTitle = it },
             onAutoExpandPlayerPanelOnPlaybackChange = { autoExpandPlayerPanelOnPlayback = it },
@@ -377,6 +374,7 @@ fun OmniBeatApp() {
             onCustomStationOrderChange = { customStationOrder = it },
             onCustomFavoriteOrderChange = { customFavoriteOrder = it },
             onLastPlayedStationIdChange = { lastPlayedStationId = it },
+            onRecentlyPlayedStationIdsChange = { recentlyPlayedStationIds = it },
         )
 
         fun writePendingExport(uri: android.net.Uri?, successMessage: String) {
@@ -489,11 +487,38 @@ fun OmniBeatApp() {
                 currentCustomFavoriteOrder = customFavoriteOrder,
                 mode = mode,
             )
+            val nextPodcasts = if (importData.isFullBackup) {
+                when (mode) {
+                    StationImportMode.Replace -> importData.podcasts
+                    StationImportMode.Merge -> StationExportCodec.mergePodcasts(
+                        current = podcastSubscriptions,
+                        imported = importData.podcasts,
+                    )
+                }
+            } else {
+                podcastSubscriptions
+            }
+            val nextPlayback = if (importData.isFullBackup) {
+                when (mode) {
+                    StationImportMode.Replace ->
+                        importData.lastPlayedStationId to importData.recentlyPlayedStationIds
+                    StationImportMode.Merge -> StationExportCodec.mergePlaybackHistory(
+                        localLastPlayedStationId = lastPlayedStationId,
+                        localRecentlyPlayedStationIds = recentlyPlayedStationIds,
+                        importedLastPlayedStationId = importData.lastPlayedStationId,
+                        importedRecentlyPlayedStationIds = importData.recentlyPlayedStationIds,
+                    )
+                }
+            } else {
+                lastPlayedStationId to recentlyPlayedStationIds
+            }
             pendingImportData = null
             stations = importResult.stations
             sortState = importResult.sortState
             customStationOrder = importResult.customStationOrder
             customFavoriteOrder = importResult.customFavoriteOrder
+            lastPlayedStationId = nextPlayback.first
+            recentlyPlayedStationIds = nextPlayback.second
             reorderDraft = null
             if (
                 playbackState.selectedStation != null &&
@@ -503,6 +528,10 @@ fun OmniBeatApp() {
             }
             scope.launch {
                 repository.saveImportedLibrary(importResult)
+                if (importData.isFullBackup) {
+                    podcastRepository.restoreAll(nextPodcasts)
+                    repository.restorePlaybackHistory(nextPlayback.first, nextPlayback.second)
+                }
                 Toast.makeText(context, resources.appString(R.string.toast_stations_imported), Toast.LENGTH_SHORT).show()
             }
         }
@@ -648,10 +677,13 @@ fun OmniBeatApp() {
                     sortState = sortState,
                     customStationOrder = customStationOrder,
                     customFavoriteOrder = customFavoriteOrder,
+                    podcasts = podcastSubscriptions,
+                    lastPlayedStationId = lastPlayedStationId,
+                    recentlyPlayedStationIds = recentlyPlayedStationIds,
                 ),
             )
             val exportDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy_MM_dd"))
-            jsonExportLauncher.launch("omnibeat_stations_$exportDate.json")
+            jsonExportLauncher.launch("omnibeat_backup_$exportDate.json")
         }
 
         fun exportSimpleText() {
@@ -1749,7 +1781,8 @@ fun OmniBeatApp() {
             }
             val pageStations = navigationStations()
             if (!hasActivePlaybackRequest && playbackState.selectedStation == null && pageStations.isNotEmpty()) {
-                val rememberedStation = if (rememberLastStation && selectedPage != MainPage.SearchOnline) {
+                // 在线搜索页点播放应播当前结果的第一条，其余页面接着上次的电台
+                val rememberedStation = if (selectedPage != MainPage.SearchOnline) {
                     lastPlayedStationId
                         ?.let { stationId -> stations.firstOrNull { it.id == stationId } }
                 } else {
@@ -1802,10 +1835,6 @@ fun OmniBeatApp() {
                     },
                     onPodcastClick = {
                         selectMainPage(MainPage.Podcasts)
-                        scope.launch { drawerState.close() }
-                    },
-                    onExportImportClick = {
-                        selectedPage = MainPage.ExportImport
                         scope.launch { drawerState.close() }
                     },
                     onSettingsClick = {
@@ -1917,7 +1946,6 @@ fun OmniBeatApp() {
                             isPlaying = playbackState.isPlaying,
                             appVolume = appVolume,
                             showBitrate = showBitrateInControlPanel,
-                            showUnavailableBitrate = showUnavailableBitrate,
                             showPlayerMetadata = showPlayerMetadata,
                             marqueeTrackTitle = marqueeTrackTitle,
                             collapsed = playerPanelCollapsed,
@@ -2141,20 +2169,6 @@ fun OmniBeatApp() {
                             )
                         }
 
-                        MainPage.ExportImport -> {
-                            ExportImportPage(
-                                stationCount = stations.size,
-                                favoriteCount = stations.count { it.isFavorite },
-                                onExportStations = { exportStations() },
-                                onExportSimpleText = { exportSimpleText() },
-                                onImportStations = {
-                                    importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
-                                },
-                                onClearLibrary = { clearLibrary() },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-
                         MainPage.Translation -> TranslationPage(repository = repository)
 
                         MainPage.SearchOnline -> {
@@ -2186,7 +2200,6 @@ fun OmniBeatApp() {
                                 themeMode = themeMode,
                                 accentPalette = accentPalette,
                                 appLanguage = appLanguage,
-                                rememberLastStation = rememberLastStation,
                                 autoPlayNextEpisode = autoPlayNextEpisode,
                                 stopServiceAfterPauseMinutes = stopServiceAfterPauseMinutes,
                                 keepMediaCard = keepMediaCard,
@@ -2195,7 +2208,6 @@ fun OmniBeatApp() {
                                 showEmptyFavoritesTab = showEmptyFavoritesTab,
                                 confirmStationDeletion = confirmStationDeletion,
                                 showBitrateInControlPanel = showBitrateInControlPanel,
-                                showUnavailableBitrate = showUnavailableBitrate,
                                 showPlayerMetadata = showPlayerMetadata,
                                 marqueeTrackTitle = marqueeTrackTitle,
                                 autoExpandPlayerPanelOnPlayback = autoExpandPlayerPanelOnPlayback,
@@ -2209,6 +2221,9 @@ fun OmniBeatApp() {
                                 podcastSearchRegion = podcastSearchRegion,
                                 podcastCompactList = podcastCompactList,
                                 podcastWifiOnlyDownload = podcastWifiOnlyDownload,
+                                stationCount = stations.size,
+                                podcastCount = podcastSubscriptions.size,
+                                episodeCount = podcastSubscriptions.sumOf { it.episodes.size },
                                 onThemeModeChange = { nextThemeMode ->
                                     scope.launch { repository.saveThemeMode(nextThemeMode) }
                                 },
@@ -2217,10 +2232,6 @@ fun OmniBeatApp() {
                                 },
                                 onAppLanguageChange = { nextAppLanguage ->
                                     context.applicationContext.applyAppLanguage(nextAppLanguage)
-                                },
-                                onRememberLastStationChange = { remember ->
-                                    rememberLastStation = remember
-                                    scope.launch { repository.saveRememberLastStation(remember) }
                                 },
                                 onAutoPlayNextEpisodeChange = { autoPlay ->
                                     autoPlayNextEpisode = autoPlay
@@ -2250,10 +2261,6 @@ fun OmniBeatApp() {
                                 onShowBitrateInControlPanelChange = { show ->
                                     showBitrateInControlPanel = show
                                     scope.launch { repository.saveShowBitrateInControlPanel(show) }
-                                },
-                                onShowUnavailableBitrateChange = { show ->
-                                    showUnavailableBitrate = show
-                                    scope.launch { repository.saveShowUnavailableBitrate(show) }
                                 },
                                 onShowPlayerMetadataChange = { show ->
                                     showPlayerMetadata = show
@@ -2301,6 +2308,14 @@ fun OmniBeatApp() {
                                 onPodcastWifiOnlyDownloadChange = { enabled ->
                                     scope.launch { podcastRepository.saveWifiOnlyDownload(enabled) }
                                 },
+                                onExportBackup = { exportStations() },
+                                onImportBackup = {
+                                    importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                                },
+                                onExportSimpleText = { exportSimpleText() },
+                                onImportSimpleText = {
+                                    importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                                },
                                 onClearLibrary = { clearLibrary() },
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -2317,6 +2332,8 @@ fun OmniBeatApp() {
         pendingImportData?.let { importData ->
             ImportStationsDialog(
                 stationCount = importData.stations.size,
+                podcastCount = importData.podcasts.size,
+                episodeCount = importData.episodeCount,
                 onImport = ::importStations,
                 onDismiss = { pendingImportData = null },
             )

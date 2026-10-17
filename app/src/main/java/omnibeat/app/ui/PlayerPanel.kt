@@ -103,7 +103,6 @@ fun PlayerPanel(
     isPlaying: Boolean,
     appVolume: Float,
     showBitrate: Boolean,
-    showUnavailableBitrate: Boolean,
     showPlayerMetadata: Boolean,
     marqueeTrackTitle: Boolean,
     collapsed: Boolean,
@@ -146,7 +145,7 @@ fun PlayerPanel(
     val bitrateText = if (showBitrate) {
         streamInfo.bitrateKbps?.let { bitrate ->
             stringResource(R.string.player_bitrate_format, bitrate)
-        } ?: stringResource(R.string.player_bitrate_unavailable).takeIf { showUnavailableBitrate }
+        }
     } else {
         null
     }

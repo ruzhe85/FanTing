@@ -49,7 +49,6 @@ fun DrawerContent(
     onTranslationClick: () -> Unit,
     onStationsClick: () -> Unit = {},
     onPodcastClick: () -> Unit = {},
-    onExportImportClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onAboutClick: () -> Unit = {},
     onExitClick: () -> Unit = {},
@@ -123,12 +122,6 @@ fun DrawerContent(
                     iconRes = R.drawable.ic_play_arrow,
                     selected = selectedPage == MainPage.Podcasts,
                     onClick = onPodcastClick,
-                )
-                DrawerItem(
-                    text = stringResource(R.string.page_export_import),
-                    iconRes = R.drawable.ic_file_export,
-                    selected = selectedPage == MainPage.ExportImport,
-                    onClick = onExportImportClick,
                 )
                 if (translationEnabled) {
                     DrawerItem(

@@ -38,14 +38,12 @@ const val DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES = 5
 private val appVolumeKey = floatPreferencesKey("app_volume")
 private val themeModeKey = stringPreferencesKey("theme_mode")
 private val accentPaletteKey = stringPreferencesKey("accent_palette")
-private val rememberLastStationKey = booleanPreferencesKey("remember_last_station")
 private val stopServiceAfterPauseMinutesKey = intPreferencesKey("stop_service_after_pause_minutes")
 private val showStationArtworkKey = booleanPreferencesKey("show_station_artwork")
 private val showEmptyFavoritesTabKey = booleanPreferencesKey("show_empty_favorites_tab")
 private val favoritesSectionKey = stringPreferencesKey("favorites_section")
 private val confirmStationDeletionKey = booleanPreferencesKey("confirm_station_deletion")
 private val showBitrateInControlPanelKey = booleanPreferencesKey("show_bitrate_in_control_panel")
-private val showUnavailableBitrateKey = booleanPreferencesKey("show_unavailable_bitrate")
 private val marqueeTrackTitleKey = booleanPreferencesKey("marquee_track_title")
 private val showPlayerMetadataKey = booleanPreferencesKey("show_player_metadata")
 private val autoExpandPlayerPanelOnPlaybackKey = booleanPreferencesKey("auto_expand_player_panel_on_playback")
@@ -124,10 +122,7 @@ class StationRepository(private val context: Context) {
     val accentPalette: Flow<AccentPalette> = context.stationDataStore.data
         .map { preferences -> AccentPalette.fromName(preferences[accentPaletteKey]) }
 
-    val rememberLastStation: Flow<Boolean> = context.stationDataStore.data
-        .map { preferences -> preferences[rememberLastStationKey] ?: true }
-
-    /** 播客：一期播完是否自动播下一集（更早的一期）。默认开启 */
+    /** 播客：一期播完是否按列表顺序接着播下一集。默认开启 */
     val autoPlayNextEpisode: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[autoPlayNextEpisodeKey] ?: true }
 
@@ -156,9 +151,6 @@ class StationRepository(private val context: Context) {
 
     val showBitrateInControlPanel: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[showBitrateInControlPanelKey] ?: true }
-
-    val showUnavailableBitrate: Flow<Boolean> = context.stationDataStore.data
-        .map { preferences -> preferences[showUnavailableBitrateKey] ?: false }
 
     val marqueeTrackTitle: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[marqueeTrackTitleKey] ?: true }
@@ -229,12 +221,6 @@ class StationRepository(private val context: Context) {
         }
     }
 
-    suspend fun saveRememberLastStation(remember: Boolean) {
-        context.stationDataStore.edit { preferences ->
-            preferences[rememberLastStationKey] = remember
-        }
-    }
-
     suspend fun saveAutoPlayNextEpisode(autoPlay: Boolean) {
         context.stationDataStore.edit { preferences ->
             preferences[autoPlayNextEpisodeKey] = autoPlay
@@ -287,12 +273,6 @@ class StationRepository(private val context: Context) {
         }
     }
 
-    suspend fun saveShowUnavailableBitrate(show: Boolean) {
-        context.stationDataStore.edit { preferences ->
-            preferences[showUnavailableBitrateKey] = show
-        }
-    }
-
     suspend fun saveMarqueeTrackTitle(marquee: Boolean) {
         context.stationDataStore.edit { preferences ->
             preferences[marqueeTrackTitleKey] = marquee
@@ -342,6 +322,22 @@ class StationRepository(private val context: Context) {
     suspend fun saveOnboardingCompleted(completed: Boolean) {
         context.stationDataStore.edit { preferences ->
             preferences[onboardingCompletedKey] = completed
+        }
+    }
+
+    /** 备份恢复用：一次性写回上次播放与最近播放，避免两次整表重写 */
+    suspend fun restorePlaybackHistory(
+        lastPlayedStationId: String?,
+        recentlyPlayedStationIds: List<String>,
+    ) {
+        context.stationDataStore.edit { preferences ->
+            if (lastPlayedStationId.isNullOrBlank()) {
+                preferences.remove(lastPlayedStationIdKey)
+            } else {
+                preferences[lastPlayedStationIdKey] = lastPlayedStationId
+            }
+            preferences[recentlyPlayedStationIdsKey] =
+                encodeStringList(recentlyPlayedStationIds.filter { it.isNotBlank() }.distinct().take(50))
         }
     }
 

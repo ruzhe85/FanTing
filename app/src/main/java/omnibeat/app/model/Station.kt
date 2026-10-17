@@ -44,7 +44,6 @@ enum class MainPage {
     Stations,
     Favorites,
     Podcasts,
-    ExportImport,
     Translation,
     SearchOnline,
     Settings,
