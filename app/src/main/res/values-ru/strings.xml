@@ -292,6 +292,12 @@
     <string name="settings_podcast_compact_list_title">Компактный список</string>
     <string name="settings_podcast_compact_list_on">Без обложек, больше подписок на экране</string>
     <string name="settings_podcast_compact_list_off">Показывать обложки и полную информацию</string>
+    <string name="settings_podcast_wifi_only_download_title">Скачивать только по Wi-Fi</string>
+    <string name="settings_podcast_wifi_only_download_on">Спрашивать перед каждой загрузкой по мобильной сети</string>
+    <string name="settings_podcast_wifi_only_download_off">Скачивать сразу в любой сети</string>
+    <string name="dialog_mobile_data_download_title">Мобильные данные</string>
+    <string name="dialog_mobile_data_download_text">Скачать «%1$s»? Будут использованы мобильные данные.</string>
+    <string name="dialog_mobile_data_download_confirm">Всё равно скачать</string>
     <string name="favorites_section_stations">Радио %1$d</string>
     <string name="favorites_section_episodes">Выпуски %1$d</string>
     <string name="player_clipboard_track_label">Трек</string>

@@ -39,6 +39,7 @@ private val podcastsJsonKey = stringPreferencesKey("podcasts_json")
 private val playbackSpeedKey = floatPreferencesKey("podcast_playback_speed")
 private val autoRefreshOnStartKey = booleanPreferencesKey("podcast_auto_refresh_on_start")
 private val autoRefreshOnEnterListKey = booleanPreferencesKey("podcast_auto_refresh_on_enter_list")
+private val wifiOnlyDownloadKey = booleanPreferencesKey("podcast_wifi_only_download")
 private val refreshIntervalMinutesKey = intPreferencesKey("podcast_refresh_interval_minutes")
 private val searchRegionKey = stringPreferencesKey("podcast_search_region")
 private val episodesOldestFirstKey = booleanPreferencesKey("podcast_episodes_oldest_first")
@@ -59,6 +60,10 @@ class PodcastRepository(private val context: Context) {
     /** 进入播客列表页时自动刷新（默认开；按刷新间隔节流） */
     val autoRefreshOnEnterList: Flow<Boolean> = context.podcastDataStore.data
         .map { preferences -> preferences[autoRefreshOnEnterListKey] ?: true }
+
+    /** 是否仅 Wi-Fi 下载（默认开）：移动数据下手动下载前先弹窗询问 */
+    val wifiOnlyDownload: Flow<Boolean> = context.podcastDataStore.data
+        .map { preferences -> preferences[wifiOnlyDownloadKey] ?: true }
 
     /** 自动刷新间隔（分钟，默认 10）；越界值在保存时夹回可选项 */
     val refreshIntervalMinutes: Flow<Int> = context.podcastDataStore.data
@@ -143,6 +148,13 @@ class PodcastRepository(private val context: Context) {
     suspend fun saveAutoRefreshOnEnterList(enabled: Boolean) {
         context.podcastDataStore.edit { preferences ->
             preferences[autoRefreshOnEnterListKey] = enabled
+        }
+    }
+
+    /** 仅 Wi-Fi 下载开关 */
+    suspend fun saveWifiOnlyDownload(enabled: Boolean) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[wifiOnlyDownloadKey] = enabled
         }
     }
 

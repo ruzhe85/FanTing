@@ -175,6 +175,7 @@ fun SettingsPage(
     podcastRefreshIntervalMinutes: Int,
     podcastSearchRegion: String,
     podcastCompactList: Boolean,
+    podcastWifiOnlyDownload: Boolean,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAccentPaletteChange: (AccentPalette) -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
@@ -200,6 +201,7 @@ fun SettingsPage(
     onPodcastRefreshIntervalMinutesChange: (Int) -> Unit,
     onPodcastSearchRegionChange: (String) -> Unit,
     onPodcastCompactListChange: (Boolean) -> Unit,
+    onPodcastWifiOnlyDownloadChange: (Boolean) -> Unit,
     onClearLibrary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -376,6 +378,16 @@ fun SettingsPage(
                 },
                 checked = podcastCompactList,
                 onCheckedChange = onPodcastCompactListChange,
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_podcast_wifi_only_download_title),
+                subtitle = if (podcastWifiOnlyDownload) {
+                    stringResource(R.string.settings_podcast_wifi_only_download_on)
+                } else {
+                    stringResource(R.string.settings_podcast_wifi_only_download_off)
+                },
+                checked = podcastWifiOnlyDownload,
+                onCheckedChange = onPodcastWifiOnlyDownloadChange,
             )
             SettingsDivider()
 

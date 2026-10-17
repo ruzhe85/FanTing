@@ -125,6 +125,9 @@ fun OmniBeatApp() {
         .collectAsState(initial = true)
     val podcastRefreshIntervalMinutes by podcastRepository.refreshIntervalMinutes
         .collectAsState(initial = PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES)
+    // 仅 Wi-Fi 下载开关（默认开）：移动数据下手动下载前先弹窗询问
+    val podcastWifiOnlyDownload by podcastRepository.wifiOnlyDownload
+        .collectAsState(initial = true)
     // 在线搜索使用的 iTunes 商店地区（设置-播客可选，默认美国区）
     val podcastSearchRegion by podcastRepository.searchRegion
         .collectAsState(initial = PODCAST_DEFAULT_SEARCH_REGION)
@@ -281,6 +284,10 @@ fun OmniBeatApp() {
         var podcastRefreshAllDone by remember { mutableIntStateOf(0) }
         var podcastError by remember { mutableStateOf<String?>(null) }
         var pendingPodcastRemoval by remember { mutableStateOf<PodcastSubscription?>(null) }
+        // 仅 Wi-Fi 下载：移动数据下点下载时先记下这一集，等弹窗确认（单次放行，不持久化）
+        var pendingMobileDataDownload by remember {
+            mutableStateOf<Pair<PodcastSubscription, PodcastEpisode>?>(null)
+        }
         // 期数页的本地搜索：只过滤当前订阅的期数，不联网
         var podcastEpisodeSearchOpen by remember { mutableStateOf(false) }
         var podcastEpisodeSearchQuery by remember { mutableStateOf("") }
@@ -1142,6 +1149,21 @@ fun OmniBeatApp() {
             scope.launch { podcastRepository.removeSubscription(subscription.feedUrl) }
         }
 
+        /**
+         * 手动下载单集的统一入口（期数行 / 收藏页 / 失败重试都走这里）。
+         *
+         * 「仅 Wi-Fi 下载」开着且当前不是 Wi-Fi 时，不直接开下，而是记下这一集等弹窗确认——
+         * 确认后只放行**这一次**下载（pending 一清就恢复询问），不把开关临时关掉。
+         * 拿不到网络类型时保守按移动数据处理，不偷流量。
+         */
+        fun startEpisodeDownload(subscription: PodcastSubscription, episode: PodcastEpisode) {
+            if (podcastWifiOnlyDownload && !NetworkStatus.isWifi(context)) {
+                pendingMobileDataDownload = subscription to episode
+            } else {
+                PodcastDownloadManager.download(context, subscription, episode)
+            }
+        }
+
         // 启动时按设置自动刷新全部订阅（静默：只拉间隔已到的，成功不提示、失败才提示）。
         // 订阅列表从 DataStore 现读，避免组合首次时 collectAsState 还是空列表导致漏刷。
         // 注意：本地函数必须先声明后使用，这两个 effect 放在刷新函数之后。
@@ -1930,11 +1952,7 @@ fun OmniBeatApp() {
                                         },
                                         downloadStates = podcastDownloadStates,
                                         onDownload = { subscription, episode ->
-                                            PodcastDownloadManager.download(
-                                                context,
-                                                subscription,
-                                                episode,
-                                            )
+                                            startEpisodeDownload(subscription, episode)
                                         },
                                         onCancelDownload = { episode ->
                                             PodcastDownloadManager.cancel(episode.guid)
@@ -2028,11 +2046,7 @@ fun OmniBeatApp() {
                                         },
                                         downloadStates = podcastDownloadStates,
                                         onDownload = { subscription, episode ->
-                                            PodcastDownloadManager.download(
-                                                context,
-                                                subscription,
-                                                episode,
-                                            )
+                                            startEpisodeDownload(subscription, episode)
                                         },
                                         onCancelDownload = { episode ->
                                             PodcastDownloadManager.cancel(episode.guid)
@@ -2128,6 +2142,7 @@ fun OmniBeatApp() {
                                 podcastRefreshIntervalMinutes = podcastRefreshIntervalMinutes,
                                 podcastSearchRegion = podcastSearchRegion,
                                 podcastCompactList = podcastCompactList,
+                                podcastWifiOnlyDownload = podcastWifiOnlyDownload,
                                 onThemeModeChange = { nextThemeMode ->
                                     scope.launch { repository.saveThemeMode(nextThemeMode) }
                                 },
@@ -2217,6 +2232,9 @@ fun OmniBeatApp() {
                                 onPodcastCompactListChange = { compact ->
                                     scope.launch { podcastRepository.saveCompactList(compact) }
                                 },
+                                onPodcastWifiOnlyDownloadChange = { enabled ->
+                                    scope.launch { podcastRepository.saveWifiOnlyDownload(enabled) }
+                                },
                                 onClearLibrary = { clearLibrary() },
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -2283,6 +2301,24 @@ fun OmniBeatApp() {
                 onConfirm = {
                     pendingPodcastRemoval = null
                     removePodcast(subscription)
+                },
+            )
+        }
+
+        // 仅 Wi-Fi 下载：移动数据下点下载时的轻量确认。确认只放行这一次，
+        // pending 一清就恢复询问（单次覆盖，不把开关临时关掉）。
+        pendingMobileDataDownload?.let { (subscription, episode) ->
+            OmniConfirmDialog(
+                title = resources.appString(R.string.dialog_mobile_data_download_title),
+                text = resources.appString(
+                    R.string.dialog_mobile_data_download_text,
+                    episode.title,
+                ),
+                confirmText = resources.appString(R.string.dialog_mobile_data_download_confirm),
+                onDismiss = { pendingMobileDataDownload = null },
+                onConfirm = {
+                    pendingMobileDataDownload = null
+                    PodcastDownloadManager.download(context, subscription, episode)
                 },
             )
         }

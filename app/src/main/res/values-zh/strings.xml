@@ -107,6 +107,12 @@
     <string name="settings_podcast_compact_list_title">紧凑列表</string>
     <string name="settings_podcast_compact_list_on">不显示封面，一屏能放更多订阅</string>
     <string name="settings_podcast_compact_list_off">显示封面与完整信息</string>
+    <string name="settings_podcast_wifi_only_download_title">仅 Wi-Fi 下载</string>
+    <string name="settings_podcast_wifi_only_download_on">移动数据下每次下载前询问</string>
+    <string name="settings_podcast_wifi_only_download_off">任何网络下都直接下载</string>
+    <string name="dialog_mobile_data_download_title">当前使用移动数据</string>
+    <string name="dialog_mobile_data_download_text">是否继续下载《%1$s》？将消耗蜂窝数据。</string>
+    <string name="dialog_mobile_data_download_confirm">继续下载</string>
     <string name="settings_section_control_panel">播放面板</string>
     <string name="settings_show_player_metadata_title">在播放面板显示元数据</string>
     <string name="settings_show_player_metadata_on">显示曲目名、播放状态等元数据</string>

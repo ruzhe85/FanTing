@@ -106,6 +106,12 @@
     <string name="settings_podcast_compact_list_title">Compact list</string>
     <string name="settings_podcast_compact_list_on">Hide cover art to fit more subscriptions on screen</string>
     <string name="settings_podcast_compact_list_off">Show cover art and full details</string>
+    <string name="settings_podcast_wifi_only_download_title">Only download over Wi-Fi</string>
+    <string name="settings_podcast_wifi_only_download_on">Ask before each download on mobile data</string>
+    <string name="settings_podcast_wifi_only_download_off">Download directly on any network</string>
+    <string name="dialog_mobile_data_download_title">Mobile data in use</string>
+    <string name="dialog_mobile_data_download_text">Download \"%1$s\"? This will use your mobile data.</string>
+    <string name="dialog_mobile_data_download_confirm">Download anyway</string>
     <string name="settings_section_control_panel">Control panel</string>
     <string name="settings_show_player_metadata_title">Show metadata in control panel</string>
     <string name="settings_show_player_metadata_on">Control panel shows the track title or playback status</string>
