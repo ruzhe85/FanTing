@@ -17,6 +17,12 @@ data class Station(
     val imageUrlManual: Boolean = false,
     /** 通过在线搜索添加时记下的 Radio Browser stationuuid，用于按 uuid 精确回查封面 */
     val radioBrowserUuid: String? = null,
+    /**
+     * 系统播放栏（通知 / 锁屏）显示的「歌手 / 副标题」。
+     * 电台不用它（那边是 ICY 的「艺术家 - 歌名」）；播客单集用它挂订阅名——
+     * 通知栏就变成「单集标题 / 播客名」，和常见播客 App 一致。
+     */
+    val artist: String? = null,
 )
 
 enum class StationSortMode {

@@ -296,7 +296,9 @@ internal class StationMediaLibrary(
         fun stationMetadata(
             context: Context, station: Station, trackText: String?, showArtwork: Boolean = true,
         ): MediaMetadata =
-            MediaMetadata.Builder().setTitle(station.title).setArtist(trackText)
+            MediaMetadata.Builder().setTitle(station.title)
+                // 歌手位：播客单集用订阅名（Station.artist），电台用 ICY 曲目文本
+                .setArtist(station.artist ?: trackText)
                 .setIsBrowsable(false).setIsPlayable(true)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
                 .setArtworkUri(station.imageUrl?.takeIf { showArtwork }

@@ -1248,6 +1248,8 @@ fun OmniBeatApp() {
                     imageUrl = subscription.imageUrl,
                     isFavorite = false,
                     dateAdded = "",
+                    // 系统播放栏的「歌手」位挂订阅名：通知/锁屏显示「单集标题 / 播客名」
+                    artist = subscription.title,
                 ),
                 // 听完的期从头播；否则从上次位置继续
                 startPositionMs = if (episode.completed) 0L else episode.positionMs,

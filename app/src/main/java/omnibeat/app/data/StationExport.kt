@@ -151,6 +151,7 @@ object StationExportCodec {
                     .put("imageUrl", station.imageUrl.orEmpty())
                     .put("imageUrlManual", station.imageUrlManual)
                     .put("radioBrowserUuid", station.radioBrowserUuid.orEmpty())
+                    .put("artist", station.artist.orEmpty())
                     .put("isFavorite", station.isFavorite)
                     .put("dateAdded", station.dateAdded),
             )
@@ -184,6 +185,8 @@ object StationExportCodec {
                         imageUrlManual = item.optBoolean("imageUrlManual", false),
                         radioBrowserUuid = item.optString("radioBrowserUuid").trim()
                             .takeIf { it.isNotBlank() },
+                        // 旧导出没有这个字段：默认 null（电台本就不用它）
+                        artist = item.optString("artist").trim().takeIf { it.isNotBlank() },
                         dateAdded = item.optString("dateAdded")
                             .takeIf { it.isValidInstant() }
                             ?: Instant.now().toString(),
