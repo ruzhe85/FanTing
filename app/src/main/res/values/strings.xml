@@ -190,6 +190,8 @@
     <string name="empty_stations_suffix_start">Tap</string>
     <string name="empty_stations_suffix_end">to add some</string>
     <string name="empty_favorites">No favorites yet</string>
+    <string name="favorites_section_stations">Stations %1$d</string>
+    <string name="favorites_section_episodes">Episodes %1$d</string>
 
     <string name="online_search_options">Search options</string>
     <string name="online_search_by_title">Search by title</string>

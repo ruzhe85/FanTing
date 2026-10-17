@@ -31,6 +31,9 @@ data class StationSortState(
     val ascending: Boolean = false,
 )
 
+/** 收藏 tab 的分段：电台收藏 / 播客单集收藏 */
+enum class FavoritesSection { Stations, Episodes }
+
 enum class MainPage {
     Stations,
     Favorites,

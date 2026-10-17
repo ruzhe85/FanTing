@@ -105,10 +105,6 @@ fun PodcastTabContent(
     onRefreshAll: () -> Unit = {},
     refreshingAll: Boolean = false,
     refreshProgress: Pair<Int, Int>? = null,
-    favoriteEpisodes: List<Pair<PodcastSubscription, PodcastEpisode>> = emptyList(),
-    favoritesOpen: Boolean = false,
-    onOpenFavorites: () -> Unit = {},
-    onCloseFavorites: () -> Unit = {},
     onToggleFavorite: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     downloadStates: Map<String, PodcastDownloadState> = emptyMap(),
     onDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
@@ -122,24 +118,6 @@ fun PodcastTabContent(
 ) {
     val open = subscriptions.firstOrNull { it.feedUrl == openSubscriptionUrl }
     when {
-        // 收藏的节目：跨订阅聚合，优先于订阅列表
-        favoritesOpen -> {
-            BackHandler { onCloseFavorites() }
-            FavoriteEpisodesPage(
-                favorites = favoriteEpisodes,
-                playingEpisodeId = playingEpisodeId,
-                onBack = onCloseFavorites,
-                onEpisodeClick = onPlayEpisode,
-                onToggleFavorite = onToggleFavorite,
-                downloadStates = downloadStates,
-                onDownload = onDownload,
-                onCancelDownload = onCancelDownload,
-                onDeleteDownload = onDeleteDownload,
-                onExportDownload = onExportDownload,
-                modifier = modifier,
-            )
-        }
-
         open != null -> {
             BackHandler { onCloseSubscription() }
             PodcastEpisodesPage(
@@ -180,8 +158,6 @@ fun PodcastTabContent(
                 onRefreshAll = onRefreshAll,
                 refreshingAll = refreshingAll,
                 refreshProgress = refreshProgress,
-                favoriteCount = favoriteEpisodes.size,
-                onOpenFavorites = onOpenFavorites,
                 modifier = modifier,
             )
         }
@@ -216,8 +192,6 @@ fun PodcastSubscriptionsPage(
     onRefreshAll: () -> Unit,
     refreshingAll: Boolean,
     refreshProgress: Pair<Int, Int>?,
-    favoriteCount: Int = 0,
-    onOpenFavorites: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (subscriptions.isEmpty()) {
@@ -232,20 +206,6 @@ fun PodcastSubscriptionsPage(
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // 收藏入口：有收藏的节目才显示。发现路径是期数行的收藏按钮——
-            // 收藏了第一期，这行才出现，避免空数据时占着一个没内容的入口。
-            if (favoriteCount > 0) {
-                PodcastFavoritesEntryRow(
-                    count = favoriteCount,
-                    onClick = onOpenFavorites,
-                    modifier = Modifier.padding(
-                        start = RadioSpacing.medium,
-                        end = RadioSpacing.medium,
-                        top = RadioSpacing.small,
-                        bottom = RadioSpacing.extraSmall,
-                    ),
-                )
-            }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -868,15 +828,13 @@ private fun EpisodeSearchField(
 }
 
 /**
- * 收藏的节目：跨订阅聚合列表。
- * 数据是各订阅里 favorite = true 的期（OmniBeatApp 侧按发布时间倒序派发），
- * 纯本地数据，所以不做下拉刷新 —— 没有可刷的东西，避免转一个骗人的圈。
+ * 收藏的节目列表：跨订阅聚合，供收藏 tab 的「节目」分段使用。
+ * 数据是各订阅里 favorite = true 的期（OmniBeatApp 侧按发布时间倒序派发），纯本地数据。
  */
 @Composable
-fun FavoriteEpisodesPage(
+fun FavoriteEpisodesList(
     favorites: List<Pair<PodcastSubscription, PodcastEpisode>>,
     playingEpisodeId: String?,
-    onBack: () -> Unit,
     onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
     onToggleFavorite: (PodcastSubscription, PodcastEpisode) -> Unit,
     downloadStates: Map<String, PodcastDownloadState> = emptyMap(),
@@ -886,129 +844,44 @@ fun FavoriteEpisodesPage(
     onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = RadioSpacing.extraSmall,
-                    end = RadioSpacing.medium,
-                    top = RadioSpacing.small,
-                    bottom = RadioSpacing.small,
-                ),
+    if (favorites.isEmpty()) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = RadioSpacing.page),
         ) {
-            OmniIconButton(
-                painter = painterResource(R.drawable.ic_arrow_back),
-                onClick = onBack,
+            Text(
+                text = stringResource(R.string.podcast_favorites_empty),
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.bodyLarge,
+                textAlign = TextAlign.Center,
             )
-            Column(
-                verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = RadioSpacing.medium),
-            ) {
-                Text(
-                    text = stringResource(R.string.podcast_favorites_title),
-                    color = RadioText,
-                    fontSize = RadioTextSizes.subtitle,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = stringResource(R.string.podcast_favorites_count, favorites.size),
-                    color = RadioTextMuted,
-                    fontSize = RadioTextSizes.caption,
-                    maxLines = 1,
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                horizontal = RadioSpacing.medium,
+                vertical = RadioSpacing.small,
+            ),
+            verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+        ) {
+            // key 带上 feedUrl：guid 只在同一订阅内保证唯一，跨订阅理论上会撞
+            items(favorites, key = { it.first.feedUrl + "|" + it.second.guid }) { (subscription, episode) ->
+                PodcastEpisodeRow(
+                    episode = episode,
+                    playing = episode.guid == playingEpisodeId,
+                    onClick = { onEpisodeClick(subscription, episode) },
+                    onToggleFavorite = { onToggleFavorite(subscription, episode) },
+                    downloadState = downloadStates[episode.guid],
+                    onDownload = { onDownload(subscription, episode) },
+                    onCancelDownload = { onCancelDownload(episode) },
+                    onDeleteDownload = { onDeleteDownload(subscription, episode) },
+                    onExportDownload = { onExportDownload(subscription, episode) },
                 )
             }
         }
-
-        if (favorites.isEmpty()) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = RadioSpacing.page),
-            ) {
-                Text(
-                    text = stringResource(R.string.podcast_favorites_empty),
-                    color = RadioTextMuted,
-                    fontSize = RadioTextSizes.bodyLarge,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    horizontal = RadioSpacing.medium,
-                    vertical = RadioSpacing.small,
-                ),
-                verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
-            ) {
-                // key 带上 feedUrl：guid 只在同一订阅内保证唯一，跨订阅理论上会撞
-                items(favorites, key = { it.first.feedUrl + "|" + it.second.guid }) { (subscription, episode) ->
-                    PodcastEpisodeRow(
-                        episode = episode,
-                        playing = episode.guid == playingEpisodeId,
-                        onClick = { onEpisodeClick(subscription, episode) },
-                        onToggleFavorite = { onToggleFavorite(subscription, episode) },
-                        downloadState = downloadStates[episode.guid],
-                        onDownload = { onDownload(subscription, episode) },
-                        onCancelDownload = { onCancelDownload(episode) },
-                        onDeleteDownload = { onDeleteDownload(subscription, episode) },
-                        onExportDownload = { onExportDownload(subscription, episode) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 收藏入口行：常驻订阅列表顶部（有收藏才显示）。
- * 视觉与订阅卡片同语言（圆角底面 + 左图标 + 右侧计数），但用主色实心爱心
- * 和 surfaceHigh 底色，和订阅卡片区分开。
- */
-@Composable
-private fun PodcastFavoritesEntryRow(
-    count: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            .background(RadioSurfaceHigh, RoundedCornerShape(RadioCorners.medium))
-            .clickable(onClick = onClick)
-            .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.rowVertical),
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_favorite),
-            contentDescription = null,
-            tint = RadioPrimary,
-            modifier = Modifier.size(RadioSizes.iconInline),
-        )
-        Text(
-            text = stringResource(R.string.podcast_favorites_title),
-            color = RadioText,
-            fontSize = RadioTextSizes.bodyLarge,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = RadioSpacing.medium),
-        )
-        Text(
-            text = stringResource(R.string.podcast_favorites_count, count),
-            color = RadioTextMuted,
-            fontSize = RadioTextSizes.caption,
-            maxLines = 1,
-        )
     }
 }
 

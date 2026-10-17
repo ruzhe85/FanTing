@@ -284,6 +284,8 @@
     <string name="settings_podcast_compact_list_title">Компактный список</string>
     <string name="settings_podcast_compact_list_on">Без обложек, больше подписок на экране</string>
     <string name="settings_podcast_compact_list_off">Показывать обложки и полную информацию</string>
+    <string name="favorites_section_stations">Радио %1$d</string>
+    <string name="favorites_section_episodes">Выпуски %1$d</string>
     <string name="player_clipboard_track_label">Трек</string>
     <string name="player_track_copied">Название трека скопировано</string>
     <string name="player_choose_station">Выберите станцию</string>

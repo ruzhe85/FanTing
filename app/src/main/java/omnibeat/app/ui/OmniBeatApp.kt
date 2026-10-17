@@ -71,6 +71,7 @@ import omnibeat.app.data.TranslationLanguage
 import omnibeat.app.data.appString
 import omnibeat.app.data.removeTrackingParameters
 import omnibeat.app.data.normalizeStreamUrl
+import omnibeat.app.model.FavoritesSection
 import omnibeat.app.model.MainPage
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
@@ -132,6 +133,9 @@ fun OmniBeatApp() {
     // 订阅列表紧凑模式：无封面、两行，一屏显示更多
     val podcastCompactList by podcastRepository.compactList
         .collectAsState(initial = false)
+    // 收藏 tab 上次停留的分段（电台 / 节目）
+    val favoritesSection by repository.favoritesSection
+        .collectAsState(initial = FavoritesSection.Stations)
     // 在线搜索结果的「已订阅」判定：按归一化后的 feedUrl 比较，避免协议/结尾斜杠差异漏判
     val subscribedPodcastKeys = remember(podcastSubscriptions) {
         podcastSubscriptions.mapTo(mutableSetOf()) { podcastFeedKey(it.feedUrl) }
@@ -220,7 +224,8 @@ fun OmniBeatApp() {
         var keepMediaCard by remember { mutableStateOf(repository.keepMediaCard.value) }
         var showStationArtwork by remember { mutableStateOf(true) }
         var syncingStationArtwork by remember { mutableStateOf(false) }
-        var showEmptyFavoritesTab by remember { mutableStateOf(true) }
+        // 默认空收藏页不显示：要收藏 tab 常驻，可在设置里打开
+        var showEmptyFavoritesTab by remember { mutableStateOf(false) }
         var confirmStationDeletion by remember { mutableStateOf(true) }
         var showBitrateInControlPanel by remember { mutableStateOf(true) }
         var showUnavailableBitrate by remember { mutableStateOf(false) }
@@ -258,8 +263,6 @@ fun OmniBeatApp() {
         var onlineOptionsExpanded by remember { mutableStateOf(false) }
         // 播客页状态：当前打开的订阅（null = 订阅列表）、添加弹窗、加载与错误
         var openPodcastUrl by remember { mutableStateOf<String?>(null) }
-        // 收藏的节目列表是否打开（跨订阅聚合页）；与 openPodcastUrl 互斥显示
-        var openPodcastFavorites by remember { mutableStateOf(false) }
         // 正在编辑的订阅（按 feedUrl 定位；地址改动后会重定向到新地址）
         var editPodcastUrl by remember { mutableStateOf<String?>(null) }
         var addPodcastDialogVisible by remember { mutableStateOf(false) }
@@ -299,7 +302,10 @@ fun OmniBeatApp() {
         var podcastSearchSubmitRequest by remember { mutableIntStateOf(0) }
         // 播客页始终可见；收藏页在「一条收藏都没有且设置里关掉空收藏页」时隐藏
         val visibleTabPages = MainPage.allTabPages.filter { page ->
-            page != MainPage.Favorites || showEmptyFavoritesTab || stations.any { it.isFavorite }
+            page != MainPage.Favorites ||
+                showEmptyFavoritesTab ||
+                stations.any { it.isFavorite } ||
+                favoriteEpisodes.isNotEmpty()
         }
         val pagerState = rememberPagerState(pageCount = { visibleTabPages.size })
         val visualSelectedPage by remember(pagerState, visibleTabPages, selectedPage) {
@@ -1250,8 +1256,10 @@ fun OmniBeatApp() {
         /**
          * 切换订阅内相邻的一期。
          *
-         * 期数列表按时间倒序（最新在上），所以 direction = +1 取列表下一条 = **更早一期**（"下一集"），
-         * -1 取更新的一期（"上一集"）。
+         * [direction] 是**显示顺序**：+1 = 列表向下（下一集），-1 = 列表向上（上一集）。
+         * 存储顺序固定为最新在前，所以用户切到「最旧在上」时要反过来取，
+         * 否则播完自动下一集会与屏幕上看到的顺序相反。
+         *
          * 当前在播的不是订阅内单集时返回 false，调用方回落到电台切台逻辑；
          * 若是单集但已到列表尽头，返回 true（不回落，避免按"下一集"却切了电台）。
          */
@@ -1259,7 +1267,8 @@ fun OmniBeatApp() {
             val (subscription, episode) = currentEpisode() ?: return false
             val index = subscription.episodes.indexOfFirst { it.guid == episode.guid }
             if (index == -1) return false
-            val target = subscription.episodes.getOrNull(index + direction) ?: return true
+            val step = if (podcastEpisodesOldestFirst) -direction else direction
+            val target = subscription.episodes.getOrNull(index + step) ?: return true
             playPodcastEpisode(subscription, target)
             return true
         }
@@ -1896,6 +1905,48 @@ fun OmniBeatApp() {
                                 onFavoriteClick = ::toggleFavorite,
                                 onEditStation = { editorState = it },
                                 onStationClick = ::playStation,
+                                favoritesSection = favoritesSection,
+                                onFavoritesSectionChange = { section ->
+                                    scope.launch { repository.saveFavoritesSection(section) }
+                                },
+                                favoriteEpisodeCount = favoriteEpisodes.size,
+                                episodeFavoriteContent = {
+                                    FavoriteEpisodesList(
+                                        favorites = favoriteEpisodes,
+                                        playingEpisodeId = playbackState.selectedStation?.id,
+                                        onEpisodeClick = ::playPodcastEpisode,
+                                        onToggleFavorite = { subscription, episode ->
+                                            scope.launch {
+                                                podcastRepository.setEpisodeFavorite(
+                                                    feedUrl = subscription.feedUrl,
+                                                    guid = episode.guid,
+                                                    favorite = !episode.favorite,
+                                                )
+                                            }
+                                        },
+                                        downloadStates = podcastDownloadStates,
+                                        onDownload = { subscription, episode ->
+                                            PodcastDownloadManager.download(
+                                                context,
+                                                subscription,
+                                                episode,
+                                            )
+                                        },
+                                        onCancelDownload = { episode ->
+                                            PodcastDownloadManager.cancel(episode.guid)
+                                        },
+                                        onDeleteDownload = { subscription, episode ->
+                                            PodcastDownloadManager.deleteDownload(
+                                                context,
+                                                subscription,
+                                                episode,
+                                            )
+                                        },
+                                        onExportDownload = { subscription, episode ->
+                                            exportDownloadedEpisode(subscription, episode)
+                                        },
+                                    )
+                                },
                                 podcastContent = { contentModifier ->
                                     val selectedSearchPodcast = podcastSearchSelected
                                     when {
@@ -1962,10 +2013,6 @@ fun OmniBeatApp() {
                                         } else {
                                             null
                                         },
-                                        favoriteEpisodes = favoriteEpisodes,
-                                        favoritesOpen = openPodcastFavorites,
-                                        onOpenFavorites = { openPodcastFavorites = true },
-                                        onCloseFavorites = { openPodcastFavorites = false },
                                         onToggleFavorite = { subscription, episode ->
                                             scope.launch {
                                                 podcastRepository.setEpisodeFavorite(

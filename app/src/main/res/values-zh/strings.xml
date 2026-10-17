@@ -190,6 +190,8 @@
     <string name="empty_stations_suffix_start">点</string>
     <string name="empty_stations_suffix_end">添加</string>
     <string name="empty_favorites">还没有收藏</string>
+    <string name="favorites_section_stations">电台 %1$d</string>
+    <string name="favorites_section_episodes">节目 %1$d</string>
 
     <string name="online_search_options">搜索选项</string>
     <string name="online_search_by_title">按名称搜索</string>

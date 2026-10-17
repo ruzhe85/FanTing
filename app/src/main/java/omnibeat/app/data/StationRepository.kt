@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import omnibeat.app.model.FavoritesSection
 import omnibeat.app.model.ImportedTranslation
 import omnibeat.app.model.Station
 import omnibeat.app.model.StationSortMode
@@ -39,6 +40,7 @@ private val rememberLastStationKey = booleanPreferencesKey("remember_last_statio
 private val stopServiceAfterPauseMinutesKey = intPreferencesKey("stop_service_after_pause_minutes")
 private val showStationArtworkKey = booleanPreferencesKey("show_station_artwork")
 private val showEmptyFavoritesTabKey = booleanPreferencesKey("show_empty_favorites_tab")
+private val favoritesSectionKey = stringPreferencesKey("favorites_section")
 private val confirmStationDeletionKey = booleanPreferencesKey("confirm_station_deletion")
 private val showBitrateInControlPanelKey = booleanPreferencesKey("show_bitrate_in_control_panel")
 private val showUnavailableBitrateKey = booleanPreferencesKey("show_unavailable_bitrate")
@@ -131,8 +133,17 @@ class StationRepository(private val context: Context) {
     val showStationArtwork: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[showStationArtworkKey] ?: true }
 
+    // 默认不显示空收藏页：收藏 tab 只在真的有收藏时出现
     val showEmptyFavoritesTab: Flow<Boolean> = context.stationDataStore.data
-        .map { preferences -> preferences[showEmptyFavoritesTabKey] ?: true }
+        .map { preferences -> preferences[showEmptyFavoritesTabKey] ?: false }
+
+    /** 收藏 tab 上次停留的分段（电台 / 节目） */
+    val favoritesSection: Flow<FavoritesSection> = context.stationDataStore.data
+        .map { preferences ->
+            preferences[favoritesSectionKey]
+                ?.let { name -> runCatching { FavoritesSection.valueOf(name) }.getOrNull() }
+                ?: FavoritesSection.Stations
+        }
 
     val confirmStationDeletion: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[confirmStationDeletionKey] ?: true }
@@ -243,6 +254,12 @@ class StationRepository(private val context: Context) {
     suspend fun saveShowEmptyFavoritesTab(show: Boolean) {
         context.stationDataStore.edit { preferences ->
             preferences[showEmptyFavoritesTabKey] = show
+        }
+    }
+
+    suspend fun saveFavoritesSection(section: FavoritesSection) {
+        context.stationDataStore.edit { preferences ->
+            preferences[favoritesSectionKey] = section.name
         }
     }
 
