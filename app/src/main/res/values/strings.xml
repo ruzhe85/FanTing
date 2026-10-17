@@ -393,6 +393,7 @@
     <string name="podcast_remove_confirm">Remove</string>
     <string name="podcast_unfinished_count">%1$d unfinished</string>
     <string name="podcast_listened_progress">Played %1$s</string>
+    <string name="podcast_listened_progress_with_total">Played %1$d%% %2$s/%3$s</string>
     <string name="podcast_completed">Finished</string>
     <string name="podcast_skip_backward_label">15s</string>
     <string name="podcast_skip_forward_label">30s</string>

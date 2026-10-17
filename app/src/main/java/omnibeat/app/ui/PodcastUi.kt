@@ -897,19 +897,37 @@ private fun PodcastEpisodeRow(
     onDeleteDownload: (() -> Unit)? = null,
     onExportDownload: (() -> Unit)? = null,
 ) {
-    // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完
+    // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完。
+    // 有总长时显示「百分比 + 当前/总长」——一眼看出听到哪儿；总长拿不到
+    // （feed 没给 durationSec）就只显示当前进度。
+    val currentSec = (episode.positionMs / 1000L).toInt()
+    val totalSec = episode.durationSec
+    val progressHasTotal = episode.positionMs > 0L && totalSec > 0
     val progressText = when {
+        progressHasTotal -> {
+            val percent = (episode.positionMs * 100 / (totalSec * 1000L))
+                .toInt()
+                .coerceIn(0, 100)
+            stringResource(
+                R.string.podcast_listened_progress_with_total,
+                percent,
+                formatDuration(currentSec),
+                formatDuration(totalSec),
+            )
+        }
+
         episode.positionMs > 0L -> stringResource(
             R.string.podcast_listened_progress,
-            formatDuration((episode.positionMs / 1000L).toInt()),
+            formatDuration(currentSec),
         )
 
         episode.completed -> stringResource(R.string.podcast_completed)
         else -> ""
     }
+    // 进度文案里已带总长时不再单独显示一份，避免「45:00 · 已听 28% 12:34/45:00」重复
     val meta = listOf(
         formatEpisodeDate(episode.publishedAtMs),
-        formatDuration(episode.durationSec),
+        if (progressHasTotal) "" else formatDuration(totalSec),
         progressText,
     ).filter { it.isNotEmpty() }.joinToString(" · ")
 

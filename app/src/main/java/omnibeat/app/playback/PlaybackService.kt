@@ -451,6 +451,9 @@ class PlaybackService : MediaLibraryService() {
     private fun seekTo(positionMs: Long) {
         if (!currentItemSeekable) return
         player.seekTo(positionMs.coerceAtLeast(0L))
+        // 立刻把新位置同步进 state：轮询最多慢 1 秒，期间若暂停 / 切集，
+        // 断点保存用的还是跳转前的旧位置（表现为「跳转了但已听时间变回去」）
+        _state.update { it.copy(positionMs = player.currentPosition) }
     }
 
     private fun playStation(
@@ -665,8 +668,10 @@ class PlaybackService : MediaLibraryService() {
         playbackRequested = false
         noMetadataJob?.cancel()
         currentStreamIsHls = false
-        // 停之前抓下位置：恢复时从这里继续（见 playFromCurrentState）
+        // 停之前把当前位置同步进 state 并抓存：暂停保存断点 / 恢复续播都不能用
+        // 最多 1 秒前的轮询值
         if (currentItemSeekable) {
+            _state.update { it.copy(positionMs = player.currentPosition) }
             pausedPositionMs = player.currentPosition
         }
         player.stop()
@@ -750,8 +755,10 @@ class PlaybackService : MediaLibraryService() {
                 )
             ) {
                 playbackRequested = false
-                // 这里不停播放器（只置暂停态）：同样抓下位置，恢复时续播
+                // 这里不停播放器（只置暂停态）：同样把当前位置同步进 state 并抓存，
+                // 断点保存与恢复续播都不用最多 1 秒前的轮询值
                 if (currentItemSeekable) {
+                    _state.update { it.copy(positionMs = player.currentPosition) }
                     pausedPositionMs = player.currentPosition
                 }
                 _state.update { it.withTrackStatus(PlaybackTrackStatus.Paused) }
