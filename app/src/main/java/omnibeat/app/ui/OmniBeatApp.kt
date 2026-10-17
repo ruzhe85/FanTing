@@ -1251,13 +1251,16 @@ fun OmniBeatApp() {
         fun playPodcastEpisode(subscription: PodcastSubscription, episode: PodcastEpisode) {
             if (episode.audioUrl.isBlank()) return
             // 点的就是当前这一集：不能重建播放器。重建会拿磁盘里的旧进度（往往还是 0）起播，
-            // 表现为「正听着再点一下就从头上重播」。正在播就忽略，暂停中则继续播。
+            // 表现为「正听着再点一下就从头上重播」。已加载就改为切换播放面板的收起/展开
+            // （与面板头部的折叠按钮同一动作），正在播/暂停中都走这条，行为可预期。
             val current = playbackState
             if (current.seekable && current.selectedStation?.id == episode.guid) {
                 val loaded = current.isPlaying || current.resolving || current.buffering ||
                     current.durationMs > 0L || current.positionMs > 0L
                 if (loaded) {
-                    if (!current.isPlaying) PlaybackService.playOrPause(context)
+                    val collapsed = !playerPanelCollapsed
+                    playerPanelCollapsed = collapsed
+                    scope.launch { repository.savePlayerPanelCollapsed(collapsed) }
                     return
                 }
             }
