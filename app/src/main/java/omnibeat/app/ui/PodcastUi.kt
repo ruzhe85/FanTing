@@ -268,7 +268,7 @@ fun PodcastSubscriptionsPage(
         FloatingActionButton(
             onClick = onRefreshAll,
             containerColor = RadioPrimary,
-            contentColor = Color.White,
+            contentColor = RadioOnPrimary,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = RadioSpacing.page, bottom = RadioSpacing.page),
@@ -276,7 +276,7 @@ fun PodcastSubscriptionsPage(
             if (refreshingAll) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(RadioSizes.iconInline),
-                    color = Color.White,
+                    color = RadioOnPrimary,
                     strokeWidth = 2.dp,
                 )
             } else {
@@ -335,7 +335,7 @@ private fun PodcastSubscriptionRow(
                     Icon(
                         painter = painterResource(R.drawable.ic_play_arrow),
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = RadioOnPrimary,
                         modifier = Modifier.size(PLAY_BADGE_ICON_SIZE),
                     )
                 }

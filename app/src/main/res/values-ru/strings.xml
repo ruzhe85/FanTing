@@ -40,6 +40,14 @@
     <string name="settings_theme_system">Использовать системную тему</string>
     <string name="settings_theme_dark">Использовать тёмную тему</string>
     <string name="settings_theme_light">Использовать светлую тему</string>
+    <string name="settings_accent_title">Цвет акцента</string>
+    <string name="accent_palette_violet">Фиолетовый</string>
+    <string name="accent_palette_ocean">Океан</string>
+    <string name="accent_palette_teal">Бирюзовый</string>
+    <string name="accent_palette_forest">Лесной</string>
+    <string name="accent_palette_amber">Янтарный</string>
+    <string name="accent_palette_rose">Розовый</string>
+    <string name="accent_palette_taiji">Тайцзи</string>
     <string name="settings_language_title">Язык</string>
     <string name="settings_language_system">Использовать язык системы</string>
     <string name="settings_language_selected">Использовать выбранный язык</string>
@@ -288,7 +296,6 @@
     <string name="favorites_section_episodes">Выпуски %1$d</string>
     <string name="player_clipboard_track_label">Трек</string>
     <string name="player_track_copied">Название трека скопировано</string>
-    <string name="player_choose_station">Выберите станцию</string>
     <string name="player_clipboard_stream_info_label">Информация о стриме</string>
     <string name="player_stream_info_copied">Информация о стриме скопирована</string>
     <string name="player_not_available">Недоступно</string>

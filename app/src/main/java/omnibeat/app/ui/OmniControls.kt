@@ -70,7 +70,7 @@ fun OmniPrimaryButton(
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
             containerColor = RadioPrimary,
-            contentColor = RadioText,
+            contentColor = RadioOnPrimary,
             disabledContainerColor = RadioSurfaceHigh,
             disabledContentColor = RadioTextMuted,
         ),

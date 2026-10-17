@@ -43,6 +43,14 @@
     <string name="settings_theme_system">Follow system theme</string>
     <string name="settings_theme_dark">Use dark theme</string>
     <string name="settings_theme_light">Use light theme</string>
+    <string name="settings_accent_title">Accent color</string>
+    <string name="accent_palette_violet">Violet</string>
+    <string name="accent_palette_ocean">Ocean</string>
+    <string name="accent_palette_teal">Teal</string>
+    <string name="accent_palette_forest">Forest</string>
+    <string name="accent_palette_amber">Amber</string>
+    <string name="accent_palette_rose">Rose</string>
+    <string name="accent_palette_taiji">Taiji</string>
     <string name="settings_language_title">Language</string>
     <string name="settings_language_system">Follow system language</string>
     <string name="settings_language_selected">Use selected language</string>
@@ -247,7 +255,6 @@
     <string name="player_live_badge">LIVE</string>
     <string name="player_clipboard_track_label">Track</string>
     <string name="player_track_copied">Track name copied</string>
-    <string name="player_choose_station">Choose a station</string>
     <string name="player_clipboard_stream_info_label">Stream info</string>
     <string name="player_stream_info_copied">Stream info copied</string>
     <string name="player_not_available">Not available</string>

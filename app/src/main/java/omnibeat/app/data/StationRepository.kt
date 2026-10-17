@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import omnibeat.app.model.AccentPalette
 import omnibeat.app.model.FavoritesSection
 import omnibeat.app.model.ImportedTranslation
 import omnibeat.app.model.Station
@@ -36,6 +37,7 @@ const val STOP_SERVICE_AFTER_PAUSE_NEVER = 0
 const val DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES = 5
 private val appVolumeKey = floatPreferencesKey("app_volume")
 private val themeModeKey = stringPreferencesKey("theme_mode")
+private val accentPaletteKey = stringPreferencesKey("accent_palette")
 private val rememberLastStationKey = booleanPreferencesKey("remember_last_station")
 private val stopServiceAfterPauseMinutesKey = intPreferencesKey("stop_service_after_pause_minutes")
 private val showStationArtworkKey = booleanPreferencesKey("show_station_artwork")
@@ -117,6 +119,10 @@ class StationRepository(private val context: Context) {
                 ?.let { savedMode -> ThemeMode.entries.firstOrNull { it.name == savedMode } }
                 ?: ThemeMode.System
         }
+
+    /** 非法/缺失的值一律回落到默认配色（紫罗兰） */
+    val accentPalette: Flow<AccentPalette> = context.stationDataStore.data
+        .map { preferences -> AccentPalette.fromName(preferences[accentPaletteKey]) }
 
     val rememberLastStation: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[rememberLastStationKey] ?: true }
@@ -214,6 +220,12 @@ class StationRepository(private val context: Context) {
     suspend fun saveThemeMode(themeMode: ThemeMode) {
         context.stationDataStore.edit { preferences ->
             preferences[themeModeKey] = themeMode.name
+        }
+    }
+
+    suspend fun saveAccentPalette(accentPalette: AccentPalette) {
+        context.stationDataStore.edit { preferences ->
+            preferences[accentPaletteKey] = accentPalette.name
         }
     }
 

@@ -11,9 +11,12 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,13 +45,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import omnibeat.app.ui.appStringResource as stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import omnibeat.app.R
 import omnibeat.app.data.STOP_SERVICE_AFTER_PAUSE_NEVER
+import omnibeat.app.model.AccentPalette
 import omnibeat.app.model.AppLanguage
 import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
 import omnibeat.app.model.PODCAST_SEARCH_REGIONS
@@ -102,7 +112,7 @@ fun ThemeModeSegmentedControl(
                     Icon(
                         painter = painterResource(themeModeIcon(option)),
                         contentDescription = null,
-                        tint = if (selected) RadioText else RadioTextMuted,
+                        tint = if (selected) RadioOnPrimary else RadioTextMuted,
                         modifier = Modifier.size(RadioSizes.icon),
                     )
                 }
@@ -141,6 +151,7 @@ private fun pauseTimeoutLabel(minutes: Int): String {
 @Composable
 fun SettingsPage(
     themeMode: ThemeMode,
+    accentPalette: AccentPalette,
     appLanguage: AppLanguage,
     rememberLastStation: Boolean,
     autoPlayNextEpisode: Boolean,
@@ -165,6 +176,7 @@ fun SettingsPage(
     podcastSearchRegion: String,
     podcastCompactList: Boolean,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onAccentPaletteChange: (AccentPalette) -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
     onRememberLastStationChange: (Boolean) -> Unit,
     onAutoPlayNextEpisodeChange: (Boolean) -> Unit,
@@ -214,6 +226,12 @@ fun SettingsPage(
                 },
                 themeMode = themeMode,
                 onThemeModeChange = onThemeModeChange,
+            )
+            SettingsAccentRow(
+                title = stringResource(R.string.settings_accent_title),
+                subtitle = stringResource(accentPalette.labelRes()),
+                accentPalette = accentPalette,
+                onAccentPaletteChange = onAccentPaletteChange,
             )
             SettingsLanguageRow(
                 title = stringResource(R.string.settings_language_title),
@@ -859,6 +877,117 @@ private fun SettingsThemeRow(
             onThemeModeChange = onThemeModeChange,
         )
     }
+}
+
+private val AccentSwatchTouchSize = 44.dp
+private val AccentSwatchSize = 32.dp
+
+/**
+ * 主题配色行：标题/当前配色名 + 一排色点。
+ * 色点做成一枚「左浅右深」的双色圆，浅色与深色主题下的主色都能认出来。
+ */
+@Composable
+private fun SettingsAccentRow(
+    title: String,
+    subtitle: String,
+    accentPalette: AccentPalette,
+    onAccentPaletteChange: (AccentPalette) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = RadioSpacing.fieldGap),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = title,
+                color = RadioText,
+                fontSize = RadioTextSizes.bodyLarge,
+            )
+            Text(
+                text = subtitle,
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.bodySmall,
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+        ) {
+            AccentPalette.entries.forEach { palette ->
+                AccentSwatch(
+                    palette = palette,
+                    selected = palette == accentPalette,
+                    onClick = { onAccentPaletteChange(palette) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccentSwatch(
+    palette: AccentPalette,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = stringResource(palette.labelRes())
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(AccentSwatchTouchSize)
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            )
+            .semantics { contentDescription = label },
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(AccentSwatchSize)
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) RadioText else RadioOutline,
+                    shape = CircleShape,
+                )
+                .padding(if (selected) 3.dp else 2.dp)
+                .clip(CircleShape)
+                .background(accentSwatchBrush(palette)),
+        ) {
+            if (selected) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_check),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(RadioSizes.iconTiny),
+                )
+            }
+        }
+    }
+}
+
+/** 左半浅色主色、右半深色主色的硬边渐变，代表该配色在浅色/深色下的样子 */
+private fun accentSwatchBrush(palette: AccentPalette): Brush {
+    val light = Color(palette.seedLight)
+    val dark = Color(palette.seedDark)
+    return Brush.horizontalGradient(
+        0f to light,
+        0.5f to light,
+        0.5f to dark,
+        1f to dark,
+    )
 }
 
 @Composable

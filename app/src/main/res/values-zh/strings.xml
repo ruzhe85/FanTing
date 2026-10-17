@@ -44,6 +44,14 @@
     <string name="settings_theme_system">跟随系统主题</string>
     <string name="settings_theme_dark">使用深色主题</string>
     <string name="settings_theme_light">使用浅色主题</string>
+    <string name="settings_accent_title">主题配色</string>
+    <string name="accent_palette_violet">紫罗兰</string>
+    <string name="accent_palette_ocean">海蓝</string>
+    <string name="accent_palette_teal">青碧</string>
+    <string name="accent_palette_forest">森绿</string>
+    <string name="accent_palette_amber">琥珀</string>
+    <string name="accent_palette_rose">玫瑰</string>
+    <string name="accent_palette_taiji">太极</string>
     <string name="settings_language_title">语言</string>
     <string name="settings_language_system">跟随系统语言</string>
     <string name="settings_language_selected">使用所选语言</string>
@@ -247,7 +255,6 @@
     <string name="player_live_badge">直播</string>
     <string name="player_clipboard_track_label">曲目</string>
     <string name="player_track_copied">已复制曲目名</string>
-    <string name="player_choose_station">选择一个电台</string>
     <string name="player_clipboard_stream_info_label">音频流信息</string>
     <string name="player_stream_info_copied">已复制音频流信息</string>
     <string name="player_not_available">不可用</string>

@@ -77,6 +77,7 @@ import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
 import omnibeat.app.model.PODCAST_DEFAULT_SEARCH_REGION
 import omnibeat.app.model.PODCAST_SEARCH_FETCH_LIMIT
+import omnibeat.app.model.AccentPalette
 import omnibeat.app.model.PODCAST_SEARCH_PAGE_SIZE
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
@@ -158,10 +159,11 @@ fun OmniBeatApp() {
         translationLoaded = true
     }
     val themeMode by repository.themeMode.collectAsState(initial = ThemeMode.System)
+    val accentPalette by repository.accentPalette.collectAsState(initial = AccentPalette.Default)
     val appLanguage = context.applicationContext.currentAppLanguage()
     val useDarkTheme = shouldUseDarkTheme(themeMode)
 
-    OmniBeatTheme(themeMode = themeMode) {
+    OmniBeatTheme(themeMode = themeMode, accentPalette = accentPalette) {
         val resources = LocalResources.current
         val statusBarColor = RadioBackground
         val navigationBarColor = RadioBackground
@@ -2100,6 +2102,7 @@ fun OmniBeatApp() {
                         MainPage.Settings -> {
                             SettingsPage(
                                 themeMode = themeMode,
+                                accentPalette = accentPalette,
                                 appLanguage = appLanguage,
                                 rememberLastStation = rememberLastStation,
                                 autoPlayNextEpisode = autoPlayNextEpisode,
@@ -2125,6 +2128,9 @@ fun OmniBeatApp() {
                                 podcastCompactList = podcastCompactList,
                                 onThemeModeChange = { nextThemeMode ->
                                     scope.launch { repository.saveThemeMode(nextThemeMode) }
+                                },
+                                onAccentPaletteChange = { nextAccentPalette ->
+                                    scope.launch { repository.saveAccentPalette(nextAccentPalette) }
                                 },
                                 onAppLanguageChange = { nextAppLanguage ->
                                     context.applicationContext.applyAppLanguage(nextAppLanguage)

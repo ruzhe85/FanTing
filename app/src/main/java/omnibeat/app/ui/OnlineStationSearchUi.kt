@@ -227,7 +227,7 @@ fun SearchOptionsTopBarControl(
         Surface(
             onClick = { onExpandedChange(!expanded) },
             color = RadioPrimary,
-            contentColor = RadioText,
+            contentColor = RadioOnPrimary,
             shape = RoundedCornerShape(RadioCorners.large),
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -655,7 +655,7 @@ private fun SearchCheckbox(
             colors = CheckboxDefaults.colors(
                 checkedColor = RadioPrimary,
                 uncheckedColor = RadioTextMuted,
-                checkmarkColor = RadioText,
+                checkmarkColor = RadioOnPrimary,
             ),
         )
         Text(

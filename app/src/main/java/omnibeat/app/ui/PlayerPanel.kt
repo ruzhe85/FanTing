@@ -222,7 +222,7 @@ fun PlayerPanel(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = station?.title ?: stringResource(R.string.player_choose_station),
+                            text = station?.title.orEmpty(),
                             color = RadioText,
                             fontSize = RadioTextSizes.title,
                             fontWeight = FontWeight.Medium,
@@ -427,7 +427,7 @@ fun PlayerPanel(
 private fun LiveBadge(modifier: Modifier = Modifier) {
     Text(
         text = stringResource(R.string.player_live_badge),
-        color = Color.White,
+        color = RadioOnPrimary,
         fontSize = RadioTextSizes.badge,
         fontWeight = FontWeight.Bold,
         maxLines = 1,

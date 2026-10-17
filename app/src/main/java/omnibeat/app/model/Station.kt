@@ -51,10 +51,10 @@ enum class MainPage {
         val tabPages = listOf(Stations, Favorites)
 
         /**
-         * 顶部 Tab 的全集（含播客）。
+         * 顶部 Tab 的全集（含播客），顺序即顶栏的顺序：收藏排在最后。
          * 实际可见性由 OmniBeatApp 过滤：收藏页可被设置隐藏，播客页始终显示。
          */
-        val allTabPages = listOf(Stations, Favorites, Podcasts)
+        val allTabPages = listOf(Stations, Podcasts, Favorites)
     }
 }
 
