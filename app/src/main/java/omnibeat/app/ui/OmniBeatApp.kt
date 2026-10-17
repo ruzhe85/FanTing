@@ -1990,23 +1990,6 @@ fun OmniBeatApp() {
                                         onExportDownload = { subscription, episode ->
                                             exportDownloadedEpisode(subscription, episode)
                                         },
-                                        downloadedEpisodes = downloadedEpisodes,
-                                        downloadsOpen = downloadsOpen,
-                                        onOpenDownloads = { downloadsOpen = true },
-                                        onCloseDownloads = { downloadsOpen = false },
-                                        onDeleteAllDownloads = {
-                                            PodcastDownloadManager.deleteAllDownloads(
-                                                context,
-                                                podcastSubscriptions,
-                                            )
-                                            Toast.makeText(
-                                                context,
-                                                resources.appString(
-                                                    R.string.toast_downloads_cleared,
-                                                ),
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                        },
                                     )
                                 },
                                 podcastContent = { contentModifier ->
