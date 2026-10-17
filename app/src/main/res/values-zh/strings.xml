@@ -209,6 +209,15 @@
     <string name="station_editor_title_label">名称</string>
     <string name="station_editor_stream_url_label">音频流地址</string>
     <string name="station_editor_url_error">需要填写有效的 http 或 https 地址</string>
+    <string name="station_editor_artwork_label">封面地址</string>
+    <string name="station_editor_artwork_hint">留空则自动获取封面</string>
+    <string name="station_editor_artwork_error">需要填写有效的 http 或 https 图片地址</string>
+    <string name="station_editor_artwork_not_found">没有在 Radio Browser 找到这个电台</string>
+    <string name="station_editor_artwork_unavailable">找到了电台，但没有可用的封面</string>
+    <string name="podcast_artwork_label">封面地址</string>
+    <string name="podcast_artwork_hint">留空则使用订阅源自带的封面</string>
+    <string name="podcast_artwork_error">需要填写有效的 http 或 https 图片地址</string>
+    <string name="toast_artwork_unavailable">无法从这个地址加载封面</string>
     <string name="station_editor_tags_label">标签</string>
     <string name="station_editor_date_added_label">添加时间</string>
     <string name="station_editor_save">保存</string>

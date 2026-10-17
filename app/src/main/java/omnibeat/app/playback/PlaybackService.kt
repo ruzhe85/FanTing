@@ -42,9 +42,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -128,6 +126,7 @@ class PlaybackService : MediaLibraryService() {
     private var stations: List<Station> = emptyList()
     private var resolveJob: Job? = null
     private var noMetadataJob: Job? = null
+    private var artworkUpdatesJob: Job? = null
     private var playbackRequested = false
     private var recordedStationId: String? = null
     private var currentStreamIsHls = false
@@ -190,15 +189,16 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             combine(state, repository.showAndroidAutoArtwork) { playback, show ->
                 playback.selectedStation?.imageUrl?.takeIf { show }
-            }.distinctUntilChanged().collectLatest { url ->
-                if (url != null) coroutineScope {
-                    launch {
-                        StationArtworkCache.updates(url).collect {
-                            syncSession()
-                            mediaSession?.let { library.notifyChanged(it) }
-                        }
+            }.distinctUntilChanged().collect { url ->
+                if (url == null) return@collect
+                // 预热放在服务作用域里：切台/换封面不会把正在下的那张图取消掉（取消不再算失败，但白下一半）
+                scope.launch { runCatching { StationArtworkCache.warm(this@PlaybackService, url, 256) } }
+                artworkUpdatesJob?.cancel()
+                artworkUpdatesJob = scope.launch {
+                    StationArtworkCache.updates(url).collect {
+                        syncSession()
+                        mediaSession?.let { library.notifyChanged(it) }
                     }
-                    StationArtworkCache.load(this@PlaybackService, url, 256, 256).collect {}
                 }
             }
         }
@@ -922,7 +922,8 @@ class PlaybackService : MediaLibraryService() {
     private fun saveCurrentStationImageUrl(imageUrl: String) {
         val current = state.value
         val station = current.selectedStation ?: return
-        if (current.previewing || station.imageUrl == imageUrl) {
+        // 用户手动指定的封面不允许被流内嵌图覆盖
+        if (current.previewing || station.imageUrl == imageUrl || station.imageUrlManual) {
             return
         }
         val stationId = station.id

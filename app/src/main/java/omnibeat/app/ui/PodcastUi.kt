@@ -48,9 +48,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.net.toUri
 import omnibeat.app.R
 import omnibeat.app.data.PodcastDownloadState
 import omnibeat.app.model.PODCAST_FEED_URL_MAX_LENGTH
+import omnibeat.app.model.PODCAST_IMAGE_URL_MAX_LENGTH
 import omnibeat.app.model.PODCAST_TITLE_MAX_LENGTH
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
@@ -986,13 +988,15 @@ fun EditPodcastDialog(
     subscription: PodcastSubscription,
     loading: Boolean,
     errorText: String?,
-    onSave: (title: String, feedUrl: String) -> Unit,
+    onSave: (title: String, feedUrl: String, imageUrl: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var title by remember(subscription.feedUrl) { mutableStateOf(subscription.title) }
     var feedUrl by remember(subscription.feedUrl) { mutableStateOf(subscription.feedUrl) }
+    var imageUrl by remember(subscription.feedUrl) { mutableStateOf(subscription.imageUrl.orEmpty()) }
     var titleError by remember { mutableStateOf(false) }
     var urlError by remember { mutableStateOf(false) }
+    var artworkError by remember { mutableStateOf(false) }
     val textFieldColors = omniTextFieldColors()
 
     AlertDialog(
@@ -1050,6 +1054,43 @@ fun EditPodcastDialog(
                         .heightIn(min = RadioSizes.textFieldMinHeight)
                         .fillMaxWidth(),
                 )
+                OutlinedTextField(
+                    value = imageUrl,
+                    onValueChange = {
+                        imageUrl = it.take(PODCAST_IMAGE_URL_MAX_LENGTH)
+                        artworkError = false
+                    },
+                    singleLine = false,
+                    minLines = 1,
+                    maxLines = 3,
+                    label = { Text(stringResource(R.string.podcast_artwork_label)) },
+                    placeholder = { Text("https://...") },
+                    isError = artworkError,
+                    supportingText = {
+                        Text(
+                            if (artworkError) {
+                                stringResource(R.string.podcast_artwork_error)
+                            } else {
+                                stringResource(R.string.podcast_artwork_hint)
+                            },
+                        )
+                    },
+                    trailingIcon = if (imageUrl.isNotBlank()) {
+                        {
+                            OmniIconButton(
+                                painter = painterResource(R.drawable.ic_close),
+                                onClick = { imageUrl = "" },
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    colors = textFieldColors,
+                    modifier = Modifier
+                        .heightIn(min = RadioSizes.textFieldMinHeight)
+                        .fillMaxWidth(),
+                )
                 if (loading) {
                     Text(
                         text = stringResource(R.string.podcast_loading),
@@ -1074,10 +1115,14 @@ fun EditPodcastDialog(
                     onClick = {
                         val trimmedTitle = title.trim()
                         val trimmedFeedUrl = feedUrl.trim()
+                        val trimmedImageUrl = imageUrl.trim()
                         when {
                             trimmedTitle.isEmpty() -> titleError = true
                             trimmedFeedUrl.isEmpty() -> urlError = true
-                            else -> onSave(trimmedTitle, trimmedFeedUrl)
+                            trimmedImageUrl.isNotEmpty() && !isValidArtworkUrl(trimmedImageUrl) ->
+                                artworkError = true
+
+                            else -> onSave(trimmedTitle, trimmedFeedUrl, trimmedImageUrl)
                         }
                     },
                 )
@@ -1091,6 +1136,11 @@ fun EditPodcastDialog(
 }
 
 private val EPISODE_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH)
+
+private fun isValidArtworkUrl(imageUrl: String): Boolean {
+    val uri = imageUrl.toUri()
+    return uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank()
+}
 private val UPDATE_STAMP_FORMAT = DateTimeFormatter.ofPattern("dd MMM HH:mm", Locale.ENGLISH)
 
 private fun formatEpisodeDate(epochMs: Long): String {

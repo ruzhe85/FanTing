@@ -149,6 +149,8 @@ object StationExportCodec {
                     .put("streamUrl", station.streamUrl)
                     .put("tags", JSONArray(station.tags))
                     .put("imageUrl", station.imageUrl.orEmpty())
+                    .put("imageUrlManual", station.imageUrlManual)
+                    .put("radioBrowserUuid", station.radioBrowserUuid.orEmpty())
                     .put("isFavorite", station.isFavorite)
                     .put("dateAdded", station.dateAdded),
             )
@@ -179,6 +181,9 @@ object StationExportCodec {
                         tags = decodeTags(item.optJSONArray("tags")),
                         imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
                         isFavorite = item.optBoolean("isFavorite", false),
+                        imageUrlManual = item.optBoolean("imageUrlManual", false),
+                        radioBrowserUuid = item.optString("radioBrowserUuid").trim()
+                            .takeIf { it.isNotBlank() },
                         dateAdded = item.optString("dateAdded")
                             .takeIf { it.isValidInstant() }
                             ?: Instant.now().toString(),

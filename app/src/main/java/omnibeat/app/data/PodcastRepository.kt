@@ -293,6 +293,7 @@ class PodcastRepository(private val context: Context) {
                     .put("feedUrl", subscription.feedUrl)
                     .put("title", subscription.title)
                     .put("imageUrl", subscription.imageUrl.orEmpty())
+                    .put("imageUrlManual", subscription.imageUrlManual)
                     .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
                     .put("episodes", episodes),
             )
@@ -318,6 +319,7 @@ class PodcastRepository(private val context: Context) {
                                 feedUrl = feedUrl,
                                 title = title,
                                 imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
+                                imageUrlManual = item.optBoolean("imageUrlManual", false),
                                 lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
                                 episodes = decodeEpisodes(item.optJSONArray("episodes")),
                             ),

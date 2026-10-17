@@ -173,5 +173,6 @@ private fun createEditorState(
         streamUrl = station.streamUrl,
         tags = station.tags.joinToString(", "),
         dateAdded = station.dateAdded,
+        imageUrl = station.imageUrl,
     )
 }

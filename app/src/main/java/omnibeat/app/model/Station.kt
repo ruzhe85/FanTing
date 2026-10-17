@@ -3,6 +3,7 @@ package omnibeat.app.model
 const val STATION_TITLE_MAX_LENGTH = 100
 const val STATION_STREAM_URL_MAX_LENGTH = 2048
 const val STATION_TAGS_INPUT_MAX_LENGTH = 200
+const val STATION_IMAGE_URL_MAX_LENGTH = 2048
 
 data class Station(
     val id: String,
@@ -12,6 +13,10 @@ data class Station(
     val imageUrl: String? = null,
     val isFavorite: Boolean = false,
     val dateAdded: String,
+    /** true = 封面的地址是用户手动填的，自动查找/流内封面都不得覆盖它 */
+    val imageUrlManual: Boolean = false,
+    /** 通过在线搜索添加时记下的 Radio Browser stationuuid，用于按 uuid 精确回查封面 */
+    val radioBrowserUuid: String? = null,
 )
 
 enum class StationSortMode {
@@ -61,4 +66,5 @@ data class StationEditorState(
     val streamUrl: String,
     val tags: String,
     val dateAdded: String?,
+    val imageUrl: String? = null,
 )

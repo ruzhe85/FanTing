@@ -209,6 +209,15 @@
     <string name="station_editor_title_label">Title</string>
     <string name="station_editor_stream_url_label">Stream URL</string>
     <string name="station_editor_url_error">A valid http or https URL is required</string>
+    <string name="station_editor_artwork_label">Artwork URL</string>
+    <string name="station_editor_artwork_hint">Leave empty to fetch artwork automatically</string>
+    <string name="station_editor_artwork_error">Enter a valid http or https image URL</string>
+    <string name="station_editor_artwork_not_found">No matching station found on Radio Browser</string>
+    <string name="station_editor_artwork_unavailable">Station found, but it has no usable artwork</string>
+    <string name="podcast_artwork_label">Artwork URL</string>
+    <string name="podcast_artwork_hint">Leave empty to use the cover from the feed</string>
+    <string name="podcast_artwork_error">Enter a valid http or https image URL</string>
+    <string name="toast_artwork_unavailable">Could not load artwork from that address</string>
     <string name="station_editor_tags_label">Tags</string>
     <string name="station_editor_date_added_label">Date added</string>
     <string name="station_editor_save">Save</string>

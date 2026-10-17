@@ -2,6 +2,7 @@ package omnibeat.app.model
 
 const val PODCAST_FEED_URL_MAX_LENGTH = 2048
 const val PODCAST_TITLE_MAX_LENGTH = 200
+const val PODCAST_IMAGE_URL_MAX_LENGTH = 2048
 
 /** 单集倍速的可选项（面板菜单按此顺序展示） */
 val PODCAST_PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
@@ -52,6 +53,8 @@ data class PodcastSubscription(
     val imageUrl: String? = null,
     val lastFetchedAtMs: Long = 0L,
     val episodes: List<PodcastEpisode> = emptyList(),
+    /** true = 封面是用户手动填的，刷新订阅源时不得覆盖 */
+    val imageUrlManual: Boolean = false,
 )
 
 /** 解析结果：订阅元数据 + 期数列表（顺序由解析层保证：按期数倒序） */

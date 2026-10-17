@@ -3,12 +3,14 @@ package omnibeat.app.ui
 import androidx.compose.foundation.layout.heightIn
 
 import omnibeat.app.R
+import omnibeat.app.model.STATION_IMAGE_URL_MAX_LENGTH
 import omnibeat.app.model.STATION_STREAM_URL_MAX_LENGTH
 import omnibeat.app.model.STATION_TAGS_INPUT_MAX_LENGTH
 import omnibeat.app.model.STATION_TITLE_MAX_LENGTH
 
 import androidx.core.net.toUri
 import omnibeat.app.model.StationEditorState
+import omnibeat.app.radio.ArtworkLookup
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -32,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +43,7 @@ import omnibeat.app.ui.appStringResource as stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.launch
 
 @Composable
 fun StationEditorDialog(
@@ -47,20 +51,31 @@ fun StationEditorDialog(
     showDelete: Boolean,
     confirmStationDeletion: Boolean,
     onDismiss: () -> Unit,
-    onSyncArtwork: (() -> Unit)? = null,
+    onLookupArtwork: suspend (title: String, streamUrl: String) -> ArtworkLookup,
     onDelete: () -> Unit,
-    onSave: (String, String, String) -> Unit,
+    onSave: (String, String, String, String) -> Unit,
 ) {
     var title by remember(state) { mutableStateOf(state.title) }
     var streamUrl by remember(state) { mutableStateOf(state.streamUrl) }
     var tags by remember(state) { mutableStateOf(state.tags) }
+    var imageUrl by remember(state) { mutableStateOf(state.imageUrl.orEmpty()) }
     var confirmDelete by remember(state) { mutableStateOf(false) }
     var showUrlError by remember(state) { mutableStateOf(false) }
+    var showArtworkError by remember(state) { mutableStateOf(false) }
+    var artworkMessage by remember(state) { mutableStateOf<String?>(null) }
+    var lookingUpArtwork by remember(state) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val trimmedTitle = title.trim()
     val trimmedStreamUrl = streamUrl.trim()
     val hasValidStreamUrl = isValidStreamUrl(trimmedStreamUrl)
+    val hasValidArtworkUrl = imageUrl.isBlank() || isValidImageUrl(imageUrl)
     val textFieldColors = omniTextFieldColors()
     val formattedDateAdded = remember(state.dateAdded) { formatDateAdded(state.dateAdded) }
+    val artworkHint = stringResource(R.string.station_editor_artwork_hint)
+    val artworkError = stringResource(R.string.station_editor_artwork_error)
+    val artworkSearching = stringResource(R.string.toast_artwork_searching)
+    val artworkNotFound = stringResource(R.string.station_editor_artwork_not_found)
+    val artworkUnavailable = stringResource(R.string.station_editor_artwork_unavailable)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -82,13 +97,38 @@ fun StationEditorDialog(
                     },
                     modifier = Modifier.weight(1f),
                 )
-                if (onSyncArtwork != null) {
-                    OmniIconButton(
-                        painter = painterResource(R.drawable.ic_image_search),
-                        onClick = onSyncArtwork,
-                        tint = RadioPrimary,
-                    )
-                }
+                OmniIconButton(
+                    painter = painterResource(R.drawable.ic_image_search),
+                    enabled = !lookingUpArtwork,
+                    tint = RadioPrimary,
+                    onClick = {
+                        if (!lookingUpArtwork) {
+                            lookingUpArtwork = true
+                            artworkMessage = artworkSearching
+                            scope.launch {
+                                val result = runCatching { onLookupArtwork(title, streamUrl) }.getOrNull()
+                                lookingUpArtwork = false
+                                when (result) {
+                                    is ArtworkLookup.Found -> {
+                                        imageUrl = result.imageUrl.take(STATION_IMAGE_URL_MAX_LENGTH)
+                                        showArtworkError = false
+                                        artworkMessage = null
+                                    }
+
+                                    is ArtworkLookup.NoArtwork -> {
+                                        showArtworkError = false
+                                        artworkMessage = artworkUnavailable
+                                    }
+
+                                    else -> {
+                                        showArtworkError = false
+                                        artworkMessage = artworkNotFound
+                                    }
+                                }
+                            }
+                        }
+                    },
+                )
                 if (showDelete) {
                     OmniIconButton(
                         painter = painterResource(R.drawable.ic_delete),
@@ -141,6 +181,46 @@ fun StationEditorDialog(
                     modifier = Modifier.heightIn(min = RadioSizes.textFieldMinHeight).fillMaxWidth(),
                 )
                 OutlinedTextField(
+                    value = imageUrl,
+                    onValueChange = {
+                        imageUrl = it.take(STATION_IMAGE_URL_MAX_LENGTH)
+                        showArtworkError = false
+                        artworkMessage = null
+                    },
+                    singleLine = false,
+                    minLines = 1,
+                    maxLines = 3,
+                    label = { EditableFieldLabel(stringResource(R.string.station_editor_artwork_label)) },
+                    placeholder = { Text("https://...") },
+                    isError = showArtworkError,
+                    supportingText = {
+                        Text(
+                            when {
+                                showArtworkError -> artworkError
+                                artworkMessage != null -> requireNotNull(artworkMessage)
+                                else -> artworkHint
+                            },
+                        )
+                    },
+                    trailingIcon = if (imageUrl.isNotBlank()) {
+                        {
+                            OmniIconButton(
+                                painter = painterResource(R.drawable.ic_close),
+                                onClick = {
+                                    imageUrl = ""
+                                    showArtworkError = false
+                                    artworkMessage = null
+                                },
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    colors = textFieldColors,
+                    modifier = Modifier.heightIn(min = RadioSizes.textFieldMinHeight).fillMaxWidth(),
+                )
+                OutlinedTextField(
                     value = tags,
                     onValueChange = { tags = it.take(STATION_TAGS_INPUT_MAX_LENGTH) },
                     singleLine = false,
@@ -177,10 +257,12 @@ fun StationEditorDialog(
                 OmniPrimaryButton(
                     text = stringResource(R.string.station_editor_save),
                     onClick = {
-                        if (hasValidStreamUrl) {
-                            onSave(trimmedTitle, trimmedStreamUrl, tags)
-                        } else {
+                        if (!hasValidStreamUrl) {
                             showUrlError = true
+                        } else if (!hasValidArtworkUrl) {
+                            showArtworkError = true
+                        } else {
+                            onSave(trimmedTitle, trimmedStreamUrl, tags, imageUrl.trim())
                         }
                     },
                 )
@@ -226,6 +308,8 @@ private fun isValidStreamUrl(streamUrl: String): Boolean {
     val uri = streamUrl.toUri()
     return uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank()
 }
+
+private fun isValidImageUrl(imageUrl: String): Boolean = isValidStreamUrl(imageUrl.trim())
 
 private fun formatDateAdded(dateAdded: String?): String? {
     val value = dateAdded?.takeIf { it.isNotBlank() } ?: return null

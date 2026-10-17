@@ -5,6 +5,7 @@ import omnibeat.app.data.parseStationTags
 import omnibeat.app.data.StationExportData
 import omnibeat.app.model.STATION_STREAM_URL_MAX_LENGTH
 import omnibeat.app.model.STATION_TITLE_MAX_LENGTH
+import omnibeat.app.radio.ArtworkLookup
 import omnibeat.app.radio.RadioBrowserClient
 import omnibeat.app.radio.RadioBrowserFilterOption
 import omnibeat.app.radio.RadioBrowserSearchParams
@@ -52,6 +53,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,6 +96,9 @@ import kotlin.random.Random
 
 /** 距结尾不足这个时长就算「听完」，避免结尾几秒的误差让单集一直显示未听完 */
 private const val EPISODE_COMPLETED_TAIL_MS = 15_000L
+
+/** 批量同步封面时每个电台之间的间隔：查找链最多会打 8 个请求，连着打太密 */
+private const val ARTWORK_SYNC_DELAY_MS = 200L
 
 @Composable
 fun OmniBeatApp() {
@@ -652,6 +657,8 @@ fun OmniBeatApp() {
                 imageUrl = radioStation.imageUrl,
                 isFavorite = false,
                 dateAdded = Instant.now().toString(),
+                // 记住 uuid：之后「查找封面」可以直接按 uuid 精确回查，不用赌 byurl 的精确匹配
+                radioBrowserUuid = radioStation.stationUuid.takeIf { it.isNotBlank() },
             )
         }
 
@@ -743,7 +750,11 @@ fun OmniBeatApp() {
                         podcastRepository.upsertSubscription(
                             subscription.copy(
                                 title = parsed.title,
-                                imageUrl = parsed.imageUrl ?: subscription.imageUrl,
+                                imageUrl = if (subscription.imageUrlManual) {
+                                    subscription.imageUrl
+                                } else {
+                                    parsed.imageUrl ?: subscription.imageUrl
+                                },
                                 lastFetchedAtMs = System.currentTimeMillis(),
                                 episodes = parsed.episodes,
                             ),
@@ -825,7 +836,11 @@ fun OmniBeatApp() {
                             podcastRepository.upsertSubscription(
                                 subscription.copy(
                                     title = parsed.title,
-                                    imageUrl = parsed.imageUrl ?: subscription.imageUrl,
+                                    imageUrl = if (subscription.imageUrlManual) {
+                                    subscription.imageUrl
+                                } else {
+                                    parsed.imageUrl ?: subscription.imageUrl
+                                },
                                     lastFetchedAtMs = System.currentTimeMillis(),
                                     episodes = parsed.episodes,
                                 ),
@@ -997,15 +1012,44 @@ fun OmniBeatApp() {
          * 保存订阅编辑。
          * 地址没变 → 只改标题；地址变了 → 先用新地址拉取解析，成功才替换（进度按 guid 搬过去）。
          */
-        fun savePodcastEdit(subscription: PodcastSubscription, title: String, feedUrl: String) {
+        fun savePodcastEdit(
+            subscription: PodcastSubscription,
+            title: String,
+            feedUrl: String,
+            imageUrl: String,
+        ) {
             if (podcastLoading) return
             podcastError = null
+            val trimmedImageUrl = imageUrl.trim().takeIf { it.isNotBlank() }
+            // 打开编辑弹窗时字段里已经有原封面，只有真的改动过才当作“手动指定”
+            val artworkUnchanged = trimmedImageUrl == subscription.imageUrl?.trim()?.takeIf { it.isNotBlank() }
+            val manualArtwork = if (artworkUnchanged) {
+                subscription.imageUrlManual
+            } else {
+                trimmedImageUrl != null
+            }
+            // 手动填的封面先下一遍：失败只提示，不阻止保存（可能只是当前网络不好）
+            val verifyArtwork: suspend (String) -> Unit = { url ->
+                val loaded = runCatching { StationArtworkCache.refresh(context, url) }.getOrDefault(false)
+                if (!loaded) {
+                    Toast.makeText(
+                        context,
+                        resources.appString(R.string.toast_artwork_unavailable),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
             if (feedUrl == subscription.feedUrl) {
                 scope.launch {
                     podcastRepository.replaceSubscription(
                         previousFeedUrl = subscription.feedUrl,
-                        subscription = subscription.copy(title = title),
+                        subscription = subscription.copy(
+                            title = title,
+                            imageUrl = trimmedImageUrl,
+                            imageUrlManual = manualArtwork,
+                        ),
                     )
+                    trimmedImageUrl?.let { verifyArtwork(it) }
                 }
                 editPodcastUrl = null
                 return
@@ -1021,13 +1065,15 @@ fun OmniBeatApp() {
                                 feedUrl = feedUrl,
                                 // 没改过标题就跟随新源的标题，改过则保留用户填的
                                 title = if (title == subscription.title) parsed.title else title,
-                                imageUrl = parsed.imageUrl,
+                                imageUrl = trimmedImageUrl ?: parsed.imageUrl,
+                                imageUrlManual = manualArtwork,
                                 lastFetchedAtMs = System.currentTimeMillis(),
                                 episodes = parsed.episodes,
                             ),
                         )
                         if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = feedUrl
                         editPodcastUrl = null
+                        trimmedImageUrl?.let { verifyArtwork(it) }
                     }
                     .onFailure { error ->
                         podcastError = resources.appString(
@@ -1066,21 +1112,47 @@ fun OmniBeatApp() {
             }
         }
 
-        suspend fun refreshStationArtwork(station: Station): Boolean {
-            val imageUrl = radioBrowserClient.findStationByStreamUrl(station.streamUrl)
-                ?.imageUrl
-                ?.takeIf { it.isNotBlank() }
-                ?: return false
-            StationArtworkCache.refresh(context, imageUrl)
-            val currentStation = stations.firstOrNull { it.id == station.id } ?: return false
-            if (currentStation.streamUrl != station.streamUrl) return false
-            if (currentStation.imageUrl != imageUrl) {
-                val nextStations = stations.map { savedStation ->
-                    if (savedStation.id == station.id) savedStation.copy(imageUrl = imageUrl) else savedStation
-                }
-                stations = nextStations
-                repository.saveStations(nextStations)
+        /**
+         * 找封面的统一入口：先查 Radio Browser（uuid → 流地址等价写法 → 名称），
+         * 再用 [StationArtworkCache.refresh] 真正下回来验证一次——只有能显示出来的地址才算找到。
+         */
+        suspend fun findStationArtwork(title: String, streamUrl: String, stationUuid: String?): String? {
+            val lookup = radioBrowserClient.resolveArtwork(title, streamUrl, stationUuid)
+            val imageUrl = (lookup as? ArtworkLookup.Found)?.imageUrl ?: return null
+            return imageUrl.takeIf { StationArtworkCache.refresh(context, imageUrl) }
+        }
+
+        /** 手动填的地址先下一遍：失败只提示，不阻止保存 */
+        suspend fun verifyArtwork(imageUrl: String) {
+            val loaded = runCatching { StationArtworkCache.refresh(context, imageUrl) }.getOrDefault(false)
+            if (!loaded) {
+                Toast.makeText(
+                    context,
+                    resources.appString(R.string.toast_artwork_unavailable),
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
+        }
+
+        /** 自动抓到的封面只在没被用户手动指定时才写回 */
+        suspend fun applyStationArtwork(stationId: String, imageUrl: String) {
+            val current = stations.firstOrNull { it.id == stationId } ?: return
+            if (current.imageUrlManual || current.imageUrl == imageUrl) return
+            val nextStations = stations.map { savedStation ->
+                if (savedStation.id == stationId) savedStation.copy(imageUrl = imageUrl) else savedStation
+            }
+            stations = nextStations
+            repository.saveStations(nextStations)
+        }
+
+        suspend fun refreshStationArtwork(station: Station): Boolean {
+            if (station.imageUrlManual) return false
+            val imageUrl = findStationArtwork(
+                station.title,
+                station.streamUrl,
+                station.radioBrowserUuid,
+            ) ?: return false
+            applyStationArtwork(station.id, imageUrl)
             return true
         }
 
@@ -1092,11 +1164,13 @@ fun OmniBeatApp() {
                 var updatedCount = 0
                 try {
                     stations.toList().forEach { station ->
+                        if (station.imageUrlManual) return@forEach
                         runCatching {
                             if (refreshStationArtwork(station)) updatedCount++
                         }.onFailure { error ->
                             if (error is CancellationException) throw error
                         }
+                        delay(ARTWORK_SYNC_DELAY_MS)
                     }
                     Toast.makeText(
                         context,
@@ -1110,50 +1184,16 @@ fun OmniBeatApp() {
         }
 
         fun syncNewStationArtwork(station: Station) {
-            if (!showStationArtwork || !station.imageUrl.isNullOrBlank()) return
+            if (!showStationArtwork || station.imageUrlManual) return
+            if (!station.imageUrl.isNullOrBlank()) return
             scope.launch {
-                runCatching {
-                    withContext(Dispatchers.IO) {
-                        radioBrowserClient.findStationByStreamUrl(station.streamUrl)
-                            ?.imageUrl
-                            ?.takeIf { it.isNotBlank() }
+                runCatching { findStationArtwork(station.title, station.streamUrl, station.radioBrowserUuid) }
+                    .onSuccess { imageUrl ->
+                        if (imageUrl != null) applyStationArtwork(station.id, imageUrl)
                     }
-                }.onSuccess { imageUrl ->
-                    if (imageUrl == null) return@onSuccess
-                    val nextStations = stations.map { savedStation ->
-                        if (savedStation.id == station.id && savedStation.imageUrl.isNullOrBlank()) {
-                            savedStation.copy(imageUrl = imageUrl)
-                        } else {
-                            savedStation
-                        }
+                    .onFailure { error ->
+                        if (error is CancellationException) throw error
                     }
-                    stations = nextStations
-                    repository.saveStations(nextStations)
-                }
-            }
-        }
-
-        fun syncStationArtwork(index: Int) {
-            val station = stations.getOrNull(index) ?: return
-            if (!hasInternetOrToast()) return
-            Toast.makeText(context, resources.appString(R.string.toast_artwork_searching), Toast.LENGTH_SHORT).show()
-            scope.launch {
-                runCatching {
-                    refreshStationArtwork(station)
-                }.onSuccess { refreshed ->
-                    if (!refreshed) {
-                        Toast.makeText(context, resources.appString(R.string.toast_artwork_not_found), Toast.LENGTH_SHORT).show()
-                        return@onSuccess
-                    }
-                    Toast.makeText(context, resources.appString(R.string.toast_artwork_synced), Toast.LENGTH_SHORT).show()
-                }.onFailure { error ->
-                    if (error is CancellationException) throw error
-                    Toast.makeText(
-                        context,
-                        resources.appString(R.string.toast_artwork_sync_failed, error.message.orEmpty()),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
             }
         }
 
@@ -1466,6 +1506,7 @@ fun OmniBeatApp() {
                                 streamUrl = "",
                                 tags = "",
                                 dateAdded = null,
+                                imageUrl = null,
                             )
                         },
                         onSearchOnline = {
@@ -1822,7 +1863,9 @@ fun OmniBeatApp() {
                 subscription = subscription,
                 loading = podcastLoading,
                 errorText = podcastError,
-                onSave = { title, feedUrl -> savePodcastEdit(subscription, title, feedUrl) },
+                onSave = { title, feedUrl, imageUrl ->
+                    savePodcastEdit(subscription, title, feedUrl, imageUrl)
+                },
                 onDismiss = {
                     if (!podcastLoading) {
                         editPodcastUrl = null
@@ -1847,13 +1890,18 @@ fun OmniBeatApp() {
         }
 
         editorState?.let { state ->
+            val editingStation = state.stationIndex?.let { stations.getOrNull(it) }
             StationEditorDialog(
                 state = state,
                 showDelete = state.stationIndex != null,
                 confirmStationDeletion = confirmStationDeletion,
                 onDismiss = { editorState = null },
-                onSyncArtwork = state.stationIndex?.let { stationIndex ->
-                    { syncStationArtwork(stationIndex) }
+                onLookupArtwork = { title, streamUrl ->
+                    radioBrowserClient.resolveArtwork(
+                        title = title,
+                        streamUrl = streamUrl,
+                        stationUuid = editingStation?.radioBrowserUuid,
+                    )
                 },
                 onDelete = {
                     val index = state.stationIndex ?: return@StationEditorDialog
@@ -1865,7 +1913,7 @@ fun OmniBeatApp() {
                     scope.launch { repository.saveStations(nextStations) }
                     editorState = null
                 },
-                onSave = { title, streamUrl, tags ->
+                onSave = { title, streamUrl, tags, imageUrl ->
                     val trimmedStreamUrl = streamUrl.trim()
                     val cleanedStreamUrl = if (state.stationIndex == null && removeTrackingParametersFromUrls) {
                         removeTrackingParameters(trimmedStreamUrl)
@@ -1873,14 +1921,24 @@ fun OmniBeatApp() {
                         trimmedStreamUrl
                     }
                     val savedStreamUrl = normalizeStreamUrl(cleanedStreamUrl)
+                    val trimmedImageUrl = imageUrl.trim().takeIf { it.isNotBlank() }
+                    val previousImageUrl = editingStation?.imageUrl
+                    // 只是改了标题/标签时不能把原有的自动封面“升级”成手动，否则它会拒绝后续自动更新
+                    val artworkUnchanged = trimmedImageUrl == previousImageUrl
+                    val manualArtwork = if (artworkUnchanged) {
+                        editingStation?.imageUrlManual ?: false
+                    } else {
+                        trimmedImageUrl != null
+                    }
                     val updatedStation = Station(
-                        id = state.stationIndex?.let { stations[it].id } ?: UUID.randomUUID().toString(),
+                        id = editingStation?.id ?: UUID.randomUUID().toString(),
                         title = title.trim().ifBlank { savedStreamUrl.take(STATION_TITLE_MAX_LENGTH) },
                         streamUrl = savedStreamUrl,
                         tags = parseStationTags(tags),
-                        imageUrl = state.stationIndex?.let { stations[it].imageUrl },
-                        isFavorite = state.stationIndex?.let { stations[it].isFavorite } ?: false,
-                        dateAdded = state.stationIndex?.let { stations[it].dateAdded } ?: Instant.now().toString(),
+                        imageUrl = trimmedImageUrl,
+                        isFavorite = editingStation?.isFavorite ?: false,
+                        dateAdded = editingStation?.dateAdded ?: Instant.now().toString(),
+                        imageUrlManual = manualArtwork,
                     )
                     val nextStations = stations.toMutableList().also { list ->
                         val index = state.stationIndex
@@ -1891,9 +1949,14 @@ fun OmniBeatApp() {
                         }
                     }
                     stations = nextStations
-                    scope.launch { repository.saveStations(nextStations) }
-                    if (state.stationIndex == null) {
-                        syncNewStationArtwork(updatedStation)
+                    scope.launch {
+                        repository.saveStations(nextStations)
+                        when {
+                            trimmedImageUrl != null && trimmedImageUrl != previousImageUrl ->
+                                verifyArtwork(trimmedImageUrl)
+
+                            trimmedImageUrl == null -> syncNewStationArtwork(updatedStation)
+                        }
                     }
                     editorState = null
                 },

@@ -192,6 +192,15 @@
     <string name="station_editor_title_label">Название</string>
     <string name="station_editor_stream_url_label">URL стрима</string>
     <string name="station_editor_url_error">Укажите корректный URL с http или https</string>
+    <string name="station_editor_artwork_label">URL обложки</string>
+    <string name="station_editor_artwork_hint">Оставьте пустым для автопоиска обложки</string>
+    <string name="station_editor_artwork_error">Укажите корректный URL изображения с http или https</string>
+    <string name="station_editor_artwork_not_found">Станция не найдена в Radio Browser</string>
+    <string name="station_editor_artwork_unavailable">Станция найдена, но подходящей обложки у неё нет</string>
+    <string name="podcast_artwork_label">URL обложки</string>
+    <string name="podcast_artwork_hint">Оставьте пустым, чтобы использовать обложку из фида</string>
+    <string name="podcast_artwork_error">Укажите корректный URL изображения с http или https</string>
+    <string name="toast_artwork_unavailable">Не удалось загрузить обложку по этому адресу</string>
     <string name="station_editor_tags_label">Теги</string>
     <string name="station_editor_date_added_label">Дата добавления</string>
     <string name="station_editor_save">Сохранить</string>

@@ -54,6 +54,9 @@ import kotlinx.coroutines.flow.collectLatest
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
+/** 封面缓存的目标像素按此步长归一，避免行高差 1px 就换缓存 key */
+private const val ARTWORK_SIZE_STEP = 32
+
 @Composable
 fun EmptyStationsState(modifier: Modifier = Modifier) {
     Box(
@@ -296,18 +299,25 @@ internal fun StationArtwork(
     val context = LocalContext.current.applicationContext
     val normalizedUrl = imageUrl?.takeIf { it.isNotBlank() }
     var artworkSize by remember { mutableStateOf(IntSize.Zero) }
-    var imageBitmap by remember(normalizedUrl, artworkSize) {
-        mutableStateOf(normalizedUrl?.let { url ->
-            StationArtworkCache.get(url, artworkSize.width, artworkSize.height)
-        })
+    // 尺寸按 32px 归一：缓存 key 跟着实际像素抖动会导致每次都 miss、反复解码磁盘文件
+    val targetSize = remember(artworkSize) {
+        val longest = maxOf(artworkSize.width, artworkSize.height)
+        if (longest <= 0) 0 else ((longest + ARTWORK_SIZE_STEP - 1) / ARTWORK_SIZE_STEP) * ARTWORK_SIZE_STEP
+    }
+    var imageBitmap by remember(normalizedUrl, targetSize) {
+        mutableStateOf(
+            normalizedUrl?.takeIf { targetSize > 0 }?.let { url ->
+                StationArtworkCache.get(url, targetSize, targetSize)
+            },
+        )
     }
 
-    LaunchedEffect(normalizedUrl, artworkSize) {
-        if (normalizedUrl == null || artworkSize.width <= 0 || artworkSize.height <= 0) {
+    LaunchedEffect(normalizedUrl, targetSize) {
+        if (normalizedUrl == null || targetSize <= 0) {
             return@LaunchedEffect
         }
         StationArtworkCache.updates(normalizedUrl).collectLatest {
-            StationArtworkCache.load(context, normalizedUrl, artworkSize.width, artworkSize.height).collect {
+            StationArtworkCache.load(context, normalizedUrl, targetSize, targetSize).collect {
                 imageBitmap = it
             }
         }
