@@ -261,6 +261,30 @@ class PodcastRepository(private val context: Context) {
         }
     }
 
+    /**
+     * 清掉所有单集的 localFileName（「全部删除下载」用）。
+     * 单次 edit 一次搞定——循环调 [setEpisodeLocalFile] 会是 N 次整文件重写。
+     * 没有任何下载标记时提前返回，不写盘。
+     */
+    suspend fun clearAllLocalFiles() {
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            if (current.none { subscription -> subscription.episodes.any { it.localFileName != null } }) {
+                return@edit
+            }
+            val next = current.map { subscription ->
+                if (subscription.episodes.none { it.localFileName != null }) {
+                    subscription
+                } else {
+                    subscription.copy(
+                        episodes = subscription.episodes.map { it.copy(localFileName = null) },
+                    )
+                }
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
     /** 置顶 / 取消置顶整个订阅；值没变化就不整表重写 */
     suspend fun setSubscriptionPinned(feedUrl: String, pinned: Boolean) {
         context.podcastDataStore.edit { preferences ->

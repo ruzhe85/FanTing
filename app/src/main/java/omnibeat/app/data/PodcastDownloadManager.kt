@@ -150,6 +150,43 @@ object PodcastDownloadManager {
         }
     }
 
+    /**
+     * 某个已下载单集占用的磁盘字节：正文件 + HLS 的分片目录（`.segments` 递归求和）。
+     * 下载管理页的总占用 = 各期求和；纯本地实时值，删除/新增后经数据回流即刷新。
+     */
+    fun episodeDownloadedBytes(context: Context, localFileName: String): Long {
+        val dir = audioDir(context)
+        val main = File(dir, localFileName).length()
+        val segments = File(dir, "$localFileName$SEGMENTS_DIR_SUFFIX")
+        val segmentsBytes = if (segments.isDirectory) {
+            segments.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        } else {
+            0L
+        }
+        return main + segmentsBytes
+    }
+
+    /**
+     * 全部删除：删所有已落盘的音频（HLS 连同分片目录）+ 一次清掉所有 localFileName 标记。
+     * 先删文件再清标记，不出现「标记没了文件还在」；不动下载中任务
+     * （进行中的任务完成后会重新写回标记，属正确行为）。
+     */
+    fun deleteAllDownloads(context: Context, subscriptions: List<PodcastSubscription>) {
+        val appContext = context.applicationContext
+        val fileNames = subscriptions
+            .flatMap { it.episodes }
+            .mapNotNull { it.localFileName }
+            .distinct()
+        scope.launch {
+            val dir = audioDir(appContext)
+            fileNames.forEach { name ->
+                File(dir, name).delete()
+                File(dir, "$name$SEGMENTS_DIR_SUFFIX").deleteRecursively()
+            }
+            PodcastRepository(appContext).clearAllLocalFiles()
+        }
+    }
+
     // ---------------------------------------------------------------- 下载实现
 
     /** 直文件：流式写 `.part`，完成才 rename 成正名 */

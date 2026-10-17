@@ -155,6 +155,14 @@ fun OmniBeatApp() {
     }
     // 播客下载状态（guid → 下载中/失败）；已下载与否看 episode.localFileName
     val podcastDownloadStates by PodcastDownloadManager.states.collectAsState()
+    // 已下载的节目：跨订阅聚合，按发布时间倒序。纯读派生，下载管理页与顶栏入口都用它。
+    val downloadedEpisodes = remember(podcastSubscriptions) {
+        podcastSubscriptions
+            .flatMap { subscription ->
+                subscription.episodes.filter { it.localFileName != null }.map { subscription to it }
+            }
+            .sortedByDescending { it.second.publishedAtMs }
+    }
     val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
     var translationLoaded by remember(repository) { mutableStateOf(false) }
     LaunchedEffect(repository) {
@@ -288,6 +296,8 @@ fun OmniBeatApp() {
         var pendingMobileDataDownload by remember {
             mutableStateOf<Pair<PodcastSubscription, PodcastEpisode>?>(null)
         }
+        // 下载管理页是否打开（播客 Tab 内的二级页，顶栏图标进入）；与 openPodcastUrl 互斥显示
+        var downloadsOpen by remember { mutableStateOf(false) }
         // 期数页的本地搜索：只过滤当前订阅的期数，不联网
         var podcastEpisodeSearchOpen by remember { mutableStateOf(false) }
         var podcastEpisodeSearchQuery by remember { mutableStateOf("") }
@@ -1835,6 +1845,19 @@ fun OmniBeatApp() {
                             scope.launch { podcastRepository.saveEpisodesOldestFirst(oldest) }
                         },
                         onSearchPodcastEpisodes = { podcastEpisodeSearchOpen = true },
+                        // 下载管理页入口：播客订阅列表页（非期数页 / 非搜索 / 未在下载页）
+                        // 且有已下载节目时，才在「+」左边渲染下载图标；一个都没有就不占位
+                        onOpenDownloads = if (
+                            selectedPage == MainPage.Podcasts &&
+                            openPodcastUrl == null &&
+                            !podcastSearchOpen &&
+                            !downloadsOpen &&
+                            downloadedEpisodes.isNotEmpty()
+                        ) {
+                            { downloadsOpen = true }
+                        } else {
+                            null
+                        },
                         onlineSearchControl = if (selectedPage == MainPage.SearchOnline) {
                             { controlModifier ->
                                 SearchOptionsTopBarControl(
@@ -1967,6 +1990,23 @@ fun OmniBeatApp() {
                                         onExportDownload = { subscription, episode ->
                                             exportDownloadedEpisode(subscription, episode)
                                         },
+                                        downloadedEpisodes = downloadedEpisodes,
+                                        downloadsOpen = downloadsOpen,
+                                        onOpenDownloads = { downloadsOpen = true },
+                                        onCloseDownloads = { downloadsOpen = false },
+                                        onDeleteAllDownloads = {
+                                            PodcastDownloadManager.deleteAllDownloads(
+                                                context,
+                                                podcastSubscriptions,
+                                            )
+                                            Toast.makeText(
+                                                context,
+                                                resources.appString(
+                                                    R.string.toast_downloads_cleared,
+                                                ),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        },
                                     )
                                 },
                                 podcastContent = { contentModifier ->
@@ -2060,6 +2100,23 @@ fun OmniBeatApp() {
                                         },
                                         onExportDownload = { subscription, episode ->
                                             exportDownloadedEpisode(subscription, episode)
+                                        },
+                                        downloadedEpisodes = downloadedEpisodes,
+                                        downloadsOpen = downloadsOpen,
+                                        onOpenDownloads = { downloadsOpen = true },
+                                        onCloseDownloads = { downloadsOpen = false },
+                                        onDeleteAllDownloads = {
+                                            PodcastDownloadManager.deleteAllDownloads(
+                                                context,
+                                                podcastSubscriptions,
+                                            )
+                                            Toast.makeText(
+                                                context,
+                                                resources.appString(
+                                                    R.string.toast_downloads_cleared,
+                                                ),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
                                         },
                                         onEditSubscription = {
                                             podcastError = null

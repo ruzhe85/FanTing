@@ -48,6 +48,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import omnibeat.app.R
+import omnibeat.app.data.PodcastDownloadManager
 import omnibeat.app.data.PodcastDownloadState
 import omnibeat.app.model.PODCAST_FEED_URL_MAX_LENGTH
 import omnibeat.app.model.PODCAST_IMAGE_URL_MAX_LENGTH
@@ -78,8 +80,8 @@ import java.util.Locale
  */
 
 /**
- * 播客 Tab 的内容分发：收藏列表 / 订阅列表 / 某个订阅的期数列表。
- * 期数页与收藏页都显示返回箭头，同时吞掉系统返回键（优先于外层抽屉/翻页的 BackHandler）。
+ * 播客 Tab 的内容分发：期数列表 / 下载管理页 / 订阅列表。
+ * 期数页与下载管理页都显示返回箭头，同时吞掉系统返回键（优先于外层抽屉/翻页的 BackHandler）。
  */
 @Composable
 fun PodcastTabContent(
@@ -111,6 +113,12 @@ fun PodcastTabContent(
     onCancelDownload: (PodcastEpisode) -> Unit = {},
     onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    /** 下载管理页：跨订阅已下载列表（OmniBeatApp 派生）与打开状态 */
+    downloadedEpisodes: List<Pair<PodcastSubscription, PodcastEpisode>> = emptyList(),
+    downloadsOpen: Boolean = false,
+    onOpenDownloads: () -> Unit = {},
+    onCloseDownloads: () -> Unit = {},
+    onDeleteAllDownloads: () -> Unit = {},
     onEditSubscription: (PodcastSubscription) -> Unit,
     onPlayLatest: (PodcastSubscription) -> Unit,
     onPlayEpisode: (PodcastSubscription, PodcastEpisode) -> Unit,
@@ -141,6 +149,25 @@ fun PodcastTabContent(
                 onCancelDownload = onCancelDownload,
                 onDeleteDownload = onDeleteDownload,
                 onExportDownload = onExportDownload,
+                modifier = modifier,
+            )
+        }
+
+        // 下载管理页：跨订阅聚合，优先于订阅列表
+        downloadsOpen -> {
+            BackHandler { onCloseDownloads() }
+            DownloadsPage(
+                downloads = downloadedEpisodes,
+                playingEpisodeId = playingEpisodeId,
+                onBack = onCloseDownloads,
+                onEpisodeClick = onPlayEpisode,
+                onToggleFavorite = onToggleFavorite,
+                downloadStates = downloadStates,
+                onDownload = onDownload,
+                onCancelDownload = onCancelDownload,
+                onDeleteDownload = onDeleteDownload,
+                onExportDownload = onExportDownload,
+                onDeleteAll = onDeleteAllDownloads,
                 modifier = modifier,
             )
         }
@@ -885,6 +912,165 @@ fun FavoriteEpisodesList(
     }
 }
 
+/**
+ * 下载管理页（第二阶段·范围 A）：跨订阅的已下载单集列表。
+ *
+ * 纯本地数据（localFileName 非空的期），所以**不做下拉刷新**——没有可刷的东西。
+ * 头部给总数与磁盘占用，右上角「全部删除」（确认弹窗）；列表复用期数行，
+ * meta 行带订阅名且过长滚动（跨订阅时分不清是谁家的节目）。
+ */
+@Composable
+fun DownloadsPage(
+    downloads: List<Pair<PodcastSubscription, PodcastEpisode>>,
+    playingEpisodeId: String?,
+    onBack: () -> Unit,
+    onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
+    onToggleFavorite: (PodcastSubscription, PodcastEpisode) -> Unit,
+    downloadStates: Map<String, PodcastDownloadState>,
+    onDownload: (PodcastSubscription, PodcastEpisode) -> Unit,
+    onCancelDownload: (PodcastEpisode) -> Unit,
+    onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit,
+    onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit,
+    onDeleteAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var confirmDeleteAll by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // 占用是文件系统实时值：按当前列表算一次；删除/新增经 DataStore 回流触发重组才重算
+    val totalBytes = remember(downloads) {
+        downloads.sumOf { (_, episode) ->
+            episode.localFileName?.let { name ->
+                PodcastDownloadManager.episodeDownloadedBytes(context, name)
+            } ?: 0L
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = RadioSpacing.extraSmall,
+                    end = RadioSpacing.small,
+                    top = RadioSpacing.small,
+                    bottom = RadioSpacing.small,
+                ),
+        ) {
+            // 轻量返回键：与期数页同款，把宽度让给标题
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_back),
+                    contentDescription = stringResource(R.string.action_back),
+                    tint = RadioText,
+                    modifier = Modifier.size(RadioSizes.iconCompact),
+                )
+            }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = RadioSpacing.medium),
+            ) {
+                Text(
+                    text = stringResource(R.string.downloads_title),
+                    color = RadioText,
+                    fontSize = RadioTextSizes.stationTitle,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.downloads_summary,
+                        downloads.size,
+                        formatFileSize(totalBytes),
+                    ),
+                    color = RadioTextMuted,
+                    fontSize = RadioTextSizes.caption,
+                    maxLines = 1,
+                )
+            }
+            // 全部删除：危险操作，确认弹窗后执行
+            IconButton(
+                onClick = { confirmDeleteAll = true },
+                modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_delete),
+                    contentDescription = stringResource(R.string.downloads_delete_all),
+                    tint = Color(0xFFFF5C6C),
+                    modifier = Modifier.size(RadioSizes.iconCompact),
+                )
+            }
+        }
+
+        if (downloads.isEmpty()) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = RadioSpacing.page),
+            ) {
+                Text(
+                    text = stringResource(R.string.downloads_empty),
+                    color = RadioTextMuted,
+                    fontSize = RadioTextSizes.bodyLarge,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    horizontal = RadioSpacing.medium,
+                    vertical = RadioSpacing.small,
+                ),
+                verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+            ) {
+                // key 带上 feedUrl：guid 只在同一订阅内保证唯一，跨订阅理论上会撞
+                items(downloads, key = { it.first.feedUrl + "|" + it.second.guid }) { (subscription, episode) ->
+                    PodcastEpisodeRow(
+                        episode = episode,
+                        playing = episode.guid == playingEpisodeId,
+                        onClick = { onEpisodeClick(subscription, episode) },
+                        onToggleFavorite = { onToggleFavorite(subscription, episode) },
+                        // 跨订阅列表：meta 行带订阅名，过长滚动只一行
+                        metaPrefix = subscription.title,
+                        marqueeMeta = true,
+                        downloadState = downloadStates[episode.guid],
+                        onDownload = { onDownload(subscription, episode) },
+                        onCancelDownload = { onCancelDownload(episode) },
+                        onDeleteDownload = { onDeleteDownload(subscription, episode) },
+                        onExportDownload = { onExportDownload(subscription, episode) },
+                    )
+                }
+            }
+        }
+    }
+
+    if (confirmDeleteAll) {
+        OmniConfirmDialog(
+            title = stringResource(R.string.dialog_delete_all_downloads_title),
+            text = stringResource(
+                R.string.dialog_delete_all_downloads_text,
+                downloads.size,
+                formatFileSize(totalBytes),
+            ),
+            confirmText = stringResource(R.string.downloads_delete_all),
+            destructive = true,
+            onDismiss = { confirmDeleteAll = false },
+            onConfirm = {
+                confirmDeleteAll = false
+                onDeleteAll()
+            },
+        )
+    }
+}
+
 @Composable
 private fun PodcastEpisodeRow(
     episode: PodcastEpisode,
@@ -896,10 +1082,15 @@ private fun PodcastEpisodeRow(
     onCancelDownload: (() -> Unit)? = null,
     onDeleteDownload: (() -> Unit)? = null,
     onExportDownload: (() -> Unit)? = null,
+    /** 下载管理页用：meta 行最前拼接订阅名（跨订阅列表分清是谁家的节目） */
+    metaPrefix: String? = null,
+    /** meta 行过长时跑马灯滚动（仍只一行）；false 维持省略号 */
+    marqueeMeta: Boolean = false,
 ) {
     // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完。
     // 有总长时显示「百分比 + 当前/总长」——一眼看出听到哪儿；总长拿不到
-    // （feed 没给 durationSec）就只显示当前进度。
+    // （feed 没给 durationSec）就只显示当前进度。百分比打满 100% 时只给
+    // 「100%」：满进度再报当前/总长是纯噪音。
     val currentSec = (episode.positionMs / 1000L).toInt()
     val totalSec = episode.durationSec
     val progressHasTotal = episode.positionMs > 0L && totalSec > 0
@@ -908,12 +1099,16 @@ private fun PodcastEpisodeRow(
             val percent = (episode.positionMs * 100 / (totalSec * 1000L))
                 .toInt()
                 .coerceIn(0, 100)
-            stringResource(
-                R.string.podcast_listened_progress_with_total,
-                percent,
-                formatDuration(currentSec),
-                formatDuration(totalSec),
-            )
+            if (percent >= 100) {
+                stringResource(R.string.podcast_listened_progress_full)
+            } else {
+                stringResource(
+                    R.string.podcast_listened_progress_with_total,
+                    percent,
+                    formatDuration(currentSec),
+                    formatDuration(totalSec),
+                )
+            }
         }
 
         episode.positionMs > 0L -> stringResource(
@@ -924,8 +1119,9 @@ private fun PodcastEpisodeRow(
         episode.completed -> stringResource(R.string.podcast_completed)
         else -> ""
     }
-    // 进度文案里已带总长时不再单独显示一份，避免「45:00 · 已听 28% 12:34/45:00」重复
-    val meta = listOf(
+    // 进度文案里已带总长时不再单独显示一份，避免「45:00 · 28% 12:34/45:00」重复
+    val meta = listOfNotNull(
+        metaPrefix?.takeIf { it.isNotBlank() },
         formatEpisodeDate(episode.publishedAtMs),
         if (progressHasTotal) "" else formatDuration(totalSec),
         progressText,
@@ -960,7 +1156,17 @@ private fun PodcastEpisodeRow(
                     color = RadioTextMuted,
                     fontSize = RadioTextSizes.caption,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    // 下载管理页的 meta 带订阅名，容易超长：开启跑马灯滚动而不是截断
+                    overflow = if (marqueeMeta) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    softWrap = false,
+                    modifier = if (marqueeMeta) {
+                        Modifier.basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            repeatDelayMillis = 1_500,
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
@@ -1092,21 +1298,26 @@ private fun EpisodeDownloadButton(
                     onDismissRequest = { menuExpanded = false },
                     containerColor = RadioSurface,
                 ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.podcast_download_export)) },
-                        leadingIcon = {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_file_export),
-                                contentDescription = null,
-                                tint = RadioTextMuted,
-                                modifier = Modifier.size(RadioSizes.iconInline),
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onExportDownload()
-                        },
-                    )
+                    // HLS 源的下载物是「播放列表 + 分片目录」：单独导出 playlist 是残废的
+                    // （分片没带走，出去放不了），所以只给删除；直文件源才给导出
+                    val hlsDownload = episode.localFileName?.endsWith(".m3u8") == true
+                    if (!hlsDownload) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.podcast_download_export)) },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_file_export),
+                                    contentDescription = null,
+                                    tint = RadioTextMuted,
+                                    modifier = Modifier.size(RadioSizes.iconInline),
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onExportDownload()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.podcast_download_delete)) },
                         leadingIcon = {
@@ -1428,4 +1639,18 @@ private fun formatDuration(seconds: Int): String {
     } else {
         String.format(Locale.US, "%d:%02d", minutes, secs)
     }
+}
+
+/**
+ * 文件大小的人读格式（下载管理页占用用）：B / KB / MB / GB，一位小数。
+ * 小于 1KB 按整数 B 显示（"512 B" 比 "512.0 B" 干净）。
+ */
+private fun formatFileSize(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024) return String.format(Locale.US, "%.1f KB", kb)
+    val mb = kb / 1024
+    if (mb < 1024) return String.format(Locale.US, "%.1f MB", mb)
+    val gb = mb / 1024
+    return String.format(Locale.US, "%.1f GB", gb)
 }

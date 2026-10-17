@@ -1129,6 +1129,7 @@ class PlaybackService : MediaLibraryService() {
         private const val EXTRA_EPISODE_TITLE = "episode_title"
         private const val EXTRA_EPISODE_STREAM_URL = "episode_stream_url"
         private const val EXTRA_EPISODE_IMAGE_URL = "episode_image_url"
+        private const val EXTRA_EPISODE_ARTIST = "episode_artist"
         private const val EXTRA_EPISODE_POSITION_MS = "episode_position_ms"
         private const val EXTRA_EPISODE_SPEED = "episode_speed"
         private const val EXTRA_SEEK_POSITION_MS = "seek_position_ms"
@@ -1191,6 +1192,7 @@ class PlaybackService : MediaLibraryService() {
                     .putExtra(EXTRA_EPISODE_TITLE, episode.title)
                     .putExtra(EXTRA_EPISODE_STREAM_URL, episode.streamUrl)
                     .putExtra(EXTRA_EPISODE_IMAGE_URL, episode.imageUrl.orEmpty())
+                    .putExtra(EXTRA_EPISODE_ARTIST, episode.artist.orEmpty())
                     .putExtra(EXTRA_EPISODE_POSITION_MS, startPositionMs)
                     .putExtra(EXTRA_EPISODE_SPEED, speed),
             )
@@ -1262,6 +1264,9 @@ class PlaybackService : MediaLibraryService() {
                 streamUrl = streamUrl,
                 tags = emptyList(),
                 imageUrl = extras?.getString(EXTRA_EPISODE_IMAGE_URL)?.trim()?.takeIf { it.isNotBlank() },
+                // 歌手位：播客单集挂订阅名（通知/锁屏显示「单集标题 / 播客名」）。
+                // 必须经 extras 过界——UI 设的 artist 不到这里，系统播放栏就是空的
+                artist = extras?.getString(EXTRA_EPISODE_ARTIST)?.trim()?.takeIf { it.isNotBlank() },
                 isFavorite = false,
                 dateAdded = "",
             )

@@ -400,7 +400,15 @@
     <string name="podcast_unfinished_count">%1$d 期未听完</string>
     <string name="podcast_listened_progress">已听 %1$s</string>
     <string name="podcast_listened_progress_with_total">%1$d%% %2$s/%3$s</string>
+    <string name="podcast_listened_progress_full">100%</string>
     <string name="podcast_completed">已听完</string>
+    <string name="downloads_title">下载</string>
+    <string name="downloads_summary">%1$d 个节目 · 占用 %2$s</string>
+    <string name="downloads_empty">还没有下载的节目\n点期数行上的下载图标，把节目存到这里</string>
+    <string name="downloads_delete_all">全部删除</string>
+    <string name="dialog_delete_all_downloads_title">删除全部下载？</string>
+    <string name="dialog_delete_all_downloads_text">将删除 %1$d 个节目、释放 %2$s。已下载的音频需要重新下载。</string>
+    <string name="toast_downloads_cleared">已删除全部下载</string>
     <string name="podcast_skip_backward_label">15s</string>
     <string name="podcast_skip_forward_label">30s</string>
     <string name="podcast_edit_title">编辑播客</string>

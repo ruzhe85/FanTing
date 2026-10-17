@@ -71,6 +71,11 @@ fun MainTopBar(
     onPodcastEpisodesOldestFirstChange: (Boolean) -> Unit = {},
     /** 期数页顶栏的搜索入口：在本地过滤当前订阅的全部期数 */
     onSearchPodcastEpisodes: () -> Unit = {},
+    /**
+     * 下载管理页入口：非 null 时在播客订阅列表页「+」左边渲染下载图标（有下载才传）。
+     * 期数页没有「+」，所以不放——用户明确入口是「添加源 icon 左边」。
+     */
+    onOpenDownloads: (() -> Unit)? = null,
     onlineSearchControl: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -219,6 +224,13 @@ fun MainTopBar(
                             onClick = onSearchPodcastEpisodes,
                         )
                     } else {
+                        // 下载管理页入口：放在「+」左边，有下载才渲染（无下载时传 null）
+                        if (onOpenDownloads != null) {
+                            OmniIconButton(
+                                painter = painterResource(R.drawable.ic_download),
+                                onClick = onOpenDownloads,
+                            )
+                        }
                         AddMenuButton(
                             expanded = addMenuExpanded,
                             onExpandedChange = { addMenuExpanded = it },

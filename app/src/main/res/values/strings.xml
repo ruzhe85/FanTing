@@ -400,7 +400,15 @@
     <string name="podcast_unfinished_count">%1$d unfinished</string>
     <string name="podcast_listened_progress">Played %1$s</string>
     <string name="podcast_listened_progress_with_total">%1$d%% %2$s/%3$s</string>
+    <string name="podcast_listened_progress_full">100%</string>
     <string name="podcast_completed">Finished</string>
+    <string name="downloads_title">Downloads</string>
+    <string name="downloads_summary">%1$d episodes · %2$s used</string>
+    <string name="downloads_empty">No downloads yet.\nTap the download icon on an episode to save it here.</string>
+    <string name="downloads_delete_all">Delete all</string>
+    <string name="dialog_delete_all_downloads_title">Delete all downloads?</string>
+    <string name="dialog_delete_all_downloads_text">This deletes %1$d episodes and frees %2$s. Downloaded audio will need to be downloaded again.</string>
+    <string name="toast_downloads_cleared">All downloads deleted</string>
     <string name="podcast_skip_backward_label">15s</string>
     <string name="podcast_skip_forward_label">30s</string>
     <string name="podcast_edit_title">Edit podcast</string>
