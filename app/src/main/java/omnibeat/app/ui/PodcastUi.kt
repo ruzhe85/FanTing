@@ -113,8 +113,8 @@ fun PodcastTabContent(
     onCancelDownload: (PodcastEpisode) -> Unit = {},
     onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
-    /** 下载管理页：跨订阅已下载列表（OmniBeatApp 派生）与打开状态 */
-    downloadedEpisodes: List<Pair<PodcastSubscription, PodcastEpisode>> = emptyList(),
+    /** 下载管理页列表（OmniBeatApp 合并：进行中/失败在前，已下载按发布时间在后） */
+    downloads: List<Pair<PodcastSubscription, PodcastEpisode>> = emptyList(),
     downloadsOpen: Boolean = false,
     onOpenDownloads: () -> Unit = {},
     onCloseDownloads: () -> Unit = {},
@@ -157,7 +157,7 @@ fun PodcastTabContent(
         downloadsOpen -> {
             BackHandler { onCloseDownloads() }
             DownloadsPage(
-                downloads = downloadedEpisodes,
+                downloads = downloads,
                 playingEpisodeId = playingEpisodeId,
                 onBack = onCloseDownloads,
                 onEpisodeClick = onPlayEpisode,
@@ -936,13 +936,21 @@ fun DownloadsPage(
 ) {
     var confirmDeleteAll by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    // 占用是文件系统实时值：按当前列表算一次；删除/新增经 DataStore 回流触发重组才重算
+    // 占用是文件系统实时值：按当前列表算一次；删除/新增经 DataStore 回流触发重组才重算。
+    // 进行中的项还没落盘（localFileName 为 null），只统计已下载的部分。
+    val completedCount = downloads.count { it.second.localFileName != null }
     val totalBytes = remember(downloads) {
         downloads.sumOf { (_, episode) ->
             episode.localFileName?.let { name ->
                 PodcastDownloadManager.episodeDownloadedBytes(context, name)
             } ?: 0L
         }
+    }
+    // 副标题：有已下载才报「N 个节目 · 占用 XX」；只有进行中项时别说「0 个节目」
+    val subtitle = if (completedCount > 0) {
+        stringResource(R.string.downloads_summary, completedCount, formatFileSize(totalBytes))
+    } else {
+        stringResource(R.string.downloads_in_progress, downloads.size)
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -984,27 +992,25 @@ fun DownloadsPage(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = stringResource(
-                        R.string.downloads_summary,
-                        downloads.size,
-                        formatFileSize(totalBytes),
-                    ),
+                    text = subtitle,
                     color = RadioTextMuted,
                     fontSize = RadioTextSizes.caption,
                     maxLines = 1,
                 )
             }
-            // 全部删除：危险操作，确认弹窗后执行
-            IconButton(
-                onClick = { confirmDeleteAll = true },
-                modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_delete),
-                    contentDescription = stringResource(R.string.downloads_delete_all),
-                    tint = Color(0xFFFF5C6C),
-                    modifier = Modifier.size(RadioSizes.iconCompact),
-                )
+            // 全部删除：危险操作，确认弹窗后执行。只有进行中项时隐藏（删了也是空转）
+            if (completedCount > 0) {
+                IconButton(
+                    onClick = { confirmDeleteAll = true },
+                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_delete),
+                        contentDescription = stringResource(R.string.downloads_delete_all),
+                        tint = Color(0xFFFF5C6C),
+                        modifier = Modifier.size(RadioSizes.iconCompact),
+                    )
+                }
             }
         }
 

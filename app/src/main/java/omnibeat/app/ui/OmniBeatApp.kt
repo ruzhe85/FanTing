@@ -10,6 +10,7 @@ import omnibeat.app.radio.RadioBrowserClient
 import omnibeat.app.radio.RadioBrowserFilterOption
 import omnibeat.app.radio.RadioBrowserSearchParams
 
+import android.content.res.Resources
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -162,6 +163,15 @@ fun OmniBeatApp() {
                 subscription.episodes.filter { it.localFileName != null }.map { subscription to it }
             }
             .sortedByDescending { it.second.publishedAtMs }
+    }
+    // 进行中 / 失败待重试的下载（第一个文件落盘前也能在下载管理页看到）
+    val activeDownloads by PodcastDownloadManager.activeDownloads.collectAsState()
+    // 下载管理页列表：进行中/失败的排前面（刚点的下载一眼能找到），已下载的按发布时间跟在后面
+    val downloadsPageItems = remember(downloadedEpisodes, activeDownloads) {
+        val active = activeDownloads.values.filterNot { (_, episode) ->
+            downloadedEpisodes.any { it.second.guid == episode.guid }
+        }
+        active + downloadedEpisodes
     }
     val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
     var translationLoaded by remember(repository) { mutableStateOf(false) }
@@ -1185,6 +1195,17 @@ fun OmniBeatApp() {
             }
         }
 
+        // 下载完成的应用内提示：合并器保证一次下多集时只出一条 toast，不刷屏。
+        // 走应用内 toast 而不是系统通知——播客单集不大、下载一般很快，不值得要通知权限
+        val downloadToaster = remember(context) {
+            DownloadCompletionToaster(resources, context, scope)
+        }
+        LaunchedEffect(Unit) {
+            PodcastDownloadManager.completions.collect { title ->
+                downloadToaster.onCompleted(title)
+            }
+        }
+
         // 进入播客列表页（Tab 页且没打开某个订阅）时按设置自动刷新，同样静默 + 节流。
         // 打开期数页（openPodcastUrl != null）不触发，那边走打开订阅时的单个节流刷新。
         LaunchedEffect(selectedPage, openPodcastUrl) {
@@ -1849,13 +1870,14 @@ fun OmniBeatApp() {
                         },
                         onSearchPodcastEpisodes = { podcastEpisodeSearchOpen = true },
                         // 下载管理页入口：播客订阅列表页（非期数页 / 非搜索 / 未在下载页）
-                        // 且有已下载节目时，才在「+」左边渲染下载图标；一个都没有就不占位
+                        // 且有下载任务或已下载节目时才在「+」左边渲染图标——进行中的下载
+                        // 也要能进管理页看到，否则第一个文件落盘前点了下载哪儿都找不到
                         onOpenDownloads = if (
                             selectedPage == MainPage.Podcasts &&
                             openPodcastUrl == null &&
                             !podcastSearchOpen &&
                             !downloadsOpen &&
-                            downloadedEpisodes.isNotEmpty()
+                            downloadsPageItems.isNotEmpty()
                         ) {
                             { downloadsOpen = true }
                         } else {
@@ -2087,7 +2109,7 @@ fun OmniBeatApp() {
                                         onExportDownload = { subscription, episode ->
                                             exportDownloadedEpisode(subscription, episode)
                                         },
-                                        downloadedEpisodes = downloadedEpisodes,
+                                        downloads = downloadsPageItems,
                                         downloadsOpen = downloadsOpen,
                                         onOpenDownloads = { downloadsOpen = true },
                                         onCloseDownloads = { downloadsOpen = false },
@@ -2439,5 +2461,53 @@ fun OmniBeatApp() {
                 },
             )
         }
+    }
+}
+
+/**
+ * 下载完成提示的合并器。
+ *
+ * 首条完成立即显示（单个下载零延迟）；窗口期内再完成就整体替换成批量文案
+ * （「已下载 N 个节目」）——一次下多集时只出一条 toast，不会一条接一条刷屏。
+ * 纯应用内提示：不要通知权限，杀进程后未展示的完成事件自然丢失（可接受）。
+ */
+private class DownloadCompletionToaster(
+    private val resources: Resources,
+    private val context: Context,
+    private val scope: CoroutineScope,
+) {
+    private val titles = mutableListOf<String>()
+    private var toast: Toast? = null
+    private var windowJob: Job? = null
+
+    fun onCompleted(title: String) {
+        titles.add(title)
+        // 窗口已在跑：只累加，等窗口结束统一替换
+        if (windowJob != null) return
+        toast = Toast.makeText(
+            context,
+            resources.appString(R.string.toast_download_completed, title),
+            Toast.LENGTH_SHORT,
+        ).apply { show() }
+        windowJob = scope.launch {
+            delay(TOAST_WINDOW_MS)
+            val count = titles.size
+            if (count > 1) {
+                toast?.cancel()
+                toast = Toast.makeText(
+                    context,
+                    resources.appString(R.string.toast_download_completed_batch, count),
+                    Toast.LENGTH_SHORT,
+                ).apply { show() }
+            }
+            titles.clear()
+            toast = null
+            windowJob = null
+        }
+    }
+
+    private companion object {
+        /** 合并窗口：多集连续完成在这个时长内只出一条提示 */
+        const val TOAST_WINDOW_MS = 3_000L
     }
 }

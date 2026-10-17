@@ -13,8 +13,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -51,6 +54,7 @@ object PodcastDownloadManager {
     const val AUDIO_DIR_NAME = "podcast_audio"
 
     private const val PART_SUFFIX = ".part"
+    private const val PART_META_SUFFIX = ".part.meta"
     private const val SEGMENTS_DIR_SUFFIX = ".segments"
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 20_000
@@ -65,6 +69,21 @@ object PodcastDownloadManager {
 
     /** guid → 下载状态；UI 收这个 Map 驱动期数行的下载按钮 */
     val states: StateFlow<Map<String, PodcastDownloadState>> = _states.asStateFlow()
+
+    /**
+     * 进行中 / 失败待重试的下载（guid → 订阅 + 单集）。
+     * 下载管理页用它把「还没落盘」的项也列出来——否则第一个文件落盘前，
+     * 用户点了下载却哪儿也看不到（顶栏图标也藏着）。成功 / 取消时移除；
+     * 失败时保留（行上就是重试入口）。
+     */
+    private val _activeDownloads =
+        MutableStateFlow<Map<String, Pair<PodcastSubscription, PodcastEpisode>>>(emptyMap())
+    val activeDownloads: StateFlow<Map<String, Pair<PodcastSubscription, PodcastEpisode>>> =
+        _activeDownloads.asStateFlow()
+
+    /** 下载完成事件（单集标题）：UI 收它做合并 toast，不逐条弹 */
+    private val _completions = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val completions: SharedFlow<String> = _completions.asSharedFlow()
 
     fun stateOf(guid: String): PodcastDownloadState? = states.value[guid]
     fun isDownloading(guid: String): Boolean = jobs.containsKey(guid)
@@ -94,6 +113,8 @@ object PodcastDownloadManager {
         val downloaded = episode.localFileName
         if (downloaded != null && localFileExists(context, downloaded)) return
         val appContext = context.applicationContext
+        // 先登记再进行：下载管理页要能立刻看到「正在下载」的这一项
+        _activeDownloads.update { it + (episode.guid to (subscription to episode)) }
         val job = scope.launch {
             // 已取消的任务就别落地状态，避免取消与启动竞态时留下一个幽灵 spinner
             ensureActive()
@@ -108,6 +129,9 @@ object PodcastDownloadManager {
                     localFileName = fileName,
                 )
                 _states.update { it - episode.guid }
+                _activeDownloads.update { it - episode.guid }
+                // 完成事件交给 UI 合并提示（逐条弹 toast 在大批量下载时是骚扰）
+                _completions.tryEmit(episode.title)
             }.onFailure { error ->
                 val cancelled = error is CancellationException
                 val next = if (cancelled) null else PodcastDownloadState.Failed(error.displayMessage())
@@ -115,16 +139,22 @@ object PodcastDownloadManager {
                     if (next == null) current - episode.guid
                     else current + (episode.guid to next)
                 }
+                // 取消 = 用户主动放弃，从进行中清单移除（.part 留着，重试续传）；
+                // 失败 = 留在清单里，行上就是重试入口
+                if (cancelled) {
+                    _activeDownloads.update { it - episode.guid }
+                }
             }
         }
         jobs[episode.guid] = job
         job.invokeOnCompletion { jobs.remove(episode.guid) }
     }
 
-    /** 取消下载：协程取消 + 清状态；半成品临时文件由下载协程退出时删掉 */
+    /** 取消下载：协程取消 + 清状态；`.part` 半成品保留，重试时按 Range 续传 */
     fun cancel(guid: String) {
         jobs.remove(guid)?.cancel()
         _states.update { it - guid }
+        _activeDownloads.update { it - guid }
     }
 
     /** 删除下载：停任务、删音频（HLS 连同分片目录）、清 episode 上的标记 */
@@ -139,8 +169,11 @@ object PodcastDownloadManager {
         scope.launch {
             episode.localFileName?.let { name ->
                 val dir = audioDir(appContext)
+                // 连半成品一起清：取消中的下载留着 .part 供续传，删除时就该干净了
                 File(dir, name).delete()
                 File(dir, "$name$SEGMENTS_DIR_SUFFIX").deleteRecursively()
+                File(dir, "$name$PART_SUFFIX").delete()
+                File(dir, "$name$PART_META_SUFFIX").delete()
             }
             PodcastRepository(appContext).setEpisodeLocalFile(
                 feedUrl = subscription.feedUrl,
@@ -151,12 +184,14 @@ object PodcastDownloadManager {
     }
 
     /**
-     * 某个已下载单集占用的磁盘字节：正文件 + HLS 的分片目录（`.segments` 递归求和）。
+     * 某个已下载单集占用的磁盘字节：正文件 + HLS 的分片目录（`.segments` 递归求和）
+     * + 续传半成品 `.part`（进行中的下载也占地方，管理页的总占用该把它算进去）。
      * 下载管理页的总占用 = 各期求和；纯本地实时值，删除/新增后经数据回流即刷新。
      */
     fun episodeDownloadedBytes(context: Context, localFileName: String): Long {
         val dir = audioDir(context)
-        val main = File(dir, localFileName).length()
+        val main = File(dir, localFileName).length() +
+            File(dir, "$localFileName$PART_SUFFIX").length()
         val segments = File(dir, "$localFileName$SEGMENTS_DIR_SUFFIX")
         val segmentsBytes = if (segments.isDirectory) {
             segments.walkTopDown().filter { it.isFile }.sumOf { it.length() }
@@ -167,8 +202,8 @@ object PodcastDownloadManager {
     }
 
     /**
-     * 全部删除：删所有已落盘的音频（HLS 连同分片目录）+ 一次清掉所有 localFileName 标记。
-     * 先删文件再清标记，不出现「标记没了文件还在」；不动下载中任务
+     * 全部删除：删所有已落盘的音频（HLS 连同分片目录与 .part 半成品）+ 一次清掉所有
+     * localFileName 标记。先删文件再清标记，不出现「标记没了文件还在」；不动下载中任务
      * （进行中的任务完成后会重新写回标记，属正确行为）。
      */
     fun deleteAllDownloads(context: Context, subscriptions: List<PodcastSubscription>) {
@@ -182,6 +217,8 @@ object PodcastDownloadManager {
             fileNames.forEach { name ->
                 File(dir, name).delete()
                 File(dir, "$name$SEGMENTS_DIR_SUFFIX").deleteRecursively()
+                File(dir, "$name$PART_SUFFIX").delete()
+                File(dir, "$name$PART_META_SUFFIX").delete()
             }
             PodcastRepository(appContext).clearAllLocalFiles()
         }
@@ -189,13 +226,22 @@ object PodcastDownloadManager {
 
     // ---------------------------------------------------------------- 下载实现
 
-    /** 直文件：流式写 `.part`，完成才 rename 成正名 */
+    /** 直文件：流式写 `.part`，完成才 rename 成正名；`.part` 保留以支持断点续传 */
     private fun downloadDirect(context: Context, episode: PodcastEpisode): String {
         val dir = audioDir(context)
         val fileName = "ep_${hashOf(episode.guid)}.${extensionOf(episode.audioUrl)}"
         val target = File(dir, fileName)
         val part = File(dir, "$fileName$PART_SUFFIX")
-        part.delete()
+        val metaFile = File(dir, "$fileName$PART_META_SUFFIX")
+        // 防呆：.part 是上一次尝试留下的，但这次的文件地址变了（feed 换过 enclosure）——
+        // 续上去就是两份不同的数据拼在一起，只能删了重下
+        if (part.length() > 0L && metaFile.readText().trim() != episode.audioUrl) {
+            part.delete()
+            metaFile.delete()
+        }
+        if (part.length() == 0L) {
+            metaFile.writeText(episode.audioUrl)
+        }
         try {
             downloadFile(episode.audioUrl, part) { copied, total ->
                 reportProgress(
@@ -204,16 +250,19 @@ object PodcastDownloadManager {
                 )
             }
             if (!part.renameTo(target)) throw IOException("保存文件失败")
+            metaFile.delete()
             return fileName
         } catch (e: Throwable) {
-            part.delete()
+            // 取消/失败都保留 .part：重试时按 Range 续传，不白下。
+            // 清理走 deleteDownload / deleteAllDownloads（那里连 .part 一起删）
             throw e
         }
     }
 
     /**
      * HLS：拉播放列表 → 分片（与可能的密钥）逐个下本地 → 重写列表成本地路径。
-     * 失败时连分片目录一起清掉，不留垃圾。
+     * 断点续传的分片粒度：已落盘的分片直接跳过，半成品 `.part` 交给 downloadFile
+     * 按 Range 续；播放列表变了（哈希不同）则整体重下，防止分片错位拼出坏文件。
      */
     private fun downloadHls(context: Context, episode: PodcastEpisode): String {
         val dir = audioDir(context)
@@ -221,11 +270,22 @@ object PodcastDownloadManager {
         val segmentsDir = File(dir, "$fileName$SEGMENTS_DIR_SUFFIX")
         val part = File(dir, "$fileName$PART_SUFFIX")
         try {
-            segmentsDir.apply { deleteRecursively(); mkdirs() }
+            segmentsDir.mkdirs()
             part.delete()
 
             val playlistUrl = episode.audioUrl
-            val lines = readText(playlistUrl).lines()
+            val playlistText = readText(playlistUrl)
+            val lines = playlistText.lines()
+
+            // 播放列表哈希：和上次尝试不一致说明分片结构变了（feed 更新 / CDN 轮换），
+            // 旧分片按索引复用会错位，必须清空重下
+            val playlistHash = hashOf(playlistText)
+            val hashFile = File(segmentsDir, "playlist.hash")
+            if (hashFile.isFile && hashFile.readText().trim() != playlistHash) {
+                segmentsDir.deleteRecursively()
+                segmentsDir.mkdirs()
+            }
+            hashFile.writeText(playlistHash)
 
             // 分片地址：非空且不以 # 开头的行；相对地址按列表地址解析
             val segmentUrls = lines
@@ -251,14 +311,21 @@ object PodcastDownloadManager {
 
             val localSegmentPaths = ArrayList<String>(segmentUrls.size)
             segmentUrls.forEachIndexed { index, url ->
-                val segmentFile = File(segmentsDir, "seg_${index.toString().padStart(5, '0')}")
-                downloadFile(url, segmentFile) { copied, total ->
-                    val segmentFraction =
-                        if (total != null && total > 0L) copied.toFloat() / total.toFloat() else 0f
-                    reportProgress(
-                        episode.guid,
-                        (index + segmentFraction) / segmentUrls.size,
-                    )
+                val segName = "seg_${index.toString().padStart(5, '0')}"
+                val segmentFile = File(segmentsDir, segName)
+                // 已完成的分片（上次尝试落盘的）跳过；半成品 .part 续传后 rename
+                if (!segmentFile.isFile) {
+                    downloadFile(url, File(segmentsDir, "$segName$PART_SUFFIX")) { copied, total ->
+                        val segmentFraction =
+                            if (total != null && total > 0L) copied.toFloat() / total.toFloat() else 0f
+                        reportProgress(
+                            episode.guid,
+                            (index + segmentFraction) / segmentUrls.size,
+                        )
+                    }
+                    if (!File(segmentsDir, "$segName$PART_SUFFIX").renameTo(segmentFile)) {
+                        throw IOException("保存分片失败")
+                    }
                 }
                 localSegmentPaths += segmentFile.absolutePath
             }
@@ -288,27 +355,42 @@ object PodcastDownloadManager {
             if (!part.renameTo(File(dir, fileName))) throw IOException("保存播放列表失败")
             return fileName
         } catch (e: Throwable) {
+            // 保留分片与半成品 .part 供续传；playlist 的 .part 删掉（下次重写）
             part.delete()
-            segmentsDir.deleteRecursively()
             throw e
         }
     }
 
-    /** 流式下载单个 URL 到 [target]（临时/半成品由调用方清理）；进度按节流回调 */
+    /**
+     * 流式下载单个 URL 到 [target]。
+     * [target] 已存在且非空时按 Range 断点续传：服务端回 206 才续（append 写），
+     * 回 200 全量说明不支持 Range——拼起来就是两份数据，删掉重下。
+     * 进度的 [copied] 含续传前已有的字节，[total] 是完整大小。
+     */
     private fun downloadFile(
         url: String,
         target: File,
         onProgress: (copied: Long, total: Long?) -> Unit,
     ) {
+        val existing = target.length().takeIf { it > 0L } ?: 0L
         val connection = openConnection(url)
+        if (existing > 0L) {
+            connection.setRequestProperty("Range", "bytes=$existing-")
+        }
         try {
             val code = connection.responseCode
             if (code !in 200..299) throw IOException("服务器返回 HTTP $code")
-            val total = connection.contentLengthLong.takeIf { it > 0L }
+            // 服务端忽略 Range 回了全量：删掉半成品从头下
+            val resumed = existing > 0L && code == HttpURLConnection.HTTP_PARTIAL
+            if (existing > 0L && !resumed) {
+                target.delete()
+            }
+            val startFrom = if (resumed) existing else 0L
+            val total = connection.contentLengthLong.takeIf { it > 0L }?.let { it + startFrom }
             var copied = 0L
             var lastReport = 0L
             target.parentFile?.mkdirs()
-            target.outputStream().use { output ->
+            target.outputStream(append = resumed).use { output ->
                 connection.inputStream.use { input ->
                     val buffer = ByteArray(BUFFER_SIZE)
                     while (true) {
@@ -319,12 +401,12 @@ object PodcastDownloadManager {
                         val now = System.currentTimeMillis()
                         if (now - lastReport >= PROGRESS_INTERVAL_MS) {
                             lastReport = now
-                            onProgress(copied, total)
+                            onProgress(startFrom + copied, total)
                         }
                     }
                 }
             }
-            onProgress(copied, total)
+            onProgress(startFrom + copied, total)
         } finally {
             connection.disconnect()
         }
