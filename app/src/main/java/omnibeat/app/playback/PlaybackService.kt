@@ -137,6 +137,12 @@ class PlaybackService : MediaLibraryService() {
      * 为 true 时不带直播语义、会话报告可 seek —— 这是「进度条能拖」的关键。
      */
     private var currentItemSeekable = false
+    /**
+     * 暂停时抓下的播放位置（毫秒）：恢复播放时带回去。
+     * 单集是点播，暂停后恢复必须从原位置继续且保持可 seek 语义，
+     * 不能走「重新起播」那条路（那会从头播并把面板退化成直播形态）。
+     */
+    private var pausedPositionMs: Long = 0L
     private var lastPlayedStationId: String? = null
     private var rememberLastStation = true
     private var stopServiceAfterPauseMinutes = DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
@@ -340,6 +346,11 @@ class PlaybackService : MediaLibraryService() {
                 station = current.selectedStation,
                 index = current.selectedIndex,
                 previewing = current.previewing,
+                // 保持原来的点播语义与续播位置：暂停后恢复不能退化成直播
+                // （否则进度条 / 倍速 / 快进全没，还从头播）
+                seekable = current.seekable,
+                startPositionMs = if (current.seekable) pausedPositionMs else 0L,
+                speed = current.playbackSpeed,
             )
         }
     }
@@ -467,7 +478,11 @@ class PlaybackService : MediaLibraryService() {
         }
         recordedStationId = null
         currentStreamIsHls = false
-        if (!NetworkStatus.isOnline(this)) {
+        // 已下载的播客单集是本地 file:// 地址：飞行模式也要能放，不过断网检查。
+        // （下载管理器只在文件落盘后才写 localFileName，UI 侧播放前也做过存在性兜底；
+        //  本地 HLS 的分片与密钥同样在本地，整条链路不碰网络）
+        val localPlayback = station.streamUrl.startsWith("file:")
+        if (!localPlayback && !NetworkStatus.isOnline(this)) {
             playbackRequested = false
             player.stop()
             _state.update {
@@ -650,6 +665,10 @@ class PlaybackService : MediaLibraryService() {
         playbackRequested = false
         noMetadataJob?.cancel()
         currentStreamIsHls = false
+        // 停之前抓下位置：恢复时从这里继续（见 playFromCurrentState）
+        if (currentItemSeekable) {
+            pausedPositionMs = player.currentPosition
+        }
         player.stop()
         player.clearMediaItems()
         _state.update {
@@ -731,6 +750,10 @@ class PlaybackService : MediaLibraryService() {
                 )
             ) {
                 playbackRequested = false
+                // 这里不停播放器（只置暂停态）：同样抓下位置，恢复时续播
+                if (currentItemSeekable) {
+                    pausedPositionMs = player.currentPosition
+                }
                 _state.update { it.withTrackStatus(PlaybackTrackStatus.Paused) }
                 scheduleStopAfterPause()
             }

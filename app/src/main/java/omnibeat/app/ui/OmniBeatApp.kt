@@ -721,7 +721,18 @@ fun OmniBeatApp() {
         fun refreshPodcast(subscription: PodcastSubscription, force: Boolean = false) {
             if (podcastLoading) return
             if (!force && !refreshIntervalElapsed(subscription)) return
-            if (!NetworkStatus.isOnline(context)) return
+            if (!NetworkStatus.isOnline(context)) {
+                // 手动刷新（期数页下拉 / force）要有反馈：转圈不能悄悄消失；
+                // 自动刷新（打开订阅时的节流刷新）保持静默——按设计浏览列表不需要网络
+                if (force) {
+                    Toast.makeText(
+                        context,
+                        resources.appString(R.string.toast_no_internet),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                return
+            }
             podcastLoading = true
             scope.launch {
                 // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」，用于手动刷新的结果反馈
@@ -769,6 +780,19 @@ fun OmniBeatApp() {
          */
         fun refreshAllPodcasts(targets: List<PodcastSubscription>, silent: Boolean) {
             if (podcastLoading) return
+            // 断网预检：自动刷新（启动 / 进列表）直接返回不打扰；手动（FAB）给一声「没有网络」。
+            // 没有这道检查，离线时每个订阅都会串行连接超时（15s×N），最后还弹
+            // 「N 个订阅刷新失败」——按设计，刷新才需要网络，浏览不该被它骚扰。
+            if (!NetworkStatus.isOnline(context)) {
+                if (!silent) {
+                    Toast.makeText(
+                        context,
+                        resources.appString(R.string.toast_no_internet),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                return
+            }
             val pending = if (silent) {
                 targets.filter { refreshIntervalElapsed(it) }
             } else {
@@ -1351,7 +1375,11 @@ fun OmniBeatApp() {
                 }
                 playStation(rememberedStation ?: pageStations.first())
             } else {
-                if (!hasActivePlaybackRequest && !hasInternetOrToast()) return
+                // 已加载过内容（暂停中的单集/电台）就允许恢复：断网不拦——
+                // 本地已下载的单集此时照样能播（服务端对 file:// 也不过网络检查）。
+                // 只有「什么都没有」时才检查网络，避免从零起播一个在线流。
+                val hasLoadedContent = playbackState.selectedStation != null
+                if (!hasActivePlaybackRequest && !hasLoadedContent && !hasInternetOrToast()) return
                 PlaybackService.playOrPause(context)
             }
         }
