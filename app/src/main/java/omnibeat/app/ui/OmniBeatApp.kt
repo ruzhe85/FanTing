@@ -276,6 +276,9 @@ fun OmniBeatApp() {
         var podcastRefreshAllDone by remember { mutableIntStateOf(0) }
         var podcastError by remember { mutableStateOf<String?>(null) }
         var pendingPodcastRemoval by remember { mutableStateOf<PodcastSubscription?>(null) }
+        // 期数页的本地搜索：只过滤当前订阅的期数，不联网
+        var podcastEpisodeSearchOpen by remember { mutableStateOf(false) }
+        var podcastEpisodeSearchQuery by remember { mutableStateOf("") }
         // 在线搜索（iTunes）：搜索、详情、订阅三套状态各自独立，互不复用刷新/弹窗的 loading
         var podcastSearchOpen by remember { mutableStateOf(false) }
         var podcastSearchQuery by remember { mutableStateOf("") }
@@ -834,6 +837,8 @@ fun OmniBeatApp() {
                     if (podcastSearchRequest == request) {
                         podcastSearchResults = results
                         podcastSearchVisibleCount = PODCAST_SEARCH_PAGE_SIZE
+                        // 结果已出来，清空关键词：否则得先删掉才能输入下一个搜索词
+                        podcastSearchQuery = ""
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -1118,6 +1123,9 @@ fun OmniBeatApp() {
 
         fun openPodcast(subscription: PodcastSubscription) {
             openPodcastUrl = subscription.feedUrl
+            // 换订阅时清掉上一份搜索词，避免拿旧词过滤新列表
+            podcastEpisodeSearchOpen = false
+            podcastEpisodeSearchQuery = ""
             refreshPodcast(subscription)
         }
 
@@ -1785,6 +1793,13 @@ fun OmniBeatApp() {
                             openPodcastSearch()
                         },
                         podcastSearchActive = podcastSearchOpen,
+                        // 期数页才显示排序；与电台一致，排序按钮排在「+」左边
+                        podcastEpisodeSortVisible = !podcastSearchOpen && openPodcastUrl != null,
+                        podcastEpisodesOldestFirst = podcastEpisodesOldestFirst,
+                        onPodcastEpisodesOldestFirstChange = { oldest ->
+                            scope.launch { podcastRepository.saveEpisodesOldestFirst(oldest) }
+                        },
+                        onSearchPodcastEpisodes = { podcastEpisodeSearchOpen = true },
                         onlineSearchControl = if (selectedPage == MainPage.SearchOnline) {
                             { controlModifier ->
                                 SearchOptionsTopBarControl(
@@ -1916,13 +1931,16 @@ fun OmniBeatApp() {
                                         playingEpisodeId = playbackState.selectedStation?.id,
                                         loading = podcastLoading,
                                         episodesOldestFirst = podcastEpisodesOldestFirst,
-                                        onEpisodesOldestFirstChange = { oldest ->
-                                            scope.launch {
-                                                podcastRepository.saveEpisodesOldestFirst(oldest)
-                                            }
-                                        },
+                                        episodeSearchOpen = podcastEpisodeSearchOpen,
+                                        episodeSearchQuery = podcastEpisodeSearchQuery,
+                                        onEpisodeSearchOpenChange = { podcastEpisodeSearchOpen = it },
+                                        onEpisodeSearchQueryChange = { podcastEpisodeSearchQuery = it },
                                         onOpenSubscription = ::openPodcast,
-                                        onCloseSubscription = { openPodcastUrl = null },
+                                        onCloseSubscription = {
+                                            openPodcastUrl = null
+                                            podcastEpisodeSearchOpen = false
+                                            podcastEpisodeSearchQuery = ""
+                                        },
                                         onDeleteSubscription = { pendingPodcastRemoval = it },
                                         onToggleSubscriptionPinned = { subscription ->
                                             scope.launch {

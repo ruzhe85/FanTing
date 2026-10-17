@@ -65,6 +65,12 @@ fun MainTopBar(
     onSearchPodcastOnline: () -> Unit,
     /** 播客在线搜索页打开时隐藏「+」菜单，避免在搜索过程中再弹添加弹窗 */
     podcastSearchActive: Boolean = false,
+    /** 期数页（打开了某个订阅）时在顶栏显示排序，与电台列表保持一致 */
+    podcastEpisodeSortVisible: Boolean = false,
+    podcastEpisodesOldestFirst: Boolean = false,
+    onPodcastEpisodesOldestFirstChange: (Boolean) -> Unit = {},
+    /** 期数页顶栏的搜索入口：在本地过滤当前订阅的全部期数 */
+    onSearchPodcastEpisodes: () -> Unit = {},
     onlineSearchControl: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -200,13 +206,27 @@ fun MainTopBar(
                     )
                 }
 
-                // 播客页没有排序，但「+」和电台一样是「手动添加 / 在线搜索」菜单
-                selectedPage == MainPage.Podcasts && !podcastSearchActive -> AddMenuButton(
-                    expanded = addMenuExpanded,
-                    onExpandedChange = { addMenuExpanded = it },
-                    onAddManually = onAddPodcast,
-                    onSearchOnline = onSearchPodcastOnline,
-                )
+                // 播客页：「+」与电台一致；期数页额外显示排序，顺序也跟电台一样（排序在「+」左边）
+                selectedPage == MainPage.Podcasts && !podcastSearchActive -> {
+                    if (podcastEpisodeSortVisible) {
+                        PodcastEpisodeSortButton(
+                            oldestFirst = podcastEpisodesOldestFirst,
+                            onOldestFirstChange = onPodcastEpisodesOldestFirstChange,
+                        )
+                        // 期数页：「+」换成搜索，只过滤当前订阅的期数
+                        OmniIconButton(
+                            painter = painterResource(R.drawable.ic_search),
+                            onClick = onSearchPodcastEpisodes,
+                        )
+                    } else {
+                        AddMenuButton(
+                            expanded = addMenuExpanded,
+                            onExpandedChange = { addMenuExpanded = it },
+                            onAddManually = onAddPodcast,
+                            onSearchOnline = onSearchPodcastOnline,
+                        )
+                    }
+                }
 
                 selectedPage == MainPage.Podcasts -> Unit
 
@@ -293,6 +313,60 @@ private fun SortMenuButton(
                         }
                     } else {
                         null
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 期数页的排序菜单：最新在上 / 最旧在上，样式与电台的排序菜单一致 */
+@Composable
+private fun PodcastEpisodeSortButton(
+    oldestFirst: Boolean,
+    onOldestFirstChange: (Boolean) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OmniIconButton(
+            painter = painterResource(R.drawable.ic_sort),
+            onClick = { expanded = true },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = RadioSurface,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(RadioCorners.medium),
+            offset = DpOffset(x = 0.dp, y = RadioSpacing.extraSmall),
+        ) {
+            listOf(
+                false to R.string.podcast_episodes_sort_latest,
+                true to R.string.podcast_episodes_sort_oldest,
+            ).forEach { (value, labelRes) ->
+                DropdownMenuItem(
+                    modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                    contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                    text = {
+                        Text(
+                            text = stringResource(labelRes),
+                            color = RadioText,
+                        )
+                    },
+                    trailingIcon = if (value == oldestFirst) {
+                        {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_check),
+                                contentDescription = null,
+                                modifier = Modifier.size(RadioSizes.iconInline),
+                                tint = RadioPrimary,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        expanded = false
+                        onOldestFirstChange(value)
                     },
                 )
             }

@@ -127,9 +127,8 @@ fun PodcastSearchPage(
                 message = stringResource(R.string.podcast_search_failed, errorText),
                 onRetry = submit,
             )
-            query.isBlank() -> SearchStatus(text = stringResource(R.string.podcast_search_idle))
-            results.isEmpty() -> SearchStatus(text = stringResource(R.string.podcast_search_empty))
-            else -> LazyColumn(
+            // 搜索成功后关键词会清空，但结果仍要留在屏幕上
+            results.isNotEmpty() -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     horizontal = RadioSpacing.medium,
@@ -161,6 +160,8 @@ fun PodcastSearchPage(
                     }
                 }
             }
+            query.isBlank() -> SearchStatus(text = stringResource(R.string.podcast_search_idle))
+            else -> SearchStatus(text = stringResource(R.string.podcast_search_empty))
         }
     }
 }

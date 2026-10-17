@@ -249,10 +249,11 @@
     <string name="podcast_subscribe">Подписаться</string>
     <string name="podcast_episodes_sort_latest">Сначала новые</string>
     <string name="podcast_episodes_sort_oldest">Сначала старые</string>
+    <string name="podcast_episode_search_hint">Поиск выпусков</string>
+    <string name="podcast_episode_search_empty">Нет подходящих выпусков</string>
     <string name="podcast_pin">Закрепить</string>
     <string name="podcast_unpin">Открепить</string>
     <string name="podcast_play_latest">Воспроизвести последний выпуск</string>
-    <string name="podcast_list_subtitle">%1$d/%2$d · обновлено %3$s</string>
     <string name="podcast_list_subtitle_all">%1$d выпусков · обновлено %2$s</string>
     <string name="podcast_loading">Загрузка ленты…</string>
     <string name="podcast_episode_count">Выпусков: %1$d</string>

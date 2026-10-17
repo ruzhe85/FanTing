@@ -213,8 +213,8 @@ fun OmniLazyListScrollIndicator(
     )
 }
 
-/** 滚动条触摸区宽度：视觉只有 3dp，但手指需要更宽才好按住拖动。列表右侧需留出同样的宽度 */
-internal val SCROLLBAR_TOUCH_WIDTH = 28.dp
+/** 滚动条触摸区宽度：视觉只有 3dp，但手指需要更宽才好按住拖动 */
+internal val SCROLLBAR_TOUCH_WIDTH = 16.dp
 
 /**
  * 可拖动的列表滚动条，用于几百期的播客列表快速定位。

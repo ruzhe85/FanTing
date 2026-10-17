@@ -31,6 +31,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -43,6 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
@@ -85,7 +88,11 @@ fun PodcastTabContent(
     playingEpisodeId: String?,
     loading: Boolean,
     episodesOldestFirst: Boolean = false,
-    onEpisodesOldestFirstChange: (Boolean) -> Unit = {},
+    /** 期数页的本地搜索：打开状态与关键词由外层持有，切订阅时一并重置 */
+    episodeSearchOpen: Boolean = false,
+    episodeSearchQuery: String = "",
+    onEpisodeSearchOpenChange: (Boolean) -> Unit = {},
+    onEpisodeSearchQueryChange: (String) -> Unit = {},
     onOpenSubscription: (PodcastSubscription) -> Unit,
     onCloseSubscription: () -> Unit,
     onDeleteSubscription: (PodcastSubscription) -> Unit,
@@ -140,7 +147,11 @@ fun PodcastTabContent(
                 playingEpisodeId = playingEpisodeId,
                 loading = loading,
                 oldestFirst = episodesOldestFirst,
-                onOldestFirstChange = onEpisodesOldestFirstChange,
+                marqueeTitles = marqueeTitles,
+                searchOpen = episodeSearchOpen,
+                searchQuery = episodeSearchQuery,
+                onSearchOpenChange = onEpisodeSearchOpenChange,
+                onSearchQueryChange = onEpisodeSearchQueryChange,
                 onBack = onCloseSubscription,
                 onRefresh = { onRefreshSubscription(open) },
                 onEpisodeClick = onPlayEpisode,
@@ -407,8 +418,8 @@ private fun PodcastSubscriptionRow(
 }
 
 /**
- * 紧凑订阅行：不显示封面，只有标题与状态两行。
- * 点文字进期数列表，点右侧播放图标播最新一期；长按出菜单（置顶 / 编辑 / 删除）。
+ * 紧凑订阅行：单行「播放 · 标题 · 期数与更新时间」，无封面。
+ * 点标题进期数列表，点左侧播放图标播最新一期；长按出菜单（置顶 / 编辑 / 删除）。
  */
 @Composable
 private fun CompactSubscriptionRow(
@@ -428,16 +439,27 @@ private fun CompactSubscriptionRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = COMPACT_ROW_MIN_HEIGHT)
                 .background(RadioSurface, RoundedCornerShape(RadioCorners.medium))
-                .padding(
-                    start = RadioSpacing.medium,
-                    end = RadioSpacing.small,
-                    top = RadioSpacing.small,
-                    bottom = RadioSpacing.small,
-                ),
+                .padding(end = RadioSpacing.small),
         ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(COMPACT_PLAY_TOUCH_SIZE)
+                    .combinedClickable(
+                        onClick = onPlayLatest,
+                        onLongClick = { menuExpanded = true },
+                    ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_play_arrow),
+                    contentDescription = stringResource(R.string.podcast_play_latest),
+                    tint = RadioPrimary,
+                    modifier = Modifier.size(RadioSizes.iconInline),
+                )
+            }
             Column(
-                verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
                 modifier = Modifier
                     .weight(1f)
                     .combinedClickable(
@@ -450,31 +472,15 @@ private fun CompactSubscriptionRow(
                     marqueeTitles = marqueeTitles,
                     fontSize = RadioTextSizes.body,
                 )
-                Text(
-                    text = subtitle,
-                    color = RadioTextMuted,
-                    fontSize = RadioTextSizes.badge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(COMPACT_PLAY_TOUCH_SIZE)
-                    .clip(CircleShape)
-                    .combinedClickable(
-                        onClick = onPlayLatest,
-                        onLongClick = { menuExpanded = true },
-                    ),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_play_arrow),
-                    contentDescription = stringResource(R.string.podcast_play_latest),
-                    tint = RadioPrimary,
-                    modifier = Modifier.size(RadioSizes.icon),
-                )
-            }
+            Text(
+                text = subtitle,
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.badge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = RadioSpacing.small),
+            )
             Box(modifier = Modifier.size(1.dp)) {
                 SubscriptionMenu(
                     expanded = menuExpanded,
@@ -515,28 +521,17 @@ private fun SubscriptionTitle(
     )
 }
 
-/** 订阅副标题：未听/总数 · 月-日 时:分 更新；一次都没更新过就显示「尚未更新」 */
+/** 订阅副标题：期数 · 月-日 时:分 更新；一次都没更新过就显示「尚未更新」 */
 @Composable
 private fun subscriptionSubtitle(subscription: PodcastSubscription): String {
     if (subscription.lastFetchedAtMs <= 0L) {
         return stringResource(R.string.podcast_never_updated)
     }
-    val stamp = formatStamp(subscription.lastFetchedAtMs)
-    val unfinished = subscription.episodes.count { !it.completed }
-    return if (unfinished > 0) {
-        stringResource(
-            R.string.podcast_list_subtitle,
-            unfinished,
-            subscription.episodes.size,
-            stamp,
-        )
-    } else {
-        stringResource(
-            R.string.podcast_list_subtitle_all,
-            subscription.episodes.size,
-            stamp,
-        )
-    }
+    return stringResource(
+        R.string.podcast_list_subtitle_all,
+        subscription.episodes.size,
+        formatStamp(subscription.lastFetchedAtMs),
+    )
 }
 
 /** 长按菜单：置顶 / 编辑 / 删除。标准与紧凑两种行共用 */
@@ -632,7 +627,11 @@ fun PodcastEpisodesPage(
     playingEpisodeId: String?,
     loading: Boolean,
     oldestFirst: Boolean = false,
-    onOldestFirstChange: (Boolean) -> Unit = {},
+    marqueeTitles: Boolean = false,
+    searchOpen: Boolean = false,
+    searchQuery: String = "",
+    onSearchOpenChange: (Boolean) -> Unit = {},
+    onSearchQueryChange: (String) -> Unit = {},
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
@@ -644,6 +643,13 @@ fun PodcastEpisodesPage(
     onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
+    // 搜索打开时，返回键先关搜索，而不是直接退出这个订阅
+    BackHandler(enabled = searchOpen) { onSearchOpenChange(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(searchOpen) {
+        if (searchOpen) searchFocusRequester.requestFocus()
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -651,15 +657,23 @@ fun PodcastEpisodesPage(
                 .fillMaxWidth()
                 .padding(
                     start = RadioSpacing.extraSmall,
-                    end = RadioSpacing.medium,
+                    end = RadioSpacing.small,
                     top = RadioSpacing.small,
                     bottom = RadioSpacing.small,
                 ),
         ) {
-            OmniIconButton(
-                painter = painterResource(R.drawable.ic_arrow_back),
+            // 轻量返回键：不再用 53dp 的大按钮，把宽度让给标题
+            IconButton(
                 onClick = onBack,
-            )
+                modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_back),
+                    contentDescription = stringResource(R.string.action_back),
+                    tint = RadioText,
+                    modifier = Modifier.size(RadioSizes.iconCompact),
+                )
+            }
             StationArtwork(imageUrl = subscription.imageUrl)
             Column(
                 verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
@@ -667,13 +681,11 @@ fun PodcastEpisodesPage(
                     .weight(1f)
                     .padding(start = RadioSpacing.medium),
             ) {
-                Text(
-                    text = subscription.title,
-                    color = RadioText,
-                    fontSize = RadioTextSizes.subtitle,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                // 标题必须单行：一旦换行，头部就比封面还高，把下面列表往下顶
+                SubscriptionTitle(
+                    title = subscription.title,
+                    marqueeTitles = marqueeTitles,
+                    fontSize = RadioTextSizes.stationTitle,
                 )
                 Text(
                     text = stringResource(R.string.podcast_episode_count, subscription.episodes.size),
@@ -683,21 +695,45 @@ fun PodcastEpisodesPage(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            // 期数动辄几百条：给一个最新/最旧排序入口，避免只能在倒序里硬翻
-            EpisodeSortButton(
-                oldestFirst = oldestFirst,
-                onOldestFirstChange = onOldestFirstChange,
+        }
+
+        if (searchOpen) {
+            EpisodeSearchField(
+                query = searchQuery,
+                focusRequester = searchFocusRequester,
+                onQueryChange = onSearchQueryChange,
+                onClose = {
+                    onSearchQueryChange("")
+                    onSearchOpenChange(false)
+                },
+                modifier = Modifier.padding(
+                    start = RadioSpacing.page,
+                    end = RadioSpacing.page,
+                    bottom = RadioSpacing.small,
+                ),
             )
         }
 
         // 期数可能有几百条：排序只影响展示顺序，不改写订阅数据本身
-        val episodes = if (oldestFirst) subscription.episodes.asReversed() else subscription.episodes
+        val orderedEpisodes = if (oldestFirst) {
+            subscription.episodes.asReversed()
+        } else {
+            subscription.episodes
+        }
+        // 本地按标题过滤：一千多期时靠滑根本找不到，输入关键词即时缩小范围
+        val query = searchQuery.trim()
+        val searching = query.isNotEmpty()
+        val episodes = if (searching) {
+            orderedEpisodes.filter { it.title.contains(query, ignoreCase = true) }
+        } else {
+            orderedEpisodes
+        }
         val listState = rememberLazyListState()
         // 太短的列表不需要快速定位，保持原布局
         val showScrollbar = episodes.size > EPISODE_SCROLLBAR_MIN_COUNT
         var scrollbarIndex by remember { mutableStateOf<Int?>(null) }
-        // 切换排序后回到顶部，否则停在原位置会让人以为列表没变
-        LaunchedEffect(oldestFirst) { listState.scrollToItem(0) }
+        // 切换排序或搜索词后回到顶部，否则停在原位置会让人以为列表没变
+        LaunchedEffect(oldestFirst, query) { listState.scrollToItem(0) }
 
         // 下拉刷新。空态也放进 LazyColumn：没有可滚动容器时下拉手势收不到。
         PullToRefreshBox(
@@ -708,10 +744,10 @@ fun PodcastEpisodesPage(
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
-                    // 给右侧滚动条留出触摸区，避免盖住行尾的收藏 / 下载按钮
+                    // 只让出 3dp 视觉空隙；滚动条触摸区会压住行尾少量区域，但按钮中心仍可点
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(end = if (showScrollbar) SCROLLBAR_TOUCH_WIDTH else 0.dp),
+                        .padding(end = if (showScrollbar) EPISODE_SCROLLBAR_INSET else 0.dp),
                     contentPadding = PaddingValues(
                         horizontal = RadioSpacing.medium,
                         vertical = RadioSpacing.small,
@@ -727,10 +763,10 @@ fun PodcastEpisodesPage(
                                     .padding(horizontal = RadioSpacing.page),
                             ) {
                                 Text(
-                                    text = if (loading) {
-                                        stringResource(R.string.podcast_loading)
-                                    } else {
-                                        stringResource(R.string.podcast_episodes_empty)
+                                    text = when {
+                                        searching -> stringResource(R.string.podcast_episode_search_empty)
+                                        loading -> stringResource(R.string.podcast_loading)
+                                        else -> stringResource(R.string.podcast_episodes_empty)
                                     },
                                     color = RadioTextMuted,
                                     fontSize = RadioTextSizes.bodyLarge,
@@ -789,57 +825,46 @@ fun PodcastEpisodesPage(
 /** 期数超过这个数量才显示可拖动滚动条：太短的列表反而被它占掉右侧空间 */
 private const val EPISODE_SCROLLBAR_MIN_COUNT = 20
 
-/** 期数排序入口：最新在上 / 最旧在上，选中项用主色 + 勾标出 */
+/** 期数页头部的轻量图标按钮（返回 / 排序）：40dp，比 53dp 的顶栏按钮小一档，少挤标题宽度 */
+private val HEADER_ICON_BUTTON_SIZE = 40.dp
+
+/** 期数页的本地搜索框：输入即过滤，× 清空并关闭 */
 @Composable
-private fun EpisodeSortButton(
-    oldestFirst: Boolean,
-    onOldestFirstChange: (Boolean) -> Unit,
+private fun EpisodeSearchField(
+    query: String,
+    focusRequester: FocusRequester,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        OmniIconButton(
-            painter = painterResource(R.drawable.ic_sort),
-            onClick = { expanded = true },
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            containerColor = RadioSurface,
-            shape = RoundedCornerShape(RadioCorners.medium),
-        ) {
-            listOf(
-                false to R.string.podcast_episodes_sort_latest,
-                true to R.string.podcast_episodes_sort_oldest,
-            ).forEach { (value, labelRes) ->
-                DropdownMenuItem(
-                    modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
-                    contentPadding = PaddingValues(horizontal = RadioSpacing.large),
-                    text = {
-                        Text(
-                            text = stringResource(labelRes),
-                            color = if (value == oldestFirst) RadioPrimary else RadioText,
-                        )
-                    },
-                    trailingIcon = if (value == oldestFirst) {
-                        {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_check),
-                                contentDescription = null,
-                                tint = RadioPrimary,
-                                modifier = Modifier.size(RadioSizes.iconInline),
-                            )
-                        }
-                    } else {
-                        null
-                    },
-                    onClick = {
-                        expanded = false
-                        onOldestFirstChange(value)
-                    },
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        singleLine = true,
+        label = { Text(stringResource(R.string.podcast_episode_search_hint)) },
+        leadingIcon = {
+            Icon(
+                painter = painterResource(R.drawable.ic_search),
+                contentDescription = null,
+                tint = RadioTextMuted,
+                modifier = Modifier.size(RadioSizes.iconInline),
+            )
+        },
+        trailingIcon = {
+            IconButton(onClick = onClose) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_close),
+                    contentDescription = stringResource(R.string.action_cancel),
+                    tint = RadioTextMuted,
+                    modifier = Modifier.size(RadioSizes.iconInline),
                 )
             }
-        }
-    }
+        },
+        colors = omniTextFieldColors(),
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+    )
 }
 
 /**
@@ -1083,8 +1108,14 @@ private val EPISODE_ROW_AUX_BUTTON_SIZE = 38.dp
 private val PLAY_BADGE_SIZE = 18.dp
 private val PLAY_BADGE_ICON_SIZE = 12.dp
 
-/** 紧凑订阅行右侧播放按钮的触摸区：视觉是 26dp 图标，触摸区 44dp */
-private val COMPACT_PLAY_TOUCH_SIZE = 44.dp
+/** 紧凑订阅行左侧播放按钮的触摸区：视觉是 20dp 图标，触摸区 36dp */
+private val COMPACT_PLAY_TOUCH_SIZE = 36.dp
+
+/** 紧凑订阅行最小高度：单行文字 + 上下留白 */
+private val COMPACT_ROW_MIN_HEIGHT = 44.dp
+
+/** 期数列表右侧给滚动条留的视觉空隙：滚动条触摸区会压在行尾上，但视觉只让出 3dp */
+private val EPISODE_SCROLLBAR_INSET = 3.dp
 
 /**
  * 期数行尾部的小圆钮。[progress] 非空时切转圈模式（>=0  determinate、<0   indeterminate，

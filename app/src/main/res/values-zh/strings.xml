@@ -349,10 +349,11 @@
     <string name="podcast_episodes_empty">这个订阅源里没有找到任何一期</string>
     <string name="podcast_episodes_sort_latest">最新在上</string>
     <string name="podcast_episodes_sort_oldest">最旧在上</string>
+    <string name="podcast_episode_search_hint">搜索期数</string>
+    <string name="podcast_episode_search_empty">没有匹配的期数</string>
     <string name="podcast_pin">置顶</string>
     <string name="podcast_unpin">取消置顶</string>
     <string name="podcast_play_latest">播放最新一期</string>
-    <string name="podcast_list_subtitle">%1$d/%2$d · %3$s 更新</string>
     <string name="podcast_list_subtitle_all">%1$d 期 · %2$s 更新</string>
     <string name="podcast_refresh_failed">刷新失败：%1$s</string>
     <string name="podcast_refresh_nothing">没有可刷新的订阅</string>

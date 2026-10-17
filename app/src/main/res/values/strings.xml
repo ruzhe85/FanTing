@@ -349,10 +349,11 @@
     <string name="podcast_episodes_empty">No episodes found in this feed</string>
     <string name="podcast_episodes_sort_latest">Newest first</string>
     <string name="podcast_episodes_sort_oldest">Oldest first</string>
+    <string name="podcast_episode_search_hint">Search episodes</string>
+    <string name="podcast_episode_search_empty">No matching episodes</string>
     <string name="podcast_pin">Pin to top</string>
     <string name="podcast_unpin">Unpin</string>
     <string name="podcast_play_latest">Play latest episode</string>
-    <string name="podcast_list_subtitle">%1$d/%2$d · updated %3$s</string>
     <string name="podcast_list_subtitle_all">%1$d episodes · updated %2$s</string>
     <string name="podcast_refresh_failed">Refresh failed: %1$s</string>
     <string name="podcast_refresh_nothing">No subscriptions to refresh</string>
