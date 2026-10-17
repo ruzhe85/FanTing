@@ -17,9 +17,9 @@ import java.util.Locale
 /**
  * iTunes Search API 的播客搜索（零依赖：HttpURLConnection + org.json）。
  *
- * 只暴露搜索与详情两件事：
- *   - [search] 按关键词搜播客，返回订阅所需的元数据（标题 / 作者 / feedUrl / 封面 / 类型 / 期数）；
- *   - [lookup] 按 collectionId 补一次详情，主要用来拿 `description`（搜索结果里不一定带）。
+ * 只负责 [search]：按关键词搜播客，返回订阅所需的元数据（标题 / 作者 / feedUrl / 封面 / 类型 / 期数）。
+ * 注意 iTunes 的 search 与 lookup 响应都**不包含简介**，简介由详情页从订阅源头部读取
+ * （见 [RssParser.loadSummary]）。
  *
  * 订阅本身仍然走 [RssParser]：iTunes 只负责告诉你「有哪些播客、RSS 在哪」，
  * 期数与可播放地址以真实订阅源为准，避免搜索结果与实际内容不一致。
@@ -40,7 +40,6 @@ object ITunesPodcastClient {
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 15_000
     private const val SEARCH_URL = "https://itunes.apple.com/search"
-    private const val LOOKUP_URL = "https://itunes.apple.com/lookup"
     private const val DEFAULT_COUNTRY = "us"
     private const val DEFAULT_LIMIT = 25
     private const val MAX_LIMIT = 200
@@ -51,7 +50,6 @@ object ITunesPodcastClient {
         const val ENTITY = "entity"
         const val COUNTRY = "country"
         const val LIMIT = "limit"
-        const val ID = "id"
     }
 
     private object Value {
@@ -93,22 +91,6 @@ object ITunesPodcastClient {
             append('&').append(Query.TERM).append('=').append(urlEncode(keyword))
         }
         return decodeResults(getJson(url))
-    }
-
-    /**
-     * 按 collectionId 查详情；[collectionId] 无效或该地区查不到时返回 null。
-     * 结果结构与搜索相同，取第一条。
-     */
-    suspend fun lookup(collectionId: Long, countryCode: String): ITunesPodcast? {
-        if (collectionId <= 0L) return null
-        val country = normalizeCountry(countryCode)
-        val url = buildString {
-            append(LOOKUP_URL)
-            append('?').append(Query.ID).append('=').append(collectionId)
-            append('&').append(Query.ENTITY).append('=').append(Value.PODCAST)
-            append('&').append(Query.COUNTRY).append('=').append(urlEncode(country))
-        }
-        return decodeResults(getJson(url)).firstOrNull()
     }
 
     /** 拉取 JSON；HTTP 非 2xx、响应不是 JSON 时抛带可展示文案的 [IOException] */

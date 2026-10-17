@@ -38,6 +38,8 @@ object RssParser {
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 20_000
     private const val ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
+    /** 详情页取简介只读头部这么多字节：频道信息通常在前几 KB，64KB 足够覆盖超长简介与多语言声明 */
+    private const val SUMMARY_MAX_BYTES = 64 * 1024
 
     private val PUB_DATE_FORMATTERS = listOf(
         DateTimeFormatter.RFC_1123_DATE_TIME,
@@ -66,6 +68,36 @@ object RssParser {
                 connection.disconnect()
             }
             parse(body, normalized)
+        }
+    }
+
+    /**
+     * 只拉订阅源开头的 [maxBytes] 字节，提取频道简介（`itunes:summary`，回退 `description`）。
+     *
+     * 为什么要单独做：iTunes 的 search / lookup 响应里已经没有简介字段，而详情页为了看简介
+     * 去下载整本 feed 太重（机核这类节目一本 2.7MB）。频道简介一定在第一个 `<item>` 之前，
+     * 取头部一小段即可；拿不到就返回 null，由 UI 显示「暂无简介」。
+     */
+    suspend fun loadSummary(feedUrl: String, maxBytes: Int = SUMMARY_MAX_BYTES): String? {
+        val normalized = feedUrl.trim()
+        if (normalized.isEmpty()) return null
+        return withContext(Dispatchers.IO) {
+            val connection = open(normalized)
+            // 只取头部：支持 Range 的服务器返回 206 且只传一小段；
+            // 不支持的服务器会返回全量，但读到 maxBytes 就主动断开，不会把整本下完
+            connection.setRequestProperty("Range", "bytes=0-${maxBytes - 1}")
+            val body = try {
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    throw IOException("服务器返回 HTTP $code")
+                }
+                val contentType = connection.contentType
+                val raw = connection.inputStream.use { stream -> readLimited(stream, maxBytes) }
+                raw.toString(charsetOf(contentType, raw))
+            } finally {
+                connection.disconnect()
+            }
+            extractChannelSummary(body)
         }
     }
 
@@ -198,6 +230,21 @@ object RssParser {
         return bytes.toString(charset.name())
     }
 
+    /** 读最多 [maxBytes] 字节就停：服务器忽略 Range 时也不会把整本 feed 下完 */
+    private suspend fun readLimited(stream: InputStream, maxBytes: Int): ByteArray {
+        val bytes = ByteArrayOutputStream()
+        val chunk = ByteArray(16 * 1024)
+        var remaining = maxBytes
+        while (remaining > 0) {
+            currentCoroutineContext().ensureActive()
+            val read = stream.read(chunk, 0, minOf(chunk.size, remaining))
+            if (read < 0) break
+            bytes.write(chunk, 0, read)
+            remaining -= read
+        }
+        return bytes.toByteArray()
+    }
+
     private fun open(feedUrl: String): HttpURLConnection {
         val connection = (URL(feedUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = CONNECT_TIMEOUT_MS
@@ -209,13 +256,73 @@ object RssParser {
         return connection
     }
 
-    private fun charsetOf(contentType: String?): Charset {
-        val match = Regex("charset=([A-Za-z0-9_\\-]+)", RegexOption.IGNORE_CASE)
+    private fun charsetOf(contentType: String?, preview: ByteArray? = null): Charset {
+        Regex("charset=([A-Za-z0-9_\\-]+)", RegexOption.IGNORE_CASE)
             .find(contentType.orEmpty())
             ?.groupValues
             ?.getOrNull(1)
-            ?: return Charsets.UTF_8
-        return runCatching { Charset.forName(match) }.getOrDefault(Charsets.UTF_8)
+            ?.let { name -> runCatching { Charset.forName(name) }.getOrNull() }
+            ?.let { return it }
+        // HTTP 头没写 charset 时退到 XML 声明：GBK 之类的老源只能从这里看出来
+        if (preview != null && preview.isNotEmpty()) {
+            val head = String(preview, 0, minOf(preview.size, 256), Charsets.ISO_8859_1)
+            Regex("encoding=[\"']([A-Za-z0-9_\\-]+)[\"']", RegexOption.IGNORE_CASE)
+                .find(head)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.let { name -> runCatching { Charset.forName(name) }.getOrNull() }
+                ?.let { return it }
+        }
+        return Charsets.UTF_8
+    }
+
+    /** 从 feed 头部取频道简介：只看第一个 `<item>` 之前，避免抓到单集描述 */
+    private fun extractChannelSummary(xml: String): String? {
+        val channelStart = xml.indexOf("<channel", ignoreCase = true).coerceAtLeast(0)
+        val itemStart = xml.indexOf("<item", channelStart, ignoreCase = true)
+            .let { if (it < 0) xml.length else it }
+        if (itemStart <= channelStart) return null
+        val head = xml.substring(channelStart, itemStart)
+        val raw = tagText(head, "itunes:summary") ?: tagText(head, "description") ?: return null
+        return cleanFeedText(raw).takeIf { it.isNotBlank() }
+    }
+
+    private fun tagText(xml: String, tag: String): String? {
+        val pattern = Regex(
+            "<$tag(?:\\s[^>]*)?>(.*?)</$tag\\s*>",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        )
+        return pattern.find(xml)?.groupValues?.getOrNull(1)
+    }
+
+    /** 去 CDATA、去 HTML 标签、还原常见实体，合并多余空白 */
+    private fun cleanFeedText(raw: String): String {
+        val withoutCdata = Regex("<!\\[CDATA\\[(.*?)]]>", RegexOption.DOT_MATCHES_ALL)
+            .replace(raw) { match -> match.groupValues[1] }
+        return withoutCdata
+            .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("</p\\s*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<[^>]+>"), "")
+            .replace("&nbsp;", " ")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&")
+            .replace(Regex("&#x([0-9a-fA-F]+);")) { match ->
+                codePointText(match.groupValues[1].toIntOrNull(16))
+            }
+            .replace(Regex("&#(\\d+);")) { match ->
+                codePointText(match.groupValues[1].toIntOrNull())
+            }
+            .replace(Regex("[ \\t]+"), " ")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    private fun codePointText(codePoint: Int?): String {
+        if (codePoint == null || codePoint <= 0) return ""
+        return runCatching { String(Character.toChars(codePoint)) }.getOrDefault("")
     }
 
     private fun localName(name: String?): String {

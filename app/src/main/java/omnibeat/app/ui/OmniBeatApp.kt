@@ -834,7 +834,7 @@ fun OmniBeatApp() {
             }
         }
 
-        /** 进详情：先用搜索结果里的信息立即显示，缺简介时再补一次 lookup */
+        /** 进详情：先用搜索结果里的信息立即显示，缺简介时从订阅源头部补 */
         fun openPodcastSearchDetail(podcast: ITunesPodcast) {
             podcastSearchSelected = podcast
             podcastSearchSubmitError = null
@@ -842,7 +842,7 @@ fun OmniBeatApp() {
             podcastDetailRequest = request
             podcastDetailJob?.cancel()
             podcastDetailJob = null
-            if (!podcast.description.isNullOrBlank() || podcast.collectionId <= 0L) {
+            if (!podcast.description.isNullOrBlank()) {
                 podcastSearchDescriptionLoading = false
                 return
             }
@@ -853,19 +853,10 @@ fun OmniBeatApp() {
             podcastSearchDescriptionLoading = true
             podcastDetailJob = scope.launch {
                 try {
-                    val detail = ITunesPodcastClient.lookup(podcast.collectionId, podcastSearchRegion)
-                    if (podcastDetailRequest == request && detail != null) {
-                        // 只补缺失字段，列表里已有的封面/类型优先保留
-                        podcastSearchSelected = podcast.copy(
-                            artworkUrl = podcast.artworkUrl ?: detail.artworkUrl,
-                            genre = podcast.genre ?: detail.genre,
-                            trackCount = if (podcast.trackCount > 0) {
-                                podcast.trackCount
-                            } else {
-                                detail.trackCount
-                            },
-                            description = detail.description,
-                        )
+                    // iTunes 的 search / lookup 都不返回简介，改从订阅源头部取（只读前 64KB）
+                    val summary = RssParser.loadSummary(podcast.feedUrl)
+                    if (podcastDetailRequest == request && !summary.isNullOrBlank()) {
+                        podcastSearchSelected = podcast.copy(description = summary)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
