@@ -27,6 +27,15 @@ val PODCAST_SEARCH_REGIONS = listOf("us", "cn", "tw", "hk", "jp", "kr", "gb", "d
 const val PODCAST_DEFAULT_SEARCH_REGION = "us"
 
 /**
+ * 在线搜索一次最多取多少条（iTunes 上限 200）。
+ * iTunes 不支持分页（offset 无效），所以首屏一次取全，再在本地分批展开。
+ */
+const val PODCAST_SEARCH_FETCH_LIMIT = 200
+
+/** 在线搜索每次「加载更多」展开的条数 */
+const val PODCAST_SEARCH_PAGE_SIZE = 50
+
+/**
  * 订阅地址的归一化 key，用于判断「搜索到的播客是否已订阅」。
  *
  * iTunes 给出的 feedUrl 常与用户当初粘贴的只差协议或结尾斜杠，

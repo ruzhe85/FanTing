@@ -96,15 +96,18 @@
     <string name="settings_podcast_search_region_gb">United Kingdom</string>
     <string name="settings_podcast_search_region_de">Germany</string>
     <string name="settings_section_control_panel">Control panel</string>
+    <string name="settings_show_player_metadata_title">Show metadata in control panel</string>
+    <string name="settings_show_player_metadata_on">Control panel shows the track title or playback status</string>
+    <string name="settings_show_player_metadata_off">Control panel hides track info and playback status</string>
     <string name="settings_show_bitrate_title">Show bitrate in control panel</string>
     <string name="settings_show_bitrate_on">Control panel will show stream bitrate</string>
     <string name="settings_show_bitrate_off">Control panel will hide stream bitrate</string>
     <string name="settings_show_unavailable_bitrate_title">Show bitrate when unavailable</string>
     <string name="settings_show_unavailable_bitrate_on">Control panel will show N/A when bitrate is missing</string>
     <string name="settings_show_unavailable_bitrate_off">Control panel will hide missing bitrate</string>
-    <string name="settings_marquee_track_title_title">Marquee track title</string>
-    <string name="settings_marquee_track_title_on">Long track titles will scroll</string>
-    <string name="settings_marquee_track_title_off">Long track titles will be truncated</string>
+    <string name="settings_marquee_track_title_title">Scroll long titles</string>
+    <string name="settings_marquee_track_title_on">Long titles will scroll</string>
+    <string name="settings_marquee_track_title_off">Long titles will be truncated</string>
     <string name="settings_auto_expand_player_panel_title">Expand panel on playback</string>
     <string name="settings_auto_expand_player_panel_on">Control panel will open when playback starts</string>
     <string name="settings_auto_expand_player_panel_off">Control panel will stay as you left it</string>
@@ -322,12 +325,13 @@
     <string name="translation_failed">Translation operation failed: %1$s</string>
 
     <string name="podcast_add_title">Add podcast</string>
-    <string name="podcast_search_hint">Podcast name</string>
-    <string name="podcast_search_idle">Type a name to search the iTunes catalog</string>
+    <string name="podcast_search_hint">Podcast name or author</string>
+    <string name="podcast_search_idle">Type a podcast name or author to search the iTunes catalog</string>
     <string name="podcast_search_searching">Searching…</string>
     <string name="podcast_search_empty">No podcasts found</string>
     <string name="podcast_search_failed">Search failed: %1$s</string>
     <string name="podcast_search_retry">Retry</string>
+    <string name="podcast_search_load_more">Load more</string>
     <string name="podcast_search_detail_title">Podcast</string>
     <string name="podcast_search_subscribed">Subscribed</string>
     <string name="podcast_search_subscribing">Subscribing…</string>

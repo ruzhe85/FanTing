@@ -70,15 +70,18 @@
     <string name="settings_confirm_station_deletion_on">Перед удалением станции появится запрос на подтверждение</string>
     <string name="settings_confirm_station_deletion_off">Станции будут удаляться без подтверждения</string>
     <string name="settings_section_control_panel">Панель управления</string>
+    <string name="settings_show_player_metadata_title">Показывать метаданные на панели управления</string>
+    <string name="settings_show_player_metadata_on">На панели будет отображаться трек или состояние воспроизведения</string>
+    <string name="settings_show_player_metadata_off">На панели трек и состояние воспроизведения отображаться не будут</string>
     <string name="settings_show_bitrate_title">Показывать битрейт на панели управления</string>
     <string name="settings_show_bitrate_on">На панели управления будет отображаться битрейт стрима</string>
     <string name="settings_show_bitrate_off">На панели управления битрейт стрима отображаться не будет</string>
     <string name="settings_show_unavailable_bitrate_title">Показывать отсутствие битрейта</string>
     <string name="settings_show_unavailable_bitrate_on">Если битрейт недоступен, на панели управления будет отображаться N/A</string>
     <string name="settings_show_unavailable_bitrate_off">Если битрейт недоступен, он не будет отображаться на панели управления</string>
-    <string name="settings_marquee_track_title_title">Прокручивать название трека</string>
-    <string name="settings_marquee_track_title_on">Длинные названия треков будут прокручиваться</string>
-    <string name="settings_marquee_track_title_off">Длинные названия треков будут обрезаться</string>
+    <string name="settings_marquee_track_title_title">Прокручивать длинные названия</string>
+    <string name="settings_marquee_track_title_on">Длинные названия будут прокручиваться</string>
+    <string name="settings_marquee_track_title_off">Длинные названия будут обрезаться</string>
     <string name="settings_auto_expand_player_panel_title">Разворачивать панель при запуске</string>
     <string name="settings_auto_expand_player_panel_on">Панель управления будет открываться при начале воспроизведения</string>
     <string name="settings_auto_expand_player_panel_off">Панель управления останется в сохранённом состоянии</string>
@@ -187,12 +190,13 @@
     <string name="radio_browser_sort_countries">Странам</string>
     <string name="radio_browser_sort_random">Случайно</string>
 
-    <string name="podcast_search_hint">Название подкаста</string>
-    <string name="podcast_search_idle">Введите название для поиска в каталоге iTunes</string>
+    <string name="podcast_search_hint">Название или автор подкаста</string>
+    <string name="podcast_search_idle">Введите название или автора подкаста для поиска в каталоге iTunes</string>
     <string name="podcast_search_searching">Идёт поиск…</string>
     <string name="podcast_search_empty">Подкасты не найдены</string>
     <string name="podcast_search_failed">Не удалось выполнить поиск: %1$s</string>
     <string name="podcast_search_retry">Повторить</string>
+    <string name="podcast_search_load_more">Показать ещё</string>
     <string name="podcast_search_detail_title">Подкаст</string>
     <string name="podcast_search_subscribed">Вы подписаны</string>
     <string name="podcast_search_subscribing">Подписка…</string>

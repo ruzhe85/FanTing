@@ -97,15 +97,18 @@
     <string name="settings_podcast_search_region_gb">英国</string>
     <string name="settings_podcast_search_region_de">德国</string>
     <string name="settings_section_control_panel">播放面板</string>
+    <string name="settings_show_player_metadata_title">在播放面板显示元数据</string>
+    <string name="settings_show_player_metadata_on">显示曲目名、播放状态等元数据</string>
+    <string name="settings_show_player_metadata_off">隐藏曲目名与播放状态</string>
     <string name="settings_show_bitrate_title">在播放面板显示码率</string>
     <string name="settings_show_bitrate_on">播放面板会显示音频流码率</string>
     <string name="settings_show_bitrate_off">播放面板会隐藏音频流码率</string>
     <string name="settings_show_unavailable_bitrate_title">码率未知时也显示</string>
     <string name="settings_show_unavailable_bitrate_on">没有码率时显示「未知」</string>
     <string name="settings_show_unavailable_bitrate_off">没有码率时不显示</string>
-    <string name="settings_marquee_track_title_title">曲目名滚动显示</string>
-    <string name="settings_marquee_track_title_on">过长的曲目名会滚动显示</string>
-    <string name="settings_marquee_track_title_off">过长的曲目名会被截断</string>
+    <string name="settings_marquee_track_title_title">标题滚动显示</string>
+    <string name="settings_marquee_track_title_on">过长的标题会滚动显示</string>
+    <string name="settings_marquee_track_title_off">过长的标题会被截断</string>
     <string name="settings_auto_expand_player_panel_title">播放时展开播放面板</string>
     <string name="settings_auto_expand_player_panel_on">开始播放时自动展开播放面板</string>
     <string name="settings_auto_expand_player_panel_off">播放面板保持你上次的状态</string>
@@ -322,12 +325,13 @@
     <string name="translation_failed">翻译操作失败：%1$s</string>
 
     <string name="podcast_add_title">添加播客</string>
-    <string name="podcast_search_hint">播客名称</string>
-    <string name="podcast_search_idle">输入播客名称，从 iTunes 目录中搜索</string>
+    <string name="podcast_search_hint">播客名称或作者</string>
+    <string name="podcast_search_idle">输入播客名称或作者，从 iTunes 目录中搜索</string>
     <string name="podcast_search_searching">正在搜索…</string>
     <string name="podcast_search_empty">没有找到播客</string>
     <string name="podcast_search_failed">搜索失败：%1$s</string>
     <string name="podcast_search_retry">重试</string>
+    <string name="podcast_search_load_more">加载更多</string>
     <string name="podcast_search_detail_title">播客详情</string>
     <string name="podcast_search_subscribed">已订阅</string>
     <string name="podcast_search_subscribing">正在订阅…</string>

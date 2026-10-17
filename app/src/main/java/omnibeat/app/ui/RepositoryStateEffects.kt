@@ -24,6 +24,7 @@ fun RepositoryStateEffects(
     onShowBitrateInControlPanelChange: (Boolean) -> Unit,
     onShowUnavailableBitrateChange: (Boolean) -> Unit,
     onMarqueeTrackTitleChange: (Boolean) -> Unit,
+    onShowPlayerMetadataChange: (Boolean) -> Unit,
     onAutoExpandPlayerPanelOnPlaybackChange: (Boolean) -> Unit,
     onCollapsePlayerPanelInSearchChange: (Boolean) -> Unit,
     onAddRadioBrowserTagsChange: (Boolean) -> Unit,
@@ -106,6 +107,12 @@ fun RepositoryStateEffects(
     LaunchedEffect(repository) {
         repository.marqueeTrackTitle.collect { savedMarqueeTrackTitle ->
             onMarqueeTrackTitleChange(savedMarqueeTrackTitle)
+        }
+    }
+
+    LaunchedEffect(repository) {
+        repository.showPlayerMetadata.collect { savedShowPlayerMetadata ->
+            onShowPlayerMetadataChange(savedShowPlayerMetadata)
         }
     }
 

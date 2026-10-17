@@ -43,6 +43,7 @@ private val confirmStationDeletionKey = booleanPreferencesKey("confirm_station_d
 private val showBitrateInControlPanelKey = booleanPreferencesKey("show_bitrate_in_control_panel")
 private val showUnavailableBitrateKey = booleanPreferencesKey("show_unavailable_bitrate")
 private val marqueeTrackTitleKey = booleanPreferencesKey("marquee_track_title")
+private val showPlayerMetadataKey = booleanPreferencesKey("show_player_metadata")
 private val autoExpandPlayerPanelOnPlaybackKey = booleanPreferencesKey("auto_expand_player_panel_on_playback")
 private val autoPlayNextEpisodeKey = booleanPreferencesKey("auto_play_next_episode")
 private val collapsePlayerPanelInSearchKey = booleanPreferencesKey("collapse_player_panel_in_search")
@@ -144,6 +145,10 @@ class StationRepository(private val context: Context) {
 
     val marqueeTrackTitle: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[marqueeTrackTitleKey] ?: true }
+
+    /** 播放面板是否显示元数据（曲目名 / 播放状态）。关掉后只保留错误提示 */
+    val showPlayerMetadata: Flow<Boolean> = context.stationDataStore.data
+        .map { preferences -> preferences[showPlayerMetadataKey] ?: true }
 
     val autoExpandPlayerPanelOnPlayback: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[autoExpandPlayerPanelOnPlaybackKey] ?: true }
@@ -262,6 +267,12 @@ class StationRepository(private val context: Context) {
     suspend fun saveMarqueeTrackTitle(marquee: Boolean) {
         context.stationDataStore.edit { preferences ->
             preferences[marqueeTrackTitleKey] = marquee
+        }
+    }
+
+    suspend fun saveShowPlayerMetadata(show: Boolean) {
+        context.stationDataStore.edit { preferences ->
+            preferences[showPlayerMetadataKey] = show
         }
     }
 

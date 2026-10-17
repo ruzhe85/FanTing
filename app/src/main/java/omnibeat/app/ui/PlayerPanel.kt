@@ -104,6 +104,7 @@ fun PlayerPanel(
     appVolume: Float,
     showBitrate: Boolean,
     showUnavailableBitrate: Boolean,
+    showPlayerMetadata: Boolean,
     marqueeTrackTitle: Boolean,
     collapsed: Boolean,
     positionMs: Long = 0L,
@@ -134,7 +135,13 @@ fun PlayerPanel(
     val displayTrackText: String? = if (onDemand) {
         errorText?.takeIf { it.isNotBlank() }
     } else {
-        errorText ?: trackStatus?.let { trackStatusText(it) } ?: trackText
+        // 元数据可以整体关掉：不少电台没有 ICY 信息，只会在「正在等待元数据 / 无元数据」之间跳；
+        // 错误提示不受开关影响，必须保留
+        errorText ?: if (showPlayerMetadata) {
+            trackStatus?.let { trackStatusText(it) } ?: trackText
+        } else {
+            null
+        }
     }
     val bitrateText = if (showBitrate) {
         streamInfo.bitrateKbps?.let { bitrate ->
@@ -220,8 +227,26 @@ fun PlayerPanel(
                             fontSize = RadioTextSizes.title,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
+                            // 播客的超长节目名也走同一套滚动设置（此前只有电台的曲目行会滚）；
+                            // 电台的台名保持不滚 —— 那边第二行才是「曲目名」
+                            overflow = if (marqueeTrackTitle && onDemand) {
+                                TextOverflow.Clip
+                            } else {
+                                TextOverflow.Ellipsis
+                            },
+                            softWrap = false,
+                            modifier = Modifier
+                                .weight(1f)
+                                .then(
+                                    if (marqueeTrackTitle && onDemand) {
+                                        Modifier.basicMarquee(
+                                            iterations = Int.MAX_VALUE,
+                                            repeatDelayMillis = 1_500,
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         )
                         if (loading) {
                             CircularProgressIndicator(

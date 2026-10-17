@@ -60,8 +60,10 @@ fun PodcastSearchPage(
     loading: Boolean,
     errorText: String?,
     subscribedKeys: Set<String>,
+    hasMore: Boolean,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    onLoadMore: () -> Unit,
     onOpenDetail: (ITunesPodcast) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -141,6 +143,22 @@ fun PodcastSearchPage(
                         subscribed = podcastFeedKeyOf(podcast) in subscribedKeys,
                         onClick = { onOpenDetail(podcast) },
                     )
+                }
+                // 结果首屏已经取满，这里只是把后面的批次展开显示，不再发请求
+                if (hasMore) {
+                    item(key = "podcast_search_load_more") {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = RadioSpacing.medium),
+                        ) {
+                            OmniSecondaryButton(
+                                text = stringResource(R.string.podcast_search_load_more),
+                                onClick = onLoadMore,
+                            )
+                        }
+                    }
                 }
             }
         }

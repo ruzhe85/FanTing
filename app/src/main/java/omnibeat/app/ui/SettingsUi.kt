@@ -152,6 +152,7 @@ fun SettingsPage(
     confirmStationDeletion: Boolean,
     showBitrateInControlPanel: Boolean,
     showUnavailableBitrate: Boolean,
+    showPlayerMetadata: Boolean,
     marqueeTrackTitle: Boolean,
     autoExpandPlayerPanelOnPlayback: Boolean,
     collapsePlayerPanelInSearch: Boolean,
@@ -174,6 +175,7 @@ fun SettingsPage(
     onConfirmStationDeletionChange: (Boolean) -> Unit,
     onShowBitrateInControlPanelChange: (Boolean) -> Unit,
     onShowUnavailableBitrateChange: (Boolean) -> Unit,
+    onShowPlayerMetadataChange: (Boolean) -> Unit,
     onMarqueeTrackTitleChange: (Boolean) -> Unit,
     onAutoExpandPlayerPanelOnPlaybackChange: (Boolean) -> Unit,
     onCollapsePlayerPanelInSearchChange: (Boolean) -> Unit,
@@ -348,6 +350,16 @@ fun SettingsPage(
             SettingsDivider()
 
             SettingsSectionHeader(title = stringResource(R.string.settings_section_control_panel))
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_show_player_metadata_title),
+                subtitle = if (showPlayerMetadata) {
+                    stringResource(R.string.settings_show_player_metadata_on)
+                } else {
+                    stringResource(R.string.settings_show_player_metadata_off)
+                },
+                checked = showPlayerMetadata,
+                onCheckedChange = onShowPlayerMetadataChange,
+            )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_show_bitrate_title),
                 subtitle = if (showBitrateInControlPanel) {

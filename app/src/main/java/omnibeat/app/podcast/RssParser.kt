@@ -302,6 +302,8 @@ object RssParser {
         return withoutCdata
             .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
             .replace(Regex("</p\\s*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("</li\\s*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("</div\\s*>", RegexOption.IGNORE_CASE), "\n")
             .replace(Regex("<[^>]+>"), "")
             .replace("&nbsp;", " ")
             .replace("&lt;", "<")

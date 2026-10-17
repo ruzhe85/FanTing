@@ -75,6 +75,8 @@ import omnibeat.app.model.MainPage
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
 import omnibeat.app.model.PODCAST_DEFAULT_SEARCH_REGION
+import omnibeat.app.model.PODCAST_SEARCH_FETCH_LIMIT
+import omnibeat.app.model.PODCAST_SEARCH_PAGE_SIZE
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.model.Station
@@ -216,6 +218,7 @@ fun OmniBeatApp() {
         var confirmStationDeletion by remember { mutableStateOf(true) }
         var showBitrateInControlPanel by remember { mutableStateOf(true) }
         var showUnavailableBitrate by remember { mutableStateOf(false) }
+        var showPlayerMetadata by remember { mutableStateOf(true) }
         var marqueeTrackTitle by remember { mutableStateOf(true) }
         var autoExpandPlayerPanelOnPlayback by remember { mutableStateOf(true) }
         var collapsePlayerPanelInSearch by remember { mutableStateOf(true) }
@@ -271,6 +274,8 @@ fun OmniBeatApp() {
         var podcastSearchOpen by remember { mutableStateOf(false) }
         var podcastSearchQuery by remember { mutableStateOf("") }
         var podcastSearchResults by remember { mutableStateOf(emptyList<ITunesPodcast>()) }
+        // 已展开到第几条：iTunes 不支持分页，结果一次取满，这里只控制列表显示多少
+        var podcastSearchVisibleCount by remember { mutableIntStateOf(PODCAST_SEARCH_PAGE_SIZE) }
         var podcastSearchLoading by remember { mutableStateOf(false) }
         var podcastSearchError by remember { mutableStateOf<String?>(null) }
         var podcastSearchSelected by remember { mutableStateOf<ITunesPodcast?>(null) }
@@ -313,6 +318,7 @@ fun OmniBeatApp() {
             onConfirmStationDeletionChange = { confirmStationDeletion = it },
             onShowBitrateInControlPanelChange = { showBitrateInControlPanel = it },
             onShowUnavailableBitrateChange = { showUnavailableBitrate = it },
+            onShowPlayerMetadataChange = { showPlayerMetadata = it },
             onMarqueeTrackTitleChange = { marqueeTrackTitle = it },
             onAutoExpandPlayerPanelOnPlaybackChange = { autoExpandPlayerPanelOnPlayback = it },
             onCollapsePlayerPanelInSearchChange = { collapsePlayerPanelInSearch = it },
@@ -814,15 +820,21 @@ fun OmniBeatApp() {
             podcastSearchError = null
             podcastSearchJob = scope.launch {
                 try {
-                    val results = ITunesPodcastClient.search(term, podcastSearchRegion)
+                    val results = ITunesPodcastClient.search(
+                        term = term,
+                        countryCode = podcastSearchRegion,
+                        limit = PODCAST_SEARCH_FETCH_LIMIT,
+                    )
                     if (podcastSearchRequest == request) {
                         podcastSearchResults = results
+                        podcastSearchVisibleCount = PODCAST_SEARCH_PAGE_SIZE
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
                     if (podcastSearchRequest == request) {
                         podcastSearchResults = emptyList()
+                        podcastSearchVisibleCount = PODCAST_SEARCH_PAGE_SIZE
                         podcastSearchError = error.message ?: error.javaClass.simpleName
                     }
                 } finally {
@@ -832,6 +844,13 @@ fun OmniBeatApp() {
                     }
                 }
             }
+        }
+
+        /** 「加载更多」只做本地展开：候选结果首屏已经取满，不再发请求 */
+        fun loadMorePodcasts() {
+            if (podcastSearchVisibleCount >= podcastSearchResults.size) return
+            podcastSearchVisibleCount = (podcastSearchVisibleCount + PODCAST_SEARCH_PAGE_SIZE)
+                .coerceAtMost(podcastSearchResults.size)
         }
 
         /** 进详情：先用搜索结果里的信息立即显示，缺简介时从订阅源头部补 */
@@ -1177,6 +1196,17 @@ fun OmniBeatApp() {
          */
         fun playPodcastEpisode(subscription: PodcastSubscription, episode: PodcastEpisode) {
             if (episode.audioUrl.isBlank()) return
+            // 点的就是当前这一集：不能重建播放器。重建会拿磁盘里的旧进度（往往还是 0）起播，
+            // 表现为「正听着再点一下就从头上重播」。正在播就忽略，暂停中则继续播。
+            val current = playbackState
+            if (current.seekable && current.selectedStation?.id == episode.guid) {
+                val loaded = current.isPlaying || current.resolving || current.buffering ||
+                    current.durationMs > 0L || current.positionMs > 0L
+                if (loaded) {
+                    if (!current.isPlaying) PlaybackService.playOrPause(context)
+                    return
+                }
+            }
             // 已下载且文件还在：走本地 file://，离线也能播（HLS 的分片同样是本地路径）；
             // 没有本地文件才检查网络、回退在线地址
             val localUri = episode.localFileName?.let {
@@ -1783,6 +1813,7 @@ fun OmniBeatApp() {
                             appVolume = appVolume,
                             showBitrate = showBitrateInControlPanel,
                             showUnavailableBitrate = showUnavailableBitrate,
+                            showPlayerMetadata = showPlayerMetadata,
                             marqueeTrackTitle = marqueeTrackTitle,
                             collapsed = playerPanelCollapsed,
                             positionMs = playbackState.positionMs,
@@ -1860,12 +1891,14 @@ fun OmniBeatApp() {
 
                                         podcastSearchOpen -> PodcastSearchPage(
                                             query = podcastSearchQuery,
-                                            results = podcastSearchResults,
+                                            results = podcastSearchResults.take(podcastSearchVisibleCount),
                                             loading = podcastSearchLoading,
                                             errorText = podcastSearchError,
                                             subscribedKeys = subscribedPodcastKeys,
+                                            hasMore = podcastSearchVisibleCount < podcastSearchResults.size,
                                             onQueryChange = { podcastSearchQuery = it },
                                             onSearch = ::searchPodcasts,
+                                            onLoadMore = ::loadMorePodcasts,
                                             onOpenDetail = ::openPodcastSearchDetail,
                                             onBack = ::closePodcastSearch,
                                             modifier = contentModifier,
@@ -1991,6 +2024,7 @@ fun OmniBeatApp() {
                                 confirmStationDeletion = confirmStationDeletion,
                                 showBitrateInControlPanel = showBitrateInControlPanel,
                                 showUnavailableBitrate = showUnavailableBitrate,
+                                showPlayerMetadata = showPlayerMetadata,
                                 marqueeTrackTitle = marqueeTrackTitle,
                                 autoExpandPlayerPanelOnPlayback = autoExpandPlayerPanelOnPlayback,
                                 collapsePlayerPanelInSearch = collapsePlayerPanelInSearch,
@@ -2043,6 +2077,10 @@ fun OmniBeatApp() {
                                 onShowUnavailableBitrateChange = { show ->
                                     showUnavailableBitrate = show
                                     scope.launch { repository.saveShowUnavailableBitrate(show) }
+                                },
+                                onShowPlayerMetadataChange = { show ->
+                                    showPlayerMetadata = show
+                                    scope.launch { repository.saveShowPlayerMetadata(show) }
                                 },
                                 onMarqueeTrackTitleChange = { marquee ->
                                     marqueeTrackTitle = marquee
