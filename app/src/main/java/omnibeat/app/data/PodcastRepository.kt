@@ -11,12 +11,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
+import omnibeat.app.model.PODCAST_DEFAULT_SEARCH_REGION
 import omnibeat.app.model.PODCAST_PLAYBACK_SPEEDS
 import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
+import omnibeat.app.model.PODCAST_SEARCH_REGIONS
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 /**
  * 播客订阅单独一个 DataStore 文件（`podcasts.preferences_pb`）。
@@ -37,6 +40,7 @@ private val playbackSpeedKey = floatPreferencesKey("podcast_playback_speed")
 private val autoRefreshOnStartKey = booleanPreferencesKey("podcast_auto_refresh_on_start")
 private val autoRefreshOnEnterListKey = booleanPreferencesKey("podcast_auto_refresh_on_enter_list")
 private val refreshIntervalMinutesKey = intPreferencesKey("podcast_refresh_interval_minutes")
+private val searchRegionKey = stringPreferencesKey("podcast_search_region")
 
 class PodcastRepository(private val context: Context) {
     val subscriptions: Flow<List<PodcastSubscription>> = context.podcastDataStore.data
@@ -59,6 +63,10 @@ class PodcastRepository(private val context: Context) {
         .map { preferences ->
             preferences[refreshIntervalMinutesKey] ?: PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
         }
+
+    /** 在线搜索使用的 iTunes 商店地区（白名单之外回退美国区） */
+    val searchRegion: Flow<String> = context.podcastDataStore.data
+        .map { preferences -> normalizeSearchRegion(preferences[searchRegionKey]) }
 
     /** 新增或覆盖（按 feedUrl 去重）：添加订阅与刷新后都用它写回 */
     suspend fun upsertSubscription(subscription: PodcastSubscription) {
@@ -133,6 +141,16 @@ class PodcastRepository(private val context: Context) {
         context.podcastDataStore.edit { preferences ->
             if (preferences[refreshIntervalMinutesKey] != clamped) {
                 preferences[refreshIntervalMinutesKey] = clamped
+            }
+        }
+    }
+
+    /** 保存在线搜索的商店地区（只接受白名单值，非法值回退美国区） */
+    suspend fun saveSearchRegion(region: String) {
+        val normalized = normalizeSearchRegion(region)
+        context.podcastDataStore.edit { preferences ->
+            if (preferences[searchRegionKey] != normalized) {
+                preferences[searchRegionKey] = normalized
             }
         }
     }
@@ -364,4 +382,13 @@ class PodcastRepository(private val context: Context) {
             }
         }
     }
+}
+
+/** 地区只认白名单；大小写/空白差异归一到小写，其余一律退回默认区 */
+private fun normalizeSearchRegion(region: String?): String {
+    return region
+        ?.trim()
+        ?.lowercase(Locale.ROOT)
+        ?.takeIf { it in PODCAST_SEARCH_REGIONS }
+        ?: PODCAST_DEFAULT_SEARCH_REGION
 }

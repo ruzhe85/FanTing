@@ -48,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import omnibeat.app.ui.appStringResource as stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.collectLatest
@@ -290,11 +291,12 @@ fun StationTagPills(
     }
 }
 
-/** 封面加载（电台与播客共用；缓存按 URL 共享） */
+/** 封面加载（电台与播客共用；缓存按 URL 共享）。[size] 供详情页放大封面用 */
 @Composable
 internal fun StationArtwork(
     imageUrl: String?,
     modifier: Modifier = Modifier,
+    size: Dp = RadioSizes.artwork,
 ) {
     val context = LocalContext.current.applicationContext
     val normalizedUrl = imageUrl?.takeIf { it.isNotBlank() }
@@ -326,7 +328,7 @@ internal fun StationArtwork(
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .size(RadioSizes.artwork)
+            .size(size)
             .onSizeChanged { artworkSize = it }
             .clip(RoundedCornerShape(RadioCorners.small))
             .background(RadioSurfaceHigh.copy(alpha = 0.72f)),

@@ -51,6 +51,7 @@ import omnibeat.app.R
 import omnibeat.app.data.STOP_SERVICE_AFTER_PAUSE_NEVER
 import omnibeat.app.model.AppLanguage
 import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
+import omnibeat.app.model.PODCAST_SEARCH_REGIONS
 import omnibeat.app.data.TranslationLanguage
 import omnibeat.app.model.ThemeMode
 
@@ -160,6 +161,7 @@ fun SettingsPage(
     podcastAutoRefreshOnStart: Boolean,
     podcastAutoRefreshOnEnterList: Boolean,
     podcastRefreshIntervalMinutes: Int,
+    podcastSearchRegion: String,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
     onRememberLastStationChange: (Boolean) -> Unit,
@@ -181,6 +183,7 @@ fun SettingsPage(
     onPodcastAutoRefreshOnStartChange: (Boolean) -> Unit,
     onPodcastAutoRefreshOnEnterListChange: (Boolean) -> Unit,
     onPodcastRefreshIntervalMinutesChange: (Int) -> Unit,
+    onPodcastSearchRegionChange: (String) -> Unit,
     onClearLibrary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -335,6 +338,12 @@ fun SettingsPage(
                 subtitle = stringResource(R.string.settings_podcast_refresh_interval_subtitle),
                 selectedMinutes = podcastRefreshIntervalMinutes,
                 onSelectedMinutesChange = onPodcastRefreshIntervalMinutesChange,
+            )
+            SettingsPodcastSearchRegionRow(
+                title = stringResource(R.string.settings_podcast_search_region_title),
+                subtitle = stringResource(R.string.settings_podcast_search_region_subtitle),
+                selectedRegion = podcastSearchRegion,
+                onSelectedRegionChange = onPodcastSearchRegionChange,
             )
             SettingsDivider()
 
@@ -535,6 +544,22 @@ private fun SettingsLanguageRow(
 }
 
 @Composable
+private fun podcastSearchRegionLabel(region: String): String {
+    return stringResource(
+        when (region) {
+            "cn" -> R.string.settings_podcast_search_region_cn
+            "tw" -> R.string.settings_podcast_search_region_tw
+            "hk" -> R.string.settings_podcast_search_region_hk
+            "jp" -> R.string.settings_podcast_search_region_jp
+            "kr" -> R.string.settings_podcast_search_region_kr
+            "gb" -> R.string.settings_podcast_search_region_gb
+            "de" -> R.string.settings_podcast_search_region_de
+            else -> R.string.settings_podcast_search_region_us
+        },
+    )
+}
+
+@Composable
 private fun podcastRefreshIntervalLabel(minutes: Int): String {
     return when (minutes) {
         60 -> stringResource(R.string.settings_podcast_refresh_interval_1h)
@@ -606,6 +631,76 @@ private fun SettingsPodcastRefreshIntervalRow(
                         onClick = {
                             expanded = false
                             onSelectedMinutesChange(minutes)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 在线搜索的 iTunes 商店地区：交互与刷新间隔行一致（当前值 + 菜单），
+ * 选项取 [PODCAST_SEARCH_REGIONS]，默认美国区。
+ */
+@Composable
+private fun SettingsPodcastSearchRegionRow(
+    title: String,
+    subtitle: String,
+    selectedRegion: String,
+    onSelectedRegionChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.groupGap),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = RadioSpacing.fieldGap),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(
+                text = title,
+                color = RadioText,
+                fontSize = RadioTextSizes.bodyLarge,
+            )
+            Text(
+                text = subtitle,
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.bodySmall,
+            )
+        }
+        Box {
+            TextButton(onClick = { expanded = true }) {
+                Text(
+                    text = podcastSearchRegionLabel(selectedRegion),
+                    color = RadioPrimary,
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                containerColor = RadioSurface,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(RadioCorners.medium),
+            ) {
+                PODCAST_SEARCH_REGIONS.forEach { region ->
+                    DropdownMenuItem(
+                        modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                        contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                        text = {
+                            Text(
+                                text = podcastSearchRegionLabel(region),
+                                color = RadioText,
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelectedRegionChange(region)
                         },
                     )
                 }

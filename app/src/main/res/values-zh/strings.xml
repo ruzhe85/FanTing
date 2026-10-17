@@ -86,6 +86,16 @@
     <string name="settings_podcast_refresh_interval_1h">1 小时</string>
     <string name="settings_podcast_refresh_interval_6h">6 小时</string>
     <string name="settings_podcast_refresh_interval_1d">每天</string>
+    <string name="settings_podcast_search_region_title">搜索地区</string>
+    <string name="settings_podcast_search_region_subtitle">搜索播客时使用的 iTunes 商店</string>
+    <string name="settings_podcast_search_region_us">美国</string>
+    <string name="settings_podcast_search_region_cn">中国</string>
+    <string name="settings_podcast_search_region_tw">台湾</string>
+    <string name="settings_podcast_search_region_hk">香港</string>
+    <string name="settings_podcast_search_region_jp">日本</string>
+    <string name="settings_podcast_search_region_kr">韩国</string>
+    <string name="settings_podcast_search_region_gb">英国</string>
+    <string name="settings_podcast_search_region_de">德国</string>
     <string name="settings_section_control_panel">播放面板</string>
     <string name="settings_show_bitrate_title">在播放面板显示码率</string>
     <string name="settings_show_bitrate_on">播放面板会显示音频流码率</string>
@@ -312,6 +322,19 @@
     <string name="translation_failed">翻译操作失败：%1$s</string>
 
     <string name="podcast_add_title">添加播客</string>
+    <string name="podcast_search_hint">播客名称</string>
+    <string name="podcast_search_idle">输入播客名称，从 iTunes 目录中搜索</string>
+    <string name="podcast_search_searching">正在搜索…</string>
+    <string name="podcast_search_empty">没有找到播客</string>
+    <string name="podcast_search_failed">搜索失败：%1$s</string>
+    <string name="podcast_search_retry">重试</string>
+    <string name="podcast_search_detail_title">播客详情</string>
+    <string name="podcast_search_subscribed">已订阅</string>
+    <string name="podcast_search_subscribing">正在订阅…</string>
+    <string name="podcast_search_subscribe_failed">订阅失败：%1$s</string>
+    <string name="podcast_search_no_description">暂无简介</string>
+    <string name="podcast_search_description_loading">正在加载简介…</string>
+    <string name="podcast_search_episode_count">%1$d 期</string>
     <string name="podcast_feed_hint">RSS 订阅地址</string>
     <string name="podcast_subscribe">订阅</string>
     <string name="podcast_loading">正在加载订阅源…</string>

@@ -2,11 +2,15 @@ package omnibeat.app.podcast
 
 import android.util.Xml
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import omnibeat.app.model.ParsedFeed
 import omnibeat.app.model.PodcastEpisode
 import org.xmlpull.v1.XmlPullParser
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URI
@@ -56,9 +60,8 @@ object RssParser {
                 if (code !in 200..299) {
                     throw IOException("服务器返回 HTTP $code")
                 }
-                connection.inputStream.use { stream ->
-                    stream.readBytes().toString(charsetOf(connection.contentType))
-                }
+                val charset = charsetOf(connection.contentType)
+                connection.inputStream.use { stream -> readFully(stream, charset) }
             } finally {
                 connection.disconnect()
             }
@@ -177,6 +180,22 @@ object RssParser {
             // 倒序：最新一期在最上面
             episodes = episodes.sortedByDescending { it.publishedAtMs },
         )
+    }
+
+    /**
+     * 分块读响应体，每块之间检查协程是否已取消：用户在「添加播客」里点取消后
+     * 不必等这次读超时（20s）结束才退出。阻塞在单次 read 上时仍受 readTimeout 约束。
+     */
+    private suspend fun readFully(stream: InputStream, charset: Charset): String {
+        val bytes = ByteArrayOutputStream()
+        val chunk = ByteArray(16 * 1024)
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val read = stream.read(chunk)
+            if (read < 0) break
+            bytes.write(chunk, 0, read)
+        }
+        return bytes.toString(charset.name())
     }
 
     private fun open(feedUrl: String): HttpURLConnection {

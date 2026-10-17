@@ -187,6 +187,19 @@
     <string name="radio_browser_sort_countries">Странам</string>
     <string name="radio_browser_sort_random">Случайно</string>
 
+    <string name="podcast_search_hint">Название подкаста</string>
+    <string name="podcast_search_idle">Введите название для поиска в каталоге iTunes</string>
+    <string name="podcast_search_searching">Идёт поиск…</string>
+    <string name="podcast_search_empty">Подкасты не найдены</string>
+    <string name="podcast_search_failed">Не удалось выполнить поиск: %1$s</string>
+    <string name="podcast_search_retry">Повторить</string>
+    <string name="podcast_search_detail_title">Подкаст</string>
+    <string name="podcast_search_subscribed">Вы подписаны</string>
+    <string name="podcast_search_subscribing">Подписка…</string>
+    <string name="podcast_search_subscribe_failed">Не удалось подписаться: %1$s</string>
+    <string name="podcast_search_no_description">Описание отсутствует</string>
+    <string name="podcast_search_description_loading">Загрузка описания…</string>
+    <string name="podcast_search_episode_count">Выпусков: %1$d</string>
     <string name="station_editor_add_title">Добавить станцию</string>
     <string name="station_editor_edit_title">Редактировать станцию</string>
     <string name="station_editor_title_label">Название</string>
@@ -229,6 +242,9 @@
     <string name="podcast_download_downloaded">Скачано</string>
     <string name="podcast_download_export">Экспортировать файл</string>
     <string name="podcast_download_delete">Удалить загрузку</string>
+    <string name="podcast_subscribe">Подписаться</string>
+    <string name="podcast_loading">Загрузка ленты…</string>
+    <string name="podcast_episode_count">Выпусков: %1$d</string>
     <string name="settings_section_podcast">Подкасты</string>
     <string name="settings_podcast_refresh_on_start_title">Обновлять при запуске</string>
     <string name="settings_podcast_refresh_on_start_on">Обновлять все подписки при открытии приложения</string>
@@ -242,6 +258,16 @@
     <string name="settings_podcast_refresh_interval_1h">1 час</string>
     <string name="settings_podcast_refresh_interval_6h">6 часов</string>
     <string name="settings_podcast_refresh_interval_1d">1 день</string>
+    <string name="settings_podcast_search_region_title">Регион поиска</string>
+    <string name="settings_podcast_search_region_subtitle">Магазин iTunes для поиска подкастов</string>
+    <string name="settings_podcast_search_region_us">США</string>
+    <string name="settings_podcast_search_region_cn">Китай</string>
+    <string name="settings_podcast_search_region_tw">Тайвань</string>
+    <string name="settings_podcast_search_region_hk">Гонконг</string>
+    <string name="settings_podcast_search_region_jp">Япония</string>
+    <string name="settings_podcast_search_region_kr">Южная Корея</string>
+    <string name="settings_podcast_search_region_gb">Великобритания</string>
+    <string name="settings_podcast_search_region_de">Германия</string>
     <string name="player_clipboard_track_label">Трек</string>
     <string name="player_track_copied">Название трека скопировано</string>
     <string name="player_choose_station">Выберите станцию</string>

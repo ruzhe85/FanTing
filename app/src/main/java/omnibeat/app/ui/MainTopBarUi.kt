@@ -62,6 +62,9 @@ fun MainTopBar(
     onAddStation: () -> Unit,
     onSearchOnline: () -> Unit,
     onAddPodcast: () -> Unit,
+    onSearchPodcastOnline: () -> Unit,
+    /** 播客在线搜索页打开时隐藏「+」菜单，避免在搜索过程中再弹添加弹窗 */
+    podcastSearchActive: Boolean = false,
     onlineSearchControl: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -197,11 +200,15 @@ fun MainTopBar(
                     )
                 }
 
-                // 播客页只需要「添加订阅」，没有排序与在线搜索
-                selectedPage == MainPage.Podcasts -> OmniIconButton(
-                    painter = painterResource(R.drawable.ic_add),
-                    onClick = onAddPodcast,
+                // 播客页没有排序，但「+」和电台一样是「手动添加 / 在线搜索」菜单
+                selectedPage == MainPage.Podcasts && !podcastSearchActive -> AddMenuButton(
+                    expanded = addMenuExpanded,
+                    onExpandedChange = { addMenuExpanded = it },
+                    onAddManually = onAddPodcast,
+                    onSearchOnline = onSearchPodcastOnline,
                 )
+
+                selectedPage == MainPage.Podcasts -> Unit
 
                 else -> {
                     SortMenuButton(
@@ -213,7 +220,7 @@ fun MainTopBar(
                     AddMenuButton(
                         expanded = addMenuExpanded,
                         onExpandedChange = { addMenuExpanded = it },
-                        onAddStation = onAddStation,
+                        onAddManually = onAddStation,
                         onSearchOnline = onSearchOnline,
                     )
                 }
@@ -297,7 +304,7 @@ private fun SortMenuButton(
 private fun AddMenuButton(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    onAddStation: () -> Unit,
+    onAddManually: () -> Unit,
     onSearchOnline: () -> Unit,
 ) {
     Box {
@@ -323,7 +330,7 @@ private fun AddMenuButton(
                 },
                 onClick = {
                     onExpandedChange(false)
-                    onAddStation()
+                    onAddManually()
                 },
                 leadingIcon = {
                     Icon(

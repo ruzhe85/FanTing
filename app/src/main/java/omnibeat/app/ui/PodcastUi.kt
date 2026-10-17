@@ -901,7 +901,8 @@ fun AddPodcastDialog(
     val textFieldColors = omniTextFieldColors()
 
     AlertDialog(
-        onDismissRequest = { if (!loading) onDismiss() },
+        // 请求进行中也要能关：调用方会取消在途请求，卡住的网络不该锁住返回键
+        onDismissRequest = onDismiss,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = RadioSpacing.large)
@@ -955,7 +956,7 @@ fun AddPodcastDialog(
             ) {
                 OmniSecondaryButton(
                     text = stringResource(R.string.action_cancel),
-                    onClick = { if (!loading) onDismiss() },
+                    onClick = onDismiss,
                 )
                 Spacer(Modifier.weight(1f))
                 OmniPrimaryButton(
@@ -968,6 +969,7 @@ fun AddPodcastDialog(
                             onSubmit(trimmed)
                         }
                     },
+                    enabled = !loading,
                 )
             }
         },
@@ -1000,7 +1002,7 @@ fun EditPodcastDialog(
     val textFieldColors = omniTextFieldColors()
 
     AlertDialog(
-        onDismissRequest = { if (!loading) onDismiss() },
+        onDismissRequest = onDismiss,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = RadioSpacing.large)
@@ -1107,7 +1109,7 @@ fun EditPodcastDialog(
             ) {
                 OmniSecondaryButton(
                     text = stringResource(R.string.action_cancel),
-                    onClick = { if (!loading) onDismiss() },
+                    onClick = onDismiss,
                 )
                 Spacer(Modifier.weight(1f))
                 OmniPrimaryButton(
@@ -1125,6 +1127,7 @@ fun EditPodcastDialog(
                             else -> onSave(trimmedTitle, trimmedFeedUrl, trimmedImageUrl)
                         }
                     },
+                    enabled = !loading,
                 )
             }
         },

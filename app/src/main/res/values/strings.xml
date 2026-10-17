@@ -85,6 +85,16 @@
     <string name="settings_podcast_refresh_interval_1h">1 hour</string>
     <string name="settings_podcast_refresh_interval_6h">6 hours</string>
     <string name="settings_podcast_refresh_interval_1d">1 day</string>
+    <string name="settings_podcast_search_region_title">Search region</string>
+    <string name="settings_podcast_search_region_subtitle">iTunes store used to search podcasts</string>
+    <string name="settings_podcast_search_region_us">United States</string>
+    <string name="settings_podcast_search_region_cn">China</string>
+    <string name="settings_podcast_search_region_tw">Taiwan</string>
+    <string name="settings_podcast_search_region_hk">Hong Kong</string>
+    <string name="settings_podcast_search_region_jp">Japan</string>
+    <string name="settings_podcast_search_region_kr">South Korea</string>
+    <string name="settings_podcast_search_region_gb">United Kingdom</string>
+    <string name="settings_podcast_search_region_de">Germany</string>
     <string name="settings_section_control_panel">Control panel</string>
     <string name="settings_show_bitrate_title">Show bitrate in control panel</string>
     <string name="settings_show_bitrate_on">Control panel will show stream bitrate</string>
@@ -312,6 +322,19 @@
     <string name="translation_failed">Translation operation failed: %1$s</string>
 
     <string name="podcast_add_title">Add podcast</string>
+    <string name="podcast_search_hint">Podcast name</string>
+    <string name="podcast_search_idle">Type a name to search the iTunes catalog</string>
+    <string name="podcast_search_searching">Searching…</string>
+    <string name="podcast_search_empty">No podcasts found</string>
+    <string name="podcast_search_failed">Search failed: %1$s</string>
+    <string name="podcast_search_retry">Retry</string>
+    <string name="podcast_search_detail_title">Podcast</string>
+    <string name="podcast_search_subscribed">Subscribed</string>
+    <string name="podcast_search_subscribing">Subscribing…</string>
+    <string name="podcast_search_subscribe_failed">Couldn\'t subscribe: %1$s</string>
+    <string name="podcast_search_no_description">No description</string>
+    <string name="podcast_search_description_loading">Loading description…</string>
+    <string name="podcast_search_episode_count">%1$d episodes</string>
     <string name="podcast_feed_hint">RSS feed URL</string>
     <string name="podcast_subscribe">Subscribe</string>
     <string name="podcast_loading">Loading feed…</string>

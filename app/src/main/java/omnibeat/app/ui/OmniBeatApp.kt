@@ -49,6 +49,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -73,6 +74,7 @@ import omnibeat.app.data.normalizeStreamUrl
 import omnibeat.app.model.MainPage
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
+import omnibeat.app.model.PODCAST_DEFAULT_SEARCH_REGION
 import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.model.Station
@@ -85,6 +87,9 @@ import omnibeat.app.model.customSortedStations
 import omnibeat.app.model.sortedStations
 import omnibeat.app.network.NetworkStatus
 import omnibeat.app.playback.PlaybackService
+import omnibeat.app.model.podcastFeedKey
+import omnibeat.app.podcast.ITunesPodcast
+import omnibeat.app.podcast.ITunesPodcastClient
 import omnibeat.app.podcast.RssParser
 import omnibeat.app.radio.RadioBrowserStation
 import omnibeat.app.radio.stationTags
@@ -116,6 +121,13 @@ fun OmniBeatApp() {
         .collectAsState(initial = true)
     val podcastRefreshIntervalMinutes by podcastRepository.refreshIntervalMinutes
         .collectAsState(initial = PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES)
+    // 在线搜索使用的 iTunes 商店地区（设置-播客可选，默认美国区）
+    val podcastSearchRegion by podcastRepository.searchRegion
+        .collectAsState(initial = PODCAST_DEFAULT_SEARCH_REGION)
+    // 在线搜索结果的「已订阅」判定：按归一化后的 feedUrl 比较，避免协议/结尾斜杠差异漏判
+    val subscribedPodcastKeys = remember(podcastSubscriptions) {
+        podcastSubscriptions.mapTo(mutableSetOf()) { podcastFeedKey(it.feedUrl) }
+    }
     // 收藏的节目：跨订阅聚合，按发布时间倒序（与订阅内排序一致）。
     // 纯读派生——数据源就是各订阅里 favorite = true 的期，不额外落库。
     val favoriteEpisodes = remember(podcastSubscriptions) {
@@ -242,12 +254,35 @@ fun OmniBeatApp() {
         // 正在编辑的订阅（按 feedUrl 定位；地址改动后会重定向到新地址）
         var editPodcastUrl by remember { mutableStateOf<String?>(null) }
         var addPodcastDialogVisible by remember { mutableStateOf(false) }
+        // 列表 / 期数页的刷新状态；与弹窗里的提交状态分开，否则自动刷新期间
+        // 打开「添加播客」会继承 loading，把取消、订阅、返回键一起锁死
         var podcastLoading by remember { mutableStateOf(false) }
+        // 添加 / 编辑弹窗自己的提交状态：只反映用户在弹窗里发起的请求
+        var podcastSubmitLoading by remember { mutableStateOf(false) }
+        var podcastSubmitJob by remember { mutableStateOf<Job?>(null) }
+        // 请求代号：取消后重开弹窗会发新请求，旧请求的收尾不能清掉新请求的状态
+        var podcastSubmitRequest by remember { mutableIntStateOf(0) }
         // 一键刷新全部的进度：总数 > 0 表示正在刷新，已完成数驱动 FAB 的「n/N」
         var podcastRefreshAllTotal by remember { mutableIntStateOf(0) }
         var podcastRefreshAllDone by remember { mutableIntStateOf(0) }
         var podcastError by remember { mutableStateOf<String?>(null) }
         var pendingPodcastRemoval by remember { mutableStateOf<PodcastSubscription?>(null) }
+        // 在线搜索（iTunes）：搜索、详情、订阅三套状态各自独立，互不复用刷新/弹窗的 loading
+        var podcastSearchOpen by remember { mutableStateOf(false) }
+        var podcastSearchQuery by remember { mutableStateOf("") }
+        var podcastSearchResults by remember { mutableStateOf(emptyList<ITunesPodcast>()) }
+        var podcastSearchLoading by remember { mutableStateOf(false) }
+        var podcastSearchError by remember { mutableStateOf<String?>(null) }
+        var podcastSearchSelected by remember { mutableStateOf<ITunesPodcast?>(null) }
+        var podcastSearchDescriptionLoading by remember { mutableStateOf(false) }
+        var podcastSearchSubmitting by remember { mutableStateOf(false) }
+        var podcastSearchSubmitError by remember { mutableStateOf<String?>(null) }
+        var podcastSearchJob by remember { mutableStateOf<Job?>(null) }
+        var podcastDetailJob by remember { mutableStateOf<Job?>(null) }
+        var podcastSearchSubmitJob by remember { mutableStateOf<Job?>(null) }
+        var podcastSearchRequest by remember { mutableIntStateOf(0) }
+        var podcastDetailRequest by remember { mutableIntStateOf(0) }
+        var podcastSearchSubmitRequest by remember { mutableIntStateOf(0) }
         // 播客页始终可见；收藏页在「一条收藏都没有且设置里关掉空收藏页」时隐藏
         val visibleTabPages = MainPage.allTabPages.filter { page ->
             page != MainPage.Favorites || showEmptyFavoritesTab || stations.any { it.isFavorite }
@@ -677,31 +712,213 @@ fun OmniBeatApp() {
 
         /** 添加订阅：先拉取解析，成功才写入；失败只提示，不落库 */
         fun subscribePodcast(feedUrl: String) {
-            if (podcastLoading) return
+            // 只拦自己的重复提交：后台刷新（podcastLoading）不该挡住添加，
+            // 否则自动刷新期间打开弹窗会出现「取消和订阅都没反应」
+            if (podcastSubmitLoading) return
             if (!hasInternetOrToast()) return
-            podcastLoading = true
+            val request = podcastSubmitRequest + 1
+            podcastSubmitRequest = request
+            podcastSubmitLoading = true
             podcastError = null
-            scope.launch {
-                runCatching { RssParser.load(feedUrl) }
-                    .onSuccess { parsed ->
-                        podcastRepository.upsertSubscription(
-                            PodcastSubscription(
-                                feedUrl = feedUrl,
-                                title = parsed.title,
-                                imageUrl = parsed.imageUrl,
-                                lastFetchedAtMs = System.currentTimeMillis(),
-                                episodes = parsed.episodes,
-                            ),
-                        )
-                        addPodcastDialogVisible = false
+            podcastSubmitJob = scope.launch {
+                try {
+                    val parsed = RssParser.load(feedUrl)
+                    podcastRepository.upsertSubscription(
+                        PodcastSubscription(
+                            feedUrl = feedUrl,
+                            title = parsed.title,
+                            imageUrl = parsed.imageUrl,
+                            lastFetchedAtMs = System.currentTimeMillis(),
+                            episodes = parsed.episodes,
+                        ),
+                    )
+                    addPodcastDialogVisible = false
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    podcastError = resources.appString(
+                        R.string.podcast_error_load,
+                        error.message ?: error.javaClass.simpleName,
+                    )
+                } finally {
+                    // 用户取消后旧请求的 finally 可能很晚才回来，别清掉新请求的状态
+                    if (podcastSubmitRequest == request) {
+                        podcastSubmitLoading = false
+                        podcastSubmitJob = null
                     }
-                    .onFailure { error ->
-                        podcastError = resources.appString(
-                            R.string.podcast_error_load,
-                            error.message ?: error.javaClass.simpleName,
+                }
+            }
+        }
+
+        /** 关闭添加 / 编辑弹窗：连同在途请求一起取消，UI 不必等网络超时 */
+        fun dismissPodcastSubmit() {
+            podcastSubmitRequest++
+            podcastSubmitJob?.cancel()
+            podcastSubmitJob = null
+            podcastSubmitLoading = false
+            podcastError = null
+        }
+
+        /** 打开在线搜索：保留上一次的关键词与结果，只清掉错误与详情 */
+        fun openPodcastSearch() {
+            podcastSearchOpen = true
+            podcastSearchSelected = null
+            podcastSearchError = null
+            podcastSearchSubmitError = null
+            podcastSearchDescriptionLoading = false
+        }
+
+        /** 只退出搜索界面，不动搜索请求本身（订阅成功跳转时用） */
+        fun leavePodcastSearch() {
+            podcastDetailRequest++
+            podcastDetailJob?.cancel()
+            podcastDetailJob = null
+            podcastSearchDescriptionLoading = false
+            podcastSearchSubmitError = null
+            podcastSearchSelected = null
+            podcastSearchOpen = false
+        }
+
+        /** 只退出详情页，回到搜索结果列表 */
+        fun closePodcastSearchDetail() {
+            podcastDetailRequest++
+            podcastDetailJob?.cancel()
+            podcastDetailJob = null
+            podcastSearchDescriptionLoading = false
+            podcastSearchSubmitError = null
+            podcastSearchSelected = null
+        }
+
+        /** 关闭搜索：连同搜索 / 订阅的在途请求一起取消，状态全部复位 */
+        fun closePodcastSearch() {
+            podcastSearchRequest++
+            podcastSearchJob?.cancel()
+            podcastSearchJob = null
+            podcastSearchLoading = false
+            podcastSearchError = null
+            podcastSearchSubmitRequest++
+            podcastSearchSubmitJob?.cancel()
+            podcastSearchSubmitJob = null
+            podcastSearchSubmitting = false
+            leavePodcastSearch()
+        }
+
+        /** 在线搜索：手动触发，请求代号防止旧响应覆盖新结果 */
+        fun searchPodcasts() {
+            val term = podcastSearchQuery.trim()
+            if (term.isEmpty() || podcastSearchLoading) return
+            if (!hasInternetOrToast()) return
+            val request = podcastSearchRequest + 1
+            podcastSearchRequest = request
+            podcastSearchLoading = true
+            podcastSearchError = null
+            podcastSearchJob = scope.launch {
+                try {
+                    val results = ITunesPodcastClient.search(term, podcastSearchRegion)
+                    if (podcastSearchRequest == request) {
+                        podcastSearchResults = results
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    if (podcastSearchRequest == request) {
+                        podcastSearchResults = emptyList()
+                        podcastSearchError = error.message ?: error.javaClass.simpleName
+                    }
+                } finally {
+                    if (podcastSearchRequest == request) {
+                        podcastSearchLoading = false
+                        podcastSearchJob = null
+                    }
+                }
+            }
+        }
+
+        /** 进详情：先用搜索结果里的信息立即显示，缺简介时再补一次 lookup */
+        fun openPodcastSearchDetail(podcast: ITunesPodcast) {
+            podcastSearchSelected = podcast
+            podcastSearchSubmitError = null
+            val request = podcastDetailRequest + 1
+            podcastDetailRequest = request
+            podcastDetailJob?.cancel()
+            podcastDetailJob = null
+            if (!podcast.description.isNullOrBlank() || podcast.collectionId <= 0L) {
+                podcastSearchDescriptionLoading = false
+                return
+            }
+            if (!NetworkStatus.isOnline(context)) {
+                podcastSearchDescriptionLoading = false
+                return
+            }
+            podcastSearchDescriptionLoading = true
+            podcastDetailJob = scope.launch {
+                try {
+                    val detail = ITunesPodcastClient.lookup(podcast.collectionId, podcastSearchRegion)
+                    if (podcastDetailRequest == request && detail != null) {
+                        // 只补缺失字段，列表里已有的封面/类型优先保留
+                        podcastSearchSelected = podcast.copy(
+                            artworkUrl = podcast.artworkUrl ?: detail.artworkUrl,
+                            genre = podcast.genre ?: detail.genre,
+                            trackCount = if (podcast.trackCount > 0) {
+                                podcast.trackCount
+                            } else {
+                                detail.trackCount
+                            },
+                            description = detail.description,
                         )
                     }
-                podcastLoading = false
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // 简介只是补充信息，拿不到就不显示，不打扰用户
+                } finally {
+                    if (podcastDetailRequest == request) {
+                        podcastSearchDescriptionLoading = false
+                        podcastDetailJob = null
+                    }
+                }
+            }
+        }
+
+        /** 详情页订阅：与手动添加同一条链路（先解析 RSS，成功才落库） */
+        fun subscribeSearchedPodcast(podcast: ITunesPodcast) {
+            if (podcastSearchSubmitting) return
+            val feedUrl = podcast.feedUrl
+            if (podcastFeedKey(feedUrl) in subscribedPodcastKeys) return
+            if (!hasInternetOrToast()) return
+            val request = podcastSearchSubmitRequest + 1
+            podcastSearchSubmitRequest = request
+            podcastSearchSubmitting = true
+            podcastSearchSubmitError = null
+            podcastSearchSubmitJob = scope.launch {
+                try {
+                    val parsed = RssParser.load(feedUrl)
+                    podcastRepository.upsertSubscription(
+                        PodcastSubscription(
+                            feedUrl = feedUrl,
+                            title = parsed.title,
+                            imageUrl = parsed.imageUrl,
+                            lastFetchedAtMs = System.currentTimeMillis(),
+                            episodes = parsed.episodes,
+                        ),
+                    )
+                    if (podcastSearchSubmitRequest == request) {
+                        // 订阅成功：关掉搜索，直接进入这个订阅的期数页
+                        leavePodcastSearch()
+                        openPodcastUrl = feedUrl
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    if (podcastSearchSubmitRequest == request) {
+                        podcastSearchSubmitError = error.message ?: error.javaClass.simpleName
+                    }
+                } finally {
+                    if (podcastSearchSubmitRequest == request) {
+                        podcastSearchSubmitting = false
+                        podcastSearchSubmitJob = null
+                    }
+                }
             }
         }
 
@@ -742,42 +959,45 @@ fun OmniBeatApp() {
             }
             podcastLoading = true
             scope.launch {
-                // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」，用于手动刷新的结果反馈
-                val previousGuids = subscription.episodes.mapTo(mutableSetOf()) { it.guid }
-                runCatching { RssParser.load(subscription.feedUrl) }
-                    .onSuccess { parsed ->
-                        val newEpisodes = parsed.episodes.count { it.guid !in previousGuids }
-                        podcastRepository.upsertSubscription(
-                            subscription.copy(
-                                title = parsed.title,
-                                imageUrl = if (subscription.imageUrlManual) {
-                                    subscription.imageUrl
-                                } else {
-                                    parsed.imageUrl ?: subscription.imageUrl
-                                },
-                                lastFetchedAtMs = System.currentTimeMillis(),
-                                episodes = parsed.episodes,
-                            ),
-                        )
-                        // 手动刷新（期数页下拉）必须给结果反馈：新增几期 / 暂无新内容，
-                        // 否则用户拉完不知道到底刷没刷到东西；自动刷新（非 force）保持静默
-                        if (force) {
-                            val message = if (newEpisodes > 0) {
-                                resources.appString(R.string.podcast_refresh_single_new, newEpisodes)
+                try {
+                    // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」，用于手动刷新的结果反馈
+                    val previousGuids = subscription.episodes.mapTo(mutableSetOf()) { it.guid }
+                    val parsed = RssParser.load(subscription.feedUrl)
+                    val newEpisodes = parsed.episodes.count { it.guid !in previousGuids }
+                    podcastRepository.upsertSubscription(
+                        subscription.copy(
+                            title = parsed.title,
+                            imageUrl = if (subscription.imageUrlManual) {
+                                subscription.imageUrl
                             } else {
-                                resources.appString(R.string.podcast_refresh_single_none)
-                            }
-                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                parsed.imageUrl ?: subscription.imageUrl
+                            },
+                            lastFetchedAtMs = System.currentTimeMillis(),
+                            episodes = parsed.episodes,
+                        ),
+                    )
+                    // 手动刷新（期数页下拉）必须给结果反馈：新增几期 / 暂无新内容，
+                    // 否则用户拉完不知道到底刷没刷到东西；自动刷新（非 force）保持静默
+                    if (force) {
+                        val message = if (newEpisodes > 0) {
+                            resources.appString(R.string.podcast_refresh_single_new, newEpisodes)
+                        } else {
+                            resources.appString(R.string.podcast_refresh_single_none)
                         }
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     }
-                    .onFailure { error ->
-                        // 手动刷新失败必须说一声，否则用户分不清「没有新期」还是「拉取失败」；
-                        // 自动刷新（非 force）保持静默，由批量逻辑统一汇总提示
-                        if (force) {
-                            showPodcastRefreshError(error)
-                        }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // 手动刷新失败必须说一声，否则用户分不清「没有新期」还是「拉取失败」；
+                    // 自动刷新（非 force）保持静默，由批量逻辑统一汇总提示
+                    if (force) {
+                        showPodcastRefreshError(error)
                     }
-                podcastLoading = false
+                } finally {
+                    // 写库也可能抛异常；不复位的话刷新按钮会永久失效
+                    podcastLoading = false
+                }
             }
         }
 
@@ -826,32 +1046,39 @@ fun OmniBeatApp() {
                 var succeeded = 0
                 var failed = 0
                 var newEpisodes = 0
-                pending.forEach { subscription ->
-                    // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」
-                    val previousGuids = subscription.episodes.mapTo(mutableSetOf()) { it.guid }
-                    runCatching { RssParser.load(subscription.feedUrl) }
-                        .onSuccess { parsed ->
+                try {
+                    pending.forEach { subscription ->
+                        // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」
+                        val previousGuids = subscription.episodes.mapTo(mutableSetOf()) { it.guid }
+                        try {
+                            val parsed = RssParser.load(subscription.feedUrl)
                             succeeded++
                             newEpisodes += parsed.episodes.count { it.guid !in previousGuids }
                             podcastRepository.upsertSubscription(
                                 subscription.copy(
                                     title = parsed.title,
                                     imageUrl = if (subscription.imageUrlManual) {
-                                    subscription.imageUrl
-                                } else {
-                                    parsed.imageUrl ?: subscription.imageUrl
-                                },
+                                        subscription.imageUrl
+                                    } else {
+                                        parsed.imageUrl ?: subscription.imageUrl
+                                    },
                                     lastFetchedAtMs = System.currentTimeMillis(),
                                     episodes = parsed.episodes,
                                 ),
                             )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            failed++
                         }
-                        .onFailure { failed++ }
-                    podcastRefreshAllDone++
+                        podcastRefreshAllDone++
+                    }
+                } finally {
+                    // 被取消或写库抛异常时也要复位，否则刷新入口会永久失效
+                    podcastLoading = false
+                    podcastRefreshAllTotal = 0
+                    podcastRefreshAllDone = 0
                 }
-                podcastLoading = false
-                podcastRefreshAllTotal = 0
-                podcastRefreshAllDone = 0
                 when {
                     // 自动刷新不打扰：只在有失败时提示
                     silent && failed > 0 -> Toast.makeText(
@@ -1018,7 +1245,7 @@ fun OmniBeatApp() {
             feedUrl: String,
             imageUrl: String,
         ) {
-            if (podcastLoading) return
+            if (podcastSubmitLoading) return
             podcastError = null
             val trimmedImageUrl = imageUrl.trim().takeIf { it.isNotBlank() }
             // 打开编辑弹窗时字段里已经有原封面，只有真的改动过才当作“手动指定”
@@ -1055,33 +1282,43 @@ fun OmniBeatApp() {
                 return
             }
             if (!hasInternetOrToast()) return
-            podcastLoading = true
-            scope.launch {
-                runCatching { RssParser.load(feedUrl) }
-                    .onSuccess { parsed ->
-                        podcastRepository.replaceSubscription(
-                            previousFeedUrl = subscription.feedUrl,
-                            subscription = PodcastSubscription(
-                                feedUrl = feedUrl,
-                                // 没改过标题就跟随新源的标题，改过则保留用户填的
-                                title = if (title == subscription.title) parsed.title else title,
-                                imageUrl = trimmedImageUrl ?: parsed.imageUrl,
-                                imageUrlManual = manualArtwork,
-                                lastFetchedAtMs = System.currentTimeMillis(),
-                                episodes = parsed.episodes,
-                            ),
-                        )
-                        if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = feedUrl
-                        editPodcastUrl = null
-                        trimmedImageUrl?.let { verifyArtwork(it) }
+            val request = podcastSubmitRequest + 1
+            podcastSubmitRequest = request
+            podcastSubmitLoading = true
+            podcastSubmitJob = scope.launch {
+                var savedArtworkUrl: String? = null
+                try {
+                    val parsed = RssParser.load(feedUrl)
+                    podcastRepository.replaceSubscription(
+                        previousFeedUrl = subscription.feedUrl,
+                        subscription = PodcastSubscription(
+                            feedUrl = feedUrl,
+                            // 没改过标题就跟随新源的标题，改过则保留用户填的
+                            title = if (title == subscription.title) parsed.title else title,
+                            imageUrl = trimmedImageUrl ?: parsed.imageUrl,
+                            imageUrlManual = manualArtwork,
+                            lastFetchedAtMs = System.currentTimeMillis(),
+                            episodes = parsed.episodes,
+                        ),
+                    )
+                    if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = feedUrl
+                    editPodcastUrl = null
+                    savedArtworkUrl = trimmedImageUrl
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    podcastError = resources.appString(
+                        R.string.podcast_error_load,
+                        error.message ?: error.javaClass.simpleName,
+                    )
+                } finally {
+                    if (podcastSubmitRequest == request) {
+                        podcastSubmitLoading = false
+                        podcastSubmitJob = null
                     }
-                    .onFailure { error ->
-                        podcastError = resources.appString(
-                            R.string.podcast_error_load,
-                            error.message ?: error.javaClass.simpleName,
-                        )
-                    }
-                podcastLoading = false
+                }
+                // 封面校验可能要十几秒，放在复位之后，别让弹窗一直停在「加载中」
+                savedArtworkUrl?.let { verifyArtwork(it) }
             }
         }
 
@@ -1516,6 +1753,11 @@ fun OmniBeatApp() {
                             podcastError = null
                             addPodcastDialogVisible = true
                         },
+                        onSearchPodcastOnline = {
+                            podcastError = null
+                            openPodcastSearch()
+                        },
+                        podcastSearchActive = podcastSearchOpen,
                         onlineSearchControl = if (selectedPage == MainPage.SearchOnline) {
                             { controlModifier ->
                                 SearchOptionsTopBarControl(
@@ -1612,7 +1854,33 @@ fun OmniBeatApp() {
                                 onEditStation = { editorState = it },
                                 onStationClick = ::playStation,
                                 podcastContent = { contentModifier ->
-                                    PodcastTabContent(
+                                    val selectedSearchPodcast = podcastSearchSelected
+                                    when {
+                                        podcastSearchOpen && selectedSearchPodcast != null -> PodcastSearchDetailPage(
+                                            podcast = selectedSearchPodcast,
+                                            descriptionLoading = podcastSearchDescriptionLoading,
+                                            subscribed = podcastFeedKey(selectedSearchPodcast.feedUrl) in subscribedPodcastKeys,
+                                            submitting = podcastSearchSubmitting,
+                                            errorText = podcastSearchSubmitError,
+                                            onSubscribe = { subscribeSearchedPodcast(selectedSearchPodcast) },
+                                            onBack = ::closePodcastSearchDetail,
+                                            modifier = contentModifier,
+                                        )
+
+                                        podcastSearchOpen -> PodcastSearchPage(
+                                            query = podcastSearchQuery,
+                                            results = podcastSearchResults,
+                                            loading = podcastSearchLoading,
+                                            errorText = podcastSearchError,
+                                            subscribedKeys = subscribedPodcastKeys,
+                                            onQueryChange = { podcastSearchQuery = it },
+                                            onSearch = ::searchPodcasts,
+                                            onOpenDetail = ::openPodcastSearchDetail,
+                                            onBack = ::closePodcastSearch,
+                                            modifier = contentModifier,
+                                        )
+
+                                        else -> PodcastTabContent(
                                         subscriptions = podcastSubscriptions,
                                         openSubscriptionUrl = openPodcastUrl,
                                         playingEpisodeId = playbackState.selectedStation?.id,
@@ -1672,6 +1940,7 @@ fun OmniBeatApp() {
                                         onPlayEpisode = ::playPodcastEpisode,
                                         modifier = contentModifier,
                                     )
+                                    }
                                 },
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -1740,6 +2009,7 @@ fun OmniBeatApp() {
                                 podcastAutoRefreshOnStart = podcastAutoRefreshOnStart,
                                 podcastAutoRefreshOnEnterList = podcastAutoRefreshOnEnterList,
                                 podcastRefreshIntervalMinutes = podcastRefreshIntervalMinutes,
+                                podcastSearchRegion = podcastSearchRegion,
                                 onThemeModeChange = { nextThemeMode ->
                                     scope.launch { repository.saveThemeMode(nextThemeMode) }
                                 },
@@ -1816,6 +2086,9 @@ fun OmniBeatApp() {
                                 onPodcastRefreshIntervalMinutesChange = { minutes ->
                                     scope.launch { podcastRepository.saveRefreshIntervalMinutes(minutes) }
                                 },
+                                onPodcastSearchRegionChange = { region ->
+                                    scope.launch { podcastRepository.saveSearchRegion(region) }
+                                },
                                 onClearLibrary = { clearLibrary() },
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -1846,14 +2119,13 @@ fun OmniBeatApp() {
 
         if (addPodcastDialogVisible) {
             AddPodcastDialog(
-                loading = podcastLoading,
+                // 只反映本弹窗发起的请求：后台自动刷新不再把弹窗锁在「加载中」
+                loading = podcastSubmitLoading,
                 errorText = podcastError,
                 onSubmit = ::subscribePodcast,
                 onDismiss = {
-                    if (!podcastLoading) {
-                        addPodcastDialogVisible = false
-                        podcastError = null
-                    }
+                    dismissPodcastSubmit()
+                    addPodcastDialogVisible = false
                 },
             )
         }
@@ -1861,16 +2133,14 @@ fun OmniBeatApp() {
         podcastSubscriptions.firstOrNull { it.feedUrl == editPodcastUrl }?.let { subscription ->
             EditPodcastDialog(
                 subscription = subscription,
-                loading = podcastLoading,
+                loading = podcastSubmitLoading,
                 errorText = podcastError,
                 onSave = { title, feedUrl, imageUrl ->
                     savePodcastEdit(subscription, title, feedUrl, imageUrl)
                 },
                 onDismiss = {
-                    if (!podcastLoading) {
-                        editPodcastUrl = null
-                        podcastError = null
-                    }
+                    dismissPodcastSubmit()
+                    editPodcastUrl = null
                 },
             )
         }

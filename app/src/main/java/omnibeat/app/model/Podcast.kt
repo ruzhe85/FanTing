@@ -1,5 +1,7 @@
 package omnibeat.app.model
 
+import java.util.Locale
+
 const val PODCAST_FEED_URL_MAX_LENGTH = 2048
 const val PODCAST_TITLE_MAX_LENGTH = 200
 const val PODCAST_IMAGE_URL_MAX_LENGTH = 2048
@@ -14,6 +16,29 @@ val PODCAST_REFRESH_INTERVAL_OPTIONS = listOf(10, 60, 360, 1440)
 
 /** 自动刷新间隔默认值（分钟），与旧版硬编码的 10 分钟一致 */
 const val PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES = 10
+
+/**
+ * 在线搜索的 iTunes 商店地区（只保留常用大区，避免设置里一长串）。
+ * 值直接作为 iTunes Search API 的 `country` 参数；顺序即设置菜单顺序。
+ */
+val PODCAST_SEARCH_REGIONS = listOf("us", "cn", "tw", "hk", "jp", "kr", "gb", "de")
+
+/** 在线搜索默认使用美国区：目录最全，中文播客也能搜到 */
+const val PODCAST_DEFAULT_SEARCH_REGION = "us"
+
+/**
+ * 订阅地址的归一化 key，用于判断「搜索到的播客是否已订阅」。
+ *
+ * iTunes 给出的 feedUrl 常与用户当初粘贴的只差协议或结尾斜杠，
+ * 按原串比较会把已订阅误判成未订阅，所以这里统一去掉协议、结尾斜杠并忽略大小写。
+ */
+fun podcastFeedKey(feedUrl: String): String {
+    return feedUrl.trim()
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .trimEnd('/')
+        .lowercase(Locale.ROOT)
+}
 
 /**
  * 一个播客单集。
