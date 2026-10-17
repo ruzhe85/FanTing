@@ -41,6 +41,8 @@ private val autoRefreshOnStartKey = booleanPreferencesKey("podcast_auto_refresh_
 private val autoRefreshOnEnterListKey = booleanPreferencesKey("podcast_auto_refresh_on_enter_list")
 private val refreshIntervalMinutesKey = intPreferencesKey("podcast_refresh_interval_minutes")
 private val searchRegionKey = stringPreferencesKey("podcast_search_region")
+private val episodesOldestFirstKey = booleanPreferencesKey("podcast_episodes_oldest_first")
+private val compactListKey = booleanPreferencesKey("podcast_compact_list")
 
 class PodcastRepository(private val context: Context) {
     val subscriptions: Flow<List<PodcastSubscription>> = context.podcastDataStore.data
@@ -67,6 +69,14 @@ class PodcastRepository(private val context: Context) {
     /** 在线搜索使用的 iTunes 商店地区（白名单之外回退美国区） */
     val searchRegion: Flow<String> = context.podcastDataStore.data
         .map { preferences -> normalizeSearchRegion(preferences[searchRegionKey]) }
+
+    /** 期数列表是否「最旧在上」（默认 false：最新在上） */
+    val episodesOldestFirst: Flow<Boolean> = context.podcastDataStore.data
+        .map { preferences -> preferences[episodesOldestFirstKey] ?: false }
+
+    /** 订阅列表是否使用紧凑模式（无封面、两行、一屏显示更多） */
+    val compactList: Flow<Boolean> = context.podcastDataStore.data
+        .map { preferences -> preferences[compactListKey] ?: false }
 
     /** 新增或覆盖（按 feedUrl 去重）：添加订阅与刷新后都用它写回 */
     suspend fun upsertSubscription(subscription: PodcastSubscription) {
@@ -98,7 +108,9 @@ class PodcastRepository(private val context: Context) {
             val merged = if (previous == null) {
                 subscription
             } else {
+                // 换址 / 改标题不该顺手取消置顶，置顶状态跟着订阅走
                 subscription.withPreservedEpisodeState(previous.episodes)
+                    .copy(pinned = previous.pinned)
             }
             val next = if (index == -1) {
                 current + merged
@@ -142,6 +154,20 @@ class PodcastRepository(private val context: Context) {
             if (preferences[refreshIntervalMinutesKey] != clamped) {
                 preferences[refreshIntervalMinutesKey] = clamped
             }
+        }
+    }
+
+    /** 保存期数列表排序（false = 最新在上） */
+    suspend fun saveEpisodesOldestFirst(oldestFirst: Boolean) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[episodesOldestFirstKey] = oldestFirst
+        }
+    }
+
+    /** 保存订阅列表紧凑模式 */
+    suspend fun saveCompactList(compact: Boolean) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[compactListKey] = compact
         }
     }
 
@@ -218,6 +244,20 @@ class PodcastRepository(private val context: Context) {
             }
             val next = current.toMutableList().also {
                 it[subscriptionIndex] = subscription.copy(episodes = updatedEpisodes)
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
+    /** 置顶 / 取消置顶整个订阅；值没变化就不整表重写 */
+    suspend fun setSubscriptionPinned(feedUrl: String, pinned: Boolean) {
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            val index = current.indexOfFirst { it.feedUrl == feedUrl }
+            if (index == -1) return@edit
+            if (current[index].pinned == pinned) return@edit
+            val next = current.toMutableList().also {
+                it[index] = it[index].copy(pinned = pinned)
             }
             preferences[podcastsJsonKey] = encodeSubscriptions(next)
         }
@@ -312,6 +352,7 @@ class PodcastRepository(private val context: Context) {
                     .put("title", subscription.title)
                     .put("imageUrl", subscription.imageUrl.orEmpty())
                     .put("imageUrlManual", subscription.imageUrlManual)
+                    .put("pinned", subscription.pinned)
                     .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
                     .put("episodes", episodes),
             )
@@ -338,6 +379,8 @@ class PodcastRepository(private val context: Context) {
                                 title = title,
                                 imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
                                 imageUrlManual = item.optBoolean("imageUrlManual", false),
+                                // 旧数据没有置顶字段：默认不置顶
+                                pinned = item.optBoolean("pinned", false),
                                 lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
                                 episodes = decodeEpisodes(item.optJSONArray("episodes")),
                             ),

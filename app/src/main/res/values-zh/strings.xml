@@ -96,6 +96,9 @@
     <string name="settings_podcast_search_region_kr">韩国</string>
     <string name="settings_podcast_search_region_gb">英国</string>
     <string name="settings_podcast_search_region_de">德国</string>
+    <string name="settings_podcast_compact_list_title">紧凑列表</string>
+    <string name="settings_podcast_compact_list_on">不显示封面，一屏能放更多订阅</string>
+    <string name="settings_podcast_compact_list_off">显示封面与完整信息</string>
     <string name="settings_section_control_panel">播放面板</string>
     <string name="settings_show_player_metadata_title">在播放面板显示元数据</string>
     <string name="settings_show_player_metadata_on">显示曲目名、播放状态等元数据</string>
@@ -344,6 +347,13 @@
     <string name="podcast_loading">正在加载订阅源…</string>
     <string name="podcast_empty">还没有播客。\n点右上角 + 粘贴播客的 RSS 订阅地址。</string>
     <string name="podcast_episodes_empty">这个订阅源里没有找到任何一期</string>
+    <string name="podcast_episodes_sort_latest">最新在上</string>
+    <string name="podcast_episodes_sort_oldest">最旧在上</string>
+    <string name="podcast_pin">置顶</string>
+    <string name="podcast_unpin">取消置顶</string>
+    <string name="podcast_play_latest">播放最新一期</string>
+    <string name="podcast_list_subtitle">%1$d/%2$d · %3$s 更新</string>
+    <string name="podcast_list_subtitle_all">%1$d 期 · %2$s 更新</string>
     <string name="podcast_refresh_failed">刷新失败：%1$s</string>
     <string name="podcast_refresh_nothing">没有可刷新的订阅</string>
     <string name="podcast_refresh_auto_failed">%1$d 个订阅刷新失败</string>

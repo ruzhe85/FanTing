@@ -126,6 +126,12 @@ fun OmniBeatApp() {
     // 在线搜索使用的 iTunes 商店地区（设置-播客可选，默认美国区）
     val podcastSearchRegion by podcastRepository.searchRegion
         .collectAsState(initial = PODCAST_DEFAULT_SEARCH_REGION)
+    // 期数列表排序：false = 最新在上（默认）
+    val podcastEpisodesOldestFirst by podcastRepository.episodesOldestFirst
+        .collectAsState(initial = false)
+    // 订阅列表紧凑模式：无封面、两行，一屏显示更多
+    val podcastCompactList by podcastRepository.compactList
+        .collectAsState(initial = false)
     // 在线搜索结果的「已订阅」判定：按归一化后的 feedUrl 比较，避免协议/结尾斜杠差异漏判
     val subscribedPodcastKeys = remember(podcastSubscriptions) {
         podcastSubscriptions.mapTo(mutableSetOf()) { podcastFeedKey(it.feedUrl) }
@@ -1904,14 +1910,30 @@ fun OmniBeatApp() {
                                             modifier = contentModifier,
                                         )
 
-                                        else -> PodcastTabContent(
+                                        else ->                                     PodcastTabContent(
                                         subscriptions = podcastSubscriptions,
                                         openSubscriptionUrl = openPodcastUrl,
                                         playingEpisodeId = playbackState.selectedStation?.id,
                                         loading = podcastLoading,
+                                        episodesOldestFirst = podcastEpisodesOldestFirst,
+                                        onEpisodesOldestFirstChange = { oldest ->
+                                            scope.launch {
+                                                podcastRepository.saveEpisodesOldestFirst(oldest)
+                                            }
+                                        },
                                         onOpenSubscription = ::openPodcast,
                                         onCloseSubscription = { openPodcastUrl = null },
                                         onDeleteSubscription = { pendingPodcastRemoval = it },
+                                        onToggleSubscriptionPinned = { subscription ->
+                                            scope.launch {
+                                                podcastRepository.setSubscriptionPinned(
+                                                    feedUrl = subscription.feedUrl,
+                                                    pinned = !subscription.pinned,
+                                                )
+                                            }
+                                        },
+                                        marqueeTitles = marqueeTrackTitle,
+                                        compactList = podcastCompactList,
                                         onRefreshSubscription = { refreshPodcast(it, force = true) },
                                         onRefreshAll = {
                                             refreshAllPodcasts(podcastSubscriptions, silent = false)
@@ -2035,6 +2057,7 @@ fun OmniBeatApp() {
                                 podcastAutoRefreshOnEnterList = podcastAutoRefreshOnEnterList,
                                 podcastRefreshIntervalMinutes = podcastRefreshIntervalMinutes,
                                 podcastSearchRegion = podcastSearchRegion,
+                                podcastCompactList = podcastCompactList,
                                 onThemeModeChange = { nextThemeMode ->
                                     scope.launch { repository.saveThemeMode(nextThemeMode) }
                                 },
@@ -2117,6 +2140,9 @@ fun OmniBeatApp() {
                                 },
                                 onPodcastSearchRegionChange = { region ->
                                     scope.launch { podcastRepository.saveSearchRegion(region) }
+                                },
+                                onPodcastCompactListChange = { compact ->
+                                    scope.launch { podcastRepository.saveCompactList(compact) }
                                 },
                                 onClearLibrary = { clearLibrary() },
                                 modifier = Modifier.fillMaxSize(),

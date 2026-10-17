@@ -95,6 +95,9 @@
     <string name="settings_podcast_search_region_kr">South Korea</string>
     <string name="settings_podcast_search_region_gb">United Kingdom</string>
     <string name="settings_podcast_search_region_de">Germany</string>
+    <string name="settings_podcast_compact_list_title">Compact list</string>
+    <string name="settings_podcast_compact_list_on">Hide cover art to fit more subscriptions on screen</string>
+    <string name="settings_podcast_compact_list_off">Show cover art and full details</string>
     <string name="settings_section_control_panel">Control panel</string>
     <string name="settings_show_player_metadata_title">Show metadata in control panel</string>
     <string name="settings_show_player_metadata_on">Control panel shows the track title or playback status</string>
@@ -344,6 +347,13 @@
     <string name="podcast_loading">Loading feed…</string>
     <string name="podcast_empty">No podcasts yet.\nTap + and paste a podcast RSS feed URL.</string>
     <string name="podcast_episodes_empty">No episodes found in this feed</string>
+    <string name="podcast_episodes_sort_latest">Newest first</string>
+    <string name="podcast_episodes_sort_oldest">Oldest first</string>
+    <string name="podcast_pin">Pin to top</string>
+    <string name="podcast_unpin">Unpin</string>
+    <string name="podcast_play_latest">Play latest episode</string>
+    <string name="podcast_list_subtitle">%1$d/%2$d · updated %3$s</string>
+    <string name="podcast_list_subtitle_all">%1$d episodes · updated %2$s</string>
     <string name="podcast_refresh_failed">Refresh failed: %1$s</string>
     <string name="podcast_refresh_nothing">No subscriptions to refresh</string>
     <string name="podcast_refresh_auto_failed">%1$d subscriptions failed to refresh</string>
