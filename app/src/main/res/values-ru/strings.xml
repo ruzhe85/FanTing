@@ -244,8 +244,8 @@
     <string name="podcast_episodes_sort_oldest">Сначала старые</string>
     <string name="podcast_episode_search_hint">Поиск выпусков</string>
     <string name="podcast_episode_search_empty">Нет подходящих выпусков</string>
-    <string name="podcast_pin">Закрепить</string>
-    <string name="podcast_unpin">Открепить</string>
+    <string name="podcast_sort_last_updated">Последнее обновление</string>
+    <string name="podcast_sort_title">Название подкаста</string>
     <string name="podcast_play_latest">Воспроизвести последний выпуск</string>
     <string name="podcast_list_subtitle_all">%1$d выпусков · обновлено %2$s</string>
     <string name="podcast_loading">Загрузка ленты…</string>

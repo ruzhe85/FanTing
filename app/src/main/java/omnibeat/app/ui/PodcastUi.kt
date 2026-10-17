@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +72,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * 播客页 UI：订阅列表 + 期数列表 + 添加订阅弹窗。
@@ -98,7 +101,9 @@ fun PodcastTabContent(
     onOpenSubscription: (PodcastSubscription) -> Unit,
     onCloseSubscription: () -> Unit,
     onDeleteSubscription: (PodcastSubscription) -> Unit,
-    onToggleSubscriptionPinned: (PodcastSubscription) -> Unit = {},
+    /** 订阅列表拖动排序中：禁止点击与右键菜单，只允许拖动 */
+    reordering: Boolean = false,
+    onMoveSubscription: (Int, Int) -> Unit = { _, _ -> },
     /** 订阅标题是否参与「标题滚动显示」；关掉时超长标题只截断 */
     marqueeTitles: Boolean = false,
     /** 订阅列表是否无封面的紧凑两行模式 */
@@ -179,7 +184,8 @@ fun PodcastTabContent(
                 onPlayLatest = onPlayLatest,
                 onEdit = onEditSubscription,
                 onDelete = onDeleteSubscription,
-                onTogglePinned = onToggleSubscriptionPinned,
+                reordering = reordering,
+                onMove = onMoveSubscription,
                 marqueeTitles = marqueeTitles,
                 compact = compactList,
                 onRefreshAll = onRefreshAll,
@@ -213,7 +219,8 @@ fun PodcastSubscriptionsPage(
     onPlayLatest: (PodcastSubscription) -> Unit,
     onEdit: (PodcastSubscription) -> Unit,
     onDelete: (PodcastSubscription) -> Unit,
-    onTogglePinned: (PodcastSubscription) -> Unit = {},
+    reordering: Boolean = false,
+    onMove: (Int, Int) -> Unit = { _, _ -> },
     marqueeTitles: Boolean = false,
     compact: Boolean = false,
     onRefreshAll: () -> Unit,
@@ -226,14 +233,15 @@ fun PodcastSubscriptionsPage(
         return
     }
 
-    // 置顶的订阅排在前面；sortedByDescending 是稳定排序，置顶组内保持原顺序
-    val ordered = remember(subscriptions) {
-        subscriptions.sortedByDescending { it.pinned }
+    val listState = rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(listState) { from, to ->
+        onMove(from.index, to.index)
     }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = RadioSpacing.medium,
@@ -244,27 +252,47 @@ fun PodcastSubscriptionsPage(
                 ),
                 verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
             ) {
-                items(ordered, key = { it.feedUrl }) { subscription ->
-                    if (compact) {
-                        CompactSubscriptionRow(
-                            subscription = subscription,
-                            marqueeTitles = marqueeTitles,
-                            onClick = { onOpen(subscription) },
-                            onPlayLatest = { onPlayLatest(subscription) },
-                            onEdit = { onEdit(subscription) },
-                            onDelete = { onDelete(subscription) },
-                            onTogglePinned = { onTogglePinned(subscription) },
-                        )
-                    } else {
-                        PodcastSubscriptionRow(
-                            subscription = subscription,
-                            marqueeTitles = marqueeTitles,
-                            onClick = { onOpen(subscription) },
-                            onPlayLatest = { onPlayLatest(subscription) },
-                            onEdit = { onEdit(subscription) },
-                            onDelete = { onDelete(subscription) },
-                            onTogglePinned = { onTogglePinned(subscription) },
-                        )
+                itemsIndexed(
+                    items = subscriptions,
+                    key = { _, subscription -> subscription.feedUrl },
+                ) { index, subscription ->
+                    ReorderableItem(
+                        state = reorderableState,
+                        key = subscription.feedUrl,
+                        enabled = reordering,
+                    ) { isDragging ->
+                        val dragHandleModifier = if (reordering) {
+                            Modifier.draggableHandle()
+                        } else {
+                            Modifier
+                        }
+                        if (compact) {
+                            CompactSubscriptionRow(
+                                subscription = subscription,
+                                marqueeTitles = marqueeTitles,
+                                reordering = reordering,
+                                dragging = isDragging,
+                                dragHandleModifier = dragHandleModifier,
+                                modifier = Modifier.animateItem(),
+                                onClick = { onOpen(subscription) },
+                                onPlayLatest = { onPlayLatest(subscription) },
+                                onEdit = { onEdit(subscription) },
+                                onDelete = { onDelete(subscription) },
+                            )
+                        } else {
+                            PodcastSubscriptionRow(
+                                subscription = subscription,
+                                marqueeTitles = marqueeTitles,
+                                reordering = reordering,
+                                dragging = isDragging,
+                                dragHandleModifier = dragHandleModifier,
+                                modifier = Modifier.animateItem(),
+                                onClick = { onOpen(subscription) },
+                                onPlayLatest = { onPlayLatest(subscription) },
+                                onEdit = { onEdit(subscription) },
+                                onDelete = { onDelete(subscription) },
+                            )
+                        }
                     }
                 }
             }
@@ -319,23 +347,26 @@ fun PodcastSubscriptionsPage(
 
 /**
  * 订阅卡片（标准模式）：封面点播最新一期（右下播放角标做暗示），
- * 点标题/文字进期数列表；长按弹出「置顶 / 编辑 / 删除」菜单。
- * 右侧不再常驻播放按钮，把宽度让给标题与副标题，避免「92 期未听 · 更新于…」被截断。
+ * 点标题/文字进期数列表；长按弹出「编辑 / 删除」菜单。
+ * 拖动排序时左侧出现拖动手柄，其余交互暂时禁用。
  */
 @Composable
 private fun PodcastSubscriptionRow(
     subscription: PodcastSubscription,
     marqueeTitles: Boolean,
+    reordering: Boolean,
+    dragging: Boolean,
+    dragHandleModifier: Modifier,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onPlayLatest: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onTogglePinned: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val subtitle = subscriptionSubtitle(subscription)
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -343,9 +374,16 @@ private fun PodcastSubscriptionRow(
                 .background(RadioSurface, RoundedCornerShape(RadioCorners.medium))
                 .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.small),
         ) {
+            if (reordering) {
+                SubscriptionDragHandle(
+                    dragging = dragging,
+                    modifier = dragHandleModifier,
+                )
+            }
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.combinedClickable(
+                    enabled = !reordering,
                     onClick = onPlayLatest,
                     onLongClick = { menuExpanded = true },
                 ),
@@ -373,6 +411,7 @@ private fun PodcastSubscriptionRow(
                     .weight(1f)
                     .padding(start = RadioSpacing.medium)
                     .combinedClickable(
+                        enabled = !reordering,
                         onClick = onClick,
                         onLongClick = { menuExpanded = true },
                     ),
@@ -390,38 +429,63 @@ private fun PodcastSubscriptionRow(
                 )
             }
             // 没有右侧按钮了，用 1dp 空白当菜单锚点，长按菜单仍从右边弹出
-            Box(modifier = Modifier.size(1.dp)) {
-                SubscriptionMenu(
-                    expanded = menuExpanded,
-                    pinned = subscription.pinned,
-                    onDismiss = { menuExpanded = false },
-                    onTogglePinned = onTogglePinned,
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                )
+            if (!reordering) {
+                Box(modifier = Modifier.size(1.dp)) {
+                    SubscriptionMenu(
+                        expanded = menuExpanded,
+                        onDismiss = { menuExpanded = false },
+                        onEdit = onEdit,
+                        onDelete = onDelete,
+                    )
+                }
             }
         }
     }
 }
 
+/** 拖动排序时订阅行左侧的拖动手柄，样式与电台列表一致 */
+@Composable
+private fun SubscriptionDragHandle(
+    dragging: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .padding(end = RadioSpacing.small)
+            .size(RadioSizes.iconLarge)
+            .then(modifier),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_drag_indicator),
+            contentDescription = null,
+            tint = if (dragging) RadioPrimary else RadioTextMuted,
+            modifier = Modifier.size(RadioSizes.icon),
+        )
+    }
+}
+
 /**
  * 紧凑订阅行：单行「播放 · 标题 · 期数与更新时间」，无封面。
- * 点标题进期数列表，点左侧播放图标播最新一期；长按出菜单（置顶 / 编辑 / 删除）。
+ * 点标题进期数列表，点左侧播放图标播最新一期；长按出菜单（编辑 / 删除）。
  */
 @Composable
 private fun CompactSubscriptionRow(
     subscription: PodcastSubscription,
     marqueeTitles: Boolean,
+    reordering: Boolean,
+    dragging: Boolean,
+    dragHandleModifier: Modifier,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onPlayLatest: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onTogglePinned: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val subtitle = subscriptionSubtitle(subscription)
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -430,11 +494,18 @@ private fun CompactSubscriptionRow(
                 .background(RadioSurface, RoundedCornerShape(RadioCorners.medium))
                 .padding(end = RadioSpacing.small),
         ) {
+            if (reordering) {
+                SubscriptionDragHandle(
+                    dragging = dragging,
+                    modifier = dragHandleModifier,
+                )
+            }
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(COMPACT_PLAY_TOUCH_SIZE)
                     .combinedClickable(
+                        enabled = !reordering,
                         onClick = onPlayLatest,
                         onLongClick = { menuExpanded = true },
                     ),
@@ -450,6 +521,7 @@ private fun CompactSubscriptionRow(
                 modifier = Modifier
                     .weight(1f)
                     .combinedClickable(
+                        enabled = !reordering,
                         onClick = onClick,
                         onLongClick = { menuExpanded = true },
                     ),
@@ -468,15 +540,15 @@ private fun CompactSubscriptionRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = RadioSpacing.small),
             )
-            Box(modifier = Modifier.size(1.dp)) {
-                SubscriptionMenu(
-                    expanded = menuExpanded,
-                    pinned = subscription.pinned,
-                    onDismiss = { menuExpanded = false },
-                    onTogglePinned = onTogglePinned,
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                )
+            if (!reordering) {
+                Box(modifier = Modifier.size(1.dp)) {
+                    SubscriptionMenu(
+                        expanded = menuExpanded,
+                        onDismiss = { menuExpanded = false },
+                        onEdit = onEdit,
+                        onDelete = onDelete,
+                    )
+                }
             }
         }
     }
@@ -521,13 +593,11 @@ private fun subscriptionSubtitle(subscription: PodcastSubscription): String {
     )
 }
 
-/** 长按菜单：置顶 / 编辑 / 删除。标准与紧凑两种行共用 */
+/** 长按菜单：编辑 / 删除。标准与紧凑两种行共用 */
 @Composable
 private fun SubscriptionMenu(
     expanded: Boolean,
-    pinned: Boolean,
     onDismiss: () -> Unit,
-    onTogglePinned: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -536,32 +606,6 @@ private fun SubscriptionMenu(
         onDismissRequest = onDismiss,
         containerColor = RadioSurface,
     ) {
-        DropdownMenuItem(
-            text = {
-                Text(
-                    text = stringResource(
-                        if (pinned) R.string.podcast_unpin else R.string.podcast_pin,
-                    ),
-                    color = RadioText,
-                    fontSize = RadioTextSizes.body,
-                )
-            },
-            leadingIcon = {
-                Icon(
-                    painter = painterResource(
-                        if (pinned) R.drawable.ic_keyboard_arrow_down
-                        else R.drawable.ic_keyboard_arrow_up,
-                    ),
-                    contentDescription = null,
-                    tint = RadioTextMuted,
-                    modifier = Modifier.size(RadioSizes.iconInline),
-                )
-            },
-            onClick = {
-                onDismiss()
-                onTogglePinned()
-            },
-        )
         DropdownMenuItem(
             text = {
                 Text(

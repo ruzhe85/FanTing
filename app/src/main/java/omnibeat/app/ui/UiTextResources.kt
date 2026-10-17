@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import omnibeat.app.R
 import omnibeat.app.model.AccentPalette
 import omnibeat.app.model.MainPage
+import omnibeat.app.model.PodcastSortMode
 import omnibeat.app.model.StationSortMode
 
 @StringRes
@@ -39,5 +40,14 @@ fun StationSortMode.labelRes(): Int {
         StationSortMode.StationTitle -> R.string.sort_station_title
         StationSortMode.FavoritesFirst -> R.string.sort_favorites
         StationSortMode.Custom -> R.string.sort_custom
+    }
+}
+
+@StringRes
+fun PodcastSortMode.labelRes(): Int {
+    return when (this) {
+        PodcastSortMode.LastUpdated -> R.string.podcast_sort_last_updated
+        PodcastSortMode.Title -> R.string.podcast_sort_title
+        PodcastSortMode.Custom -> R.string.sort_custom
     }
 }

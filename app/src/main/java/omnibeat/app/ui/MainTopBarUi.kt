@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import omnibeat.app.R
 import omnibeat.app.model.MainPage
+import omnibeat.app.model.PodcastSortMode
+import omnibeat.app.model.PodcastSortState
 import omnibeat.app.model.StationSortMode
 import omnibeat.app.model.StationSortState
 
@@ -69,6 +71,9 @@ fun MainTopBar(
     podcastEpisodeSortVisible: Boolean = false,
     podcastEpisodesOldestFirst: Boolean = false,
     onPodcastEpisodesOldestFirstChange: (Boolean) -> Unit = {},
+    /** 订阅列表排序：与电台列表同一套菜单样式 */
+    podcastSortState: PodcastSortState = PodcastSortState(),
+    onPodcastSortModeSelected: (PodcastSortMode) -> Unit = {},
     /** 期数页顶栏的搜索入口：在本地过滤当前订阅的全部期数 */
     onSearchPodcastEpisodes: () -> Unit = {},
     /**
@@ -224,7 +229,11 @@ fun MainTopBar(
                             onClick = onSearchPodcastEpisodes,
                         )
                     } else {
-                        // 下载管理页入口：放在「+」左边，有下载才渲染（无下载时传 null）
+                        // 订阅列表：排序 → 下载入口 → 「+」，与电台页的图标顺序一致
+                        PodcastSortMenuButton(
+                            sortState = podcastSortState,
+                            onSortModeSelected = onPodcastSortModeSelected,
+                        )
                         if (onOpenDownloads != null) {
                             OmniIconButton(
                                 painter = painterResource(R.drawable.ic_download),
@@ -309,6 +318,78 @@ private fun SortMenuButton(
                         )
                     },
                     trailingIcon = if (selected && option != StationSortMode.Custom) {
+                        {
+                            Icon(
+                                painter = painterResource(
+                                    if (sortState.ascending) {
+                                        R.drawable.ic_keyboard_arrow_up
+                                    } else {
+                                        R.drawable.ic_keyboard_arrow_down
+                                    },
+                                ),
+                                contentDescription = null,
+                                modifier = Modifier.size(RadioSizes.icon),
+                                tint = RadioText,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 订阅列表的排序菜单：最近更新 / 播客名称 / 自定义（自定义进入拖动排序） */
+@Composable
+private fun PodcastSortMenuButton(
+    sortState: PodcastSortState,
+    onSortModeSelected: (PodcastSortMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OmniIconButton(
+            painter = painterResource(R.drawable.ic_sort),
+            onClick = { expanded = true },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = RadioSurface,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(RadioCorners.medium),
+            offset = DpOffset(x = 0.dp, y = RadioSpacing.extraSmall),
+        ) {
+            PodcastSortMode.entries.forEach { option ->
+                val selected = sortState.mode == option
+                DropdownMenuItem(
+                    modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                    contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                    text = {
+                        Text(
+                            text = stringResource(option.labelRes()),
+                            color = RadioText,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSortModeSelected(option)
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(
+                                if (selected) {
+                                    R.drawable.ic_radio_button_checked
+                                } else {
+                                    R.drawable.ic_radio_button_unchecked
+                                },
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(RadioSizes.icon),
+                            tint = if (selected) RadioPrimary else RadioTextMuted,
+                        )
+                    },
+                    trailingIcon = if (selected && option != PodcastSortMode.Custom) {
                         {
                             Icon(
                                 painter = painterResource(

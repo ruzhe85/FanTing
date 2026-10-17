@@ -96,8 +96,6 @@ data class PodcastSubscription(
     val episodes: List<PodcastEpisode> = emptyList(),
     /** true = 封面是用户手动填的，刷新订阅源时不得覆盖 */
     val imageUrlManual: Boolean = false,
-    /** 是否置顶了这个订阅（与单集收藏分开：这里只控制订阅列表排序） */
-    val pinned: Boolean = false,
 )
 
 /** 解析结果：订阅元数据 + 期数列表（顺序由解析层保证：按期数倒序） */

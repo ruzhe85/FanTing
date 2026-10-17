@@ -124,10 +124,9 @@ object StationExportCodec {
                 val local = merged[index]
                 merged[index] = local.copy(
                     title = incoming.title.ifBlank { local.title },
-                    // 手动封面与置顶属于本地决定，备份不得覆盖
+                    // 手动封面属于本地决定，备份不得覆盖
                     imageUrl = if (local.imageUrlManual) local.imageUrl else incoming.imageUrl ?: local.imageUrl,
                     imageUrlManual = local.imageUrlManual || incoming.imageUrlManual,
-                    pinned = local.pinned,
                     lastFetchedAtMs = maxOf(local.lastFetchedAtMs, incoming.lastFetchedAtMs),
                     episodes = mergeEpisodes(local.episodes, incoming.episodes),
                 )

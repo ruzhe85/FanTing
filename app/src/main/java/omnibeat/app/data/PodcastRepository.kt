@@ -16,6 +16,8 @@ import omnibeat.app.model.PODCAST_PLAYBACK_SPEEDS
 import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
 import omnibeat.app.model.PODCAST_SEARCH_REGIONS
 import omnibeat.app.model.PodcastEpisode
+import omnibeat.app.model.PodcastSortMode
+import omnibeat.app.model.PodcastSortState
 import omnibeat.app.model.PodcastSubscription
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,6 +46,8 @@ private val refreshIntervalMinutesKey = intPreferencesKey("podcast_refresh_inter
 private val searchRegionKey = stringPreferencesKey("podcast_search_region")
 private val episodesOldestFirstKey = booleanPreferencesKey("podcast_episodes_oldest_first")
 private val compactListKey = booleanPreferencesKey("podcast_compact_list")
+private val sortKey = stringPreferencesKey("podcast_sort")
+private val customOrderKey = stringPreferencesKey("podcast_custom_order")
 
 class PodcastRepository(private val context: Context) {
     val subscriptions: Flow<List<PodcastSubscription>> = context.podcastDataStore.data
@@ -83,6 +87,14 @@ class PodcastRepository(private val context: Context) {
     val compactList: Flow<Boolean> = context.podcastDataStore.data
         .map { preferences -> preferences[compactListKey] ?: false }
 
+    /** 订阅列表排序方式（默认按最近更新倒序） */
+    val sortState: Flow<PodcastSortState> = context.podcastDataStore.data
+        .map { preferences -> decodePodcastSortState(preferences[sortKey]) }
+
+    /** 自定义拖动排序的 feedUrl 列表 */
+    val customOrder: Flow<List<String>> = context.podcastDataStore.data
+        .map { preferences -> decodeStringList(preferences[customOrderKey]) }
+
     /** 新增或覆盖（按 feedUrl 去重）：添加订阅与刷新后都用它写回 */
     suspend fun upsertSubscription(subscription: PodcastSubscription) {
         context.podcastDataStore.edit { preferences ->
@@ -113,9 +125,7 @@ class PodcastRepository(private val context: Context) {
             val merged = if (previous == null) {
                 subscription
             } else {
-                // 换址 / 改标题不该顺手取消置顶，置顶状态跟着订阅走
                 subscription.withPreservedEpisodeState(previous.episodes)
-                    .copy(pinned = previous.pinned)
             }
             val next = if (index == -1) {
                 current + merged
@@ -180,6 +190,20 @@ class PodcastRepository(private val context: Context) {
     suspend fun saveCompactList(compact: Boolean) {
         context.podcastDataStore.edit { preferences ->
             preferences[compactListKey] = compact
+        }
+    }
+
+    /** 保存订阅列表排序方式 */
+    suspend fun saveSortState(state: PodcastSortState) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[sortKey] = "${state.mode.name}:${state.ascending}"
+        }
+    }
+
+    /** 保存自定义拖动排序 */
+    suspend fun saveCustomOrder(order: List<String>) {
+        context.podcastDataStore.edit { preferences ->
+            preferences[customOrderKey] = JSONArray(order).toString()
         }
     }
 
@@ -287,20 +311,6 @@ class PodcastRepository(private val context: Context) {
         }
     }
 
-    /** 置顶 / 取消置顶整个订阅；值没变化就不整表重写 */
-    suspend fun setSubscriptionPinned(feedUrl: String, pinned: Boolean) {
-        context.podcastDataStore.edit { preferences ->
-            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
-            val index = current.indexOfFirst { it.feedUrl == feedUrl }
-            if (index == -1) return@edit
-            if (current[index].pinned == pinned) return@edit
-            val next = current.toMutableList().also {
-                it[index] = it[index].copy(pinned = pinned)
-            }
-            preferences[podcastsJsonKey] = encodeSubscriptions(next)
-        }
-    }
-
     /**
      * 收藏 / 取消收藏某一期。
      * 与 [updateEpisodeProgress] 同一套写法：值没变化就不整表重写。
@@ -386,6 +396,27 @@ class PodcastRepository(private val context: Context) {
     }
 }
 
+/** "Mode:ascending" ⇄ PodcastSortState；非法或缺失值回落默认（最近更新倒序） */
+internal fun decodePodcastSortState(raw: String?): PodcastSortState {
+    val parts = raw.orEmpty().split(':', limit = 2)
+    val mode = PodcastSortMode.entries.firstOrNull { it.name == parts.getOrNull(0) }
+        ?: PodcastSortMode.LastUpdated
+    val ascending = parts.getOrNull(1)?.toBooleanStrictOrNull() ?: false
+    return PodcastSortState(mode = mode, ascending = ascending)
+}
+
+private fun decodeStringList(raw: String?): List<String> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return runCatching {
+        val items = JSONArray(raw)
+        buildList {
+            repeat(items.length()) { index ->
+                items.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
 /** 播客订阅列表 ⇄ JSON 文本；备份编解码与 DataStore 读写共用同一套格式 */
 internal fun encodePodcastSubscriptions(subscriptions: List<PodcastSubscription>): String {
     val items = JSONArray()
@@ -412,7 +443,6 @@ internal fun encodePodcastSubscriptions(subscriptions: List<PodcastSubscription>
                 .put("title", subscription.title)
                 .put("imageUrl", subscription.imageUrl.orEmpty())
                 .put("imageUrlManual", subscription.imageUrlManual)
-                .put("pinned", subscription.pinned)
                 .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
                 .put("episodes", episodes),
         )
@@ -439,8 +469,6 @@ internal fun decodePodcastSubscriptions(subscriptionsJson: String): List<Podcast
                             title = title,
                             imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
                             imageUrlManual = item.optBoolean("imageUrlManual", false),
-                            // 旧数据没有置顶字段：默认不置顶
-                            pinned = item.optBoolean("pinned", false),
                             lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
                             episodes = decodePodcastEpisodes(item.optJSONArray("episodes")),
                         ),

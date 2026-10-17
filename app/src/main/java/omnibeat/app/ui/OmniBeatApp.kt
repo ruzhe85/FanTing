@@ -82,6 +82,8 @@ import omnibeat.app.model.PODCAST_SEARCH_FETCH_LIMIT
 import omnibeat.app.model.AccentPalette
 import omnibeat.app.model.PODCAST_SEARCH_PAGE_SIZE
 import omnibeat.app.model.PodcastEpisode
+import omnibeat.app.model.PodcastSortMode
+import omnibeat.app.model.PodcastSortState
 import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.model.Station
 import omnibeat.app.model.StationEditorState
@@ -89,7 +91,9 @@ import omnibeat.app.model.StationReorderDraft
 import omnibeat.app.model.StationSortMode
 import omnibeat.app.model.StationSortState
 import omnibeat.app.model.ThemeMode
+import omnibeat.app.model.customSortedPodcasts
 import omnibeat.app.model.customSortedStations
+import omnibeat.app.model.sortedPodcasts
 import omnibeat.app.model.sortedStations
 import omnibeat.app.network.NetworkStatus
 import omnibeat.app.playback.PlaybackService
@@ -266,6 +270,26 @@ fun OmniBeatApp() {
         var customStationOrder by remember { mutableStateOf(emptyList<String>()) }
         var customFavoriteOrder by remember { mutableStateOf(emptyList<String>()) }
         var reorderDraft by remember { mutableStateOf<StationReorderDraft?>(null) }
+        // 播客订阅列表：排序偏好 + 拖动排序草稿（与电台共用顶栏的“取消/确认”形态）
+        var podcastSortState by remember { mutableStateOf(PodcastSortState()) }
+        var podcastCustomOrder by remember { mutableStateOf(emptyList<String>()) }
+        var podcastReorderDraft by remember { mutableStateOf<List<PodcastSubscription>?>(null) }
+        LaunchedEffect(podcastRepository) {
+            podcastRepository.sortState.collect { podcastSortState = it }
+        }
+        LaunchedEffect(podcastRepository) {
+            podcastRepository.customOrder.collect { podcastCustomOrder = it }
+        }
+        // 拖动中的草稿优先，否则按当前排序偏好展示
+        val podcastList = remember(
+            podcastSubscriptions,
+            podcastSortState,
+            podcastCustomOrder,
+            podcastReorderDraft,
+        ) {
+            podcastReorderDraft
+                ?: sortedPodcasts(podcastSubscriptions, podcastSortState, podcastCustomOrder)
+        }
         var scrollToSelectedRequest by remember { mutableIntStateOf(0) }
         var scrollToStationId by remember { mutableStateOf<String?>(null) }
         var lastPlayedStationId by remember { mutableStateOf<String?>(null) }
@@ -1736,6 +1760,61 @@ fun OmniBeatApp() {
             }
         }
 
+        fun selectPodcastSortMode(nextMode: PodcastSortMode) {
+            if (nextMode == PodcastSortMode.Custom) {
+                val draft = if (podcastCustomOrder.isEmpty()) {
+                    podcastList
+                } else {
+                    customSortedPodcasts(podcastSubscriptions, podcastCustomOrder)
+                }
+                val nextSortState = PodcastSortState(mode = PodcastSortMode.Custom, ascending = false)
+                podcastSortState = nextSortState
+                podcastReorderDraft = draft
+                scope.launch { podcastRepository.saveSortState(nextSortState) }
+                return
+            }
+            val nextSortState = if (podcastSortState.mode == nextMode) {
+                podcastSortState.copy(ascending = !podcastSortState.ascending)
+            } else {
+                PodcastSortState(mode = nextMode, ascending = false)
+            }
+            podcastSortState = nextSortState
+            scope.launch { podcastRepository.saveSortState(nextSortState) }
+        }
+
+        fun movePodcastReorderDraft(fromIndex: Int, toIndex: Int) {
+            val currentDraft = podcastReorderDraft ?: return
+            if (
+                fromIndex !in currentDraft.indices ||
+                toIndex !in currentDraft.indices ||
+                fromIndex == toIndex
+            ) {
+                return
+            }
+            val nextList = currentDraft.toMutableList().also { list ->
+                val moved = list.removeAt(fromIndex)
+                list.add(toIndex, moved)
+            }
+            podcastReorderDraft = nextList
+        }
+
+        fun cancelPodcastReorder() {
+            podcastReorderDraft = null
+        }
+
+        fun confirmPodcastReorder() {
+            val draft = podcastReorderDraft ?: return
+            val nextOrder = draft.map { it.feedUrl }
+            val nextSortState = PodcastSortState(mode = PodcastSortMode.Custom, ascending = false)
+            podcastCustomOrder = nextOrder
+            podcastSortState = nextSortState
+            podcastReorderDraft = null
+            scope.launch {
+                podcastRepository.saveCustomOrder(nextOrder)
+                podcastRepository.saveSortState(nextSortState)
+            }
+        }
+
         fun playAdjacentStation(direction: Int) {
             val pageStations = navigationStations()
             if (pageStations.isEmpty()) return
@@ -1799,13 +1878,17 @@ fun OmniBeatApp() {
             }
         }
 
-        BackHandler(enabled = drawerState.isOpen || reorderDraft != null || selectedPage !in visibleTabPages) {
-            if (drawerState.isOpen) {
-                scope.launch { drawerState.close() }
-            } else if (reorderDraft != null) {
-                reorderDraft = null
-            } else {
-                selectedPage = lastMainPage
+        BackHandler(
+            enabled = drawerState.isOpen ||
+                reorderDraft != null ||
+                podcastReorderDraft != null ||
+                selectedPage !in visibleTabPages,
+        ) {
+            when {
+                drawerState.isOpen -> scope.launch { drawerState.close() }
+                reorderDraft != null -> reorderDraft = null
+                podcastReorderDraft != null -> podcastReorderDraft = null
+                else -> selectedPage = lastMainPage
             }
         }
 
@@ -1860,15 +1943,24 @@ fun OmniBeatApp() {
                         visualSelectedPage = visualSelectedPage,
                         tabPages = visibleTabPages,
                         sortState = sortState,
-                        reordering = reorderDraft != null,
+                        reordering = reorderDraft != null || podcastReorderDraft != null,
                         onPageSelected = { page ->
-                            if (reorderDraft == null) {
+                            if (reorderDraft == null && podcastReorderDraft == null) {
                                 selectMainPage(page)
                             }
                         },
                         onSortModeSelected = ::selectSortMode,
-                        onCancelReorder = ::cancelReorder,
-                        onConfirmReorder = ::confirmReorder,
+                        onCancelReorder = {
+                            reorderDraft = null
+                            podcastReorderDraft = null
+                        },
+                        onConfirmReorder = {
+                            if (podcastReorderDraft != null) {
+                                confirmPodcastReorder()
+                            } else {
+                                confirmReorder()
+                            }
+                        },
                         onOpenDrawer = { scope.launch { drawerState.open() } },
                         onAddStation = {
                             editorState = StationEditorState(
@@ -1898,6 +1990,8 @@ fun OmniBeatApp() {
                         onPodcastEpisodesOldestFirstChange = { oldest ->
                             scope.launch { podcastRepository.saveEpisodesOldestFirst(oldest) }
                         },
+                        podcastSortState = podcastSortState,
+                        onPodcastSortModeSelected = ::selectPodcastSortMode,
                         onSearchPodcastEpisodes = { podcastEpisodeSearchOpen = true },
                         // 下载管理页入口：播客订阅列表页（非期数页 / 非搜索 / 未在下载页）
                         // 且有下载任务或已下载节目时才在「+」左边渲染图标——进行中的下载
@@ -2076,7 +2170,7 @@ fun OmniBeatApp() {
                                         )
 
                                         else ->                                     PodcastTabContent(
-                                        subscriptions = podcastSubscriptions,
+                                        subscriptions = podcastList,
                                         openSubscriptionUrl = openPodcastUrl,
                                         playingEpisodeId = playbackState.selectedStation?.id,
                                         loading = podcastLoading,
@@ -2092,14 +2186,8 @@ fun OmniBeatApp() {
                                             podcastEpisodeSearchQuery = ""
                                         },
                                         onDeleteSubscription = { pendingPodcastRemoval = it },
-                                        onToggleSubscriptionPinned = { subscription ->
-                                            scope.launch {
-                                                podcastRepository.setSubscriptionPinned(
-                                                    feedUrl = subscription.feedUrl,
-                                                    pinned = !subscription.pinned,
-                                                )
-                                            }
-                                        },
+                                        reordering = podcastReorderDraft != null,
+                                        onMoveSubscription = ::movePodcastReorderDraft,
                                         marqueeTitles = marqueeTrackTitle,
                                         compactList = podcastCompactList,
                                         onRefreshSubscription = { refreshPodcast(it, force = true) },
