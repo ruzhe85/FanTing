@@ -636,9 +636,10 @@ private fun PanelIconButton(
     iconSize: Dp,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    tint: Color = RadioText,
+    tint: Color? = null,
     modifier: Modifier = Modifier,
 ) {
+    val resolvedTint = tint ?: RadioText
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
@@ -649,7 +650,7 @@ private fun PanelIconButton(
         Icon(
             painter = painter,
             contentDescription = null,
-            tint = if (enabled) tint.copy(alpha = 0.87f) else RadioTextMuted.copy(alpha = 0.35f),
+            tint = if (enabled) resolvedTint.copy(alpha = 0.87f) else RadioTextMuted.copy(alpha = 0.35f),
             modifier = Modifier.size(iconSize),
         )
     }
