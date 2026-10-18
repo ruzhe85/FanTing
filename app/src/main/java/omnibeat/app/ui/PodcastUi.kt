@@ -73,6 +73,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -894,7 +896,101 @@ fun PodcastEpisodesScreen(
     // 批量操作只认当前可见的选中项：被过滤掉的不该被无感修改
     val selectedEpisodes = episodes.filter { it.guid in selectedGuids }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    val listState = rememberLazyListState()
+    // 太短的列表不需要快速定位，保持原布局
+    val showScrollbar = listItems.size > EPISODE_SCROLLBAR_MIN_COUNT
+    var scrollbarIndex by remember { mutableStateOf<Int?>(null) }
+    // 多选连选拖到屏幕上下边缘时自动滚屏：否则一屏之外的期永远选不到
+    var selectionAutoScroll by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(selectionAutoScroll) {
+        if (selectionAutoScroll == 0f) return@LaunchedEffect
+        while (true) {
+            listState.scrollBy(selectionAutoScroll * EPISODE_SELECT_SCROLL_SPEED)
+            delay(SELECTION_AUTOSCROLL_FRAME_MS)
+        }
+    }
+    // 切换排序 / 筛选 / 搜索词后回到顶部，否则停在原位置会让人以为列表没变
+    LaunchedEffect(oldestFirst, filter, query) { listState.scrollToItem(0) }
+
+    // 连选手势挂根 Column（而不是 LazyColumn）：手指滑出列表区——滑到页头或底部
+    // 多选操作栏（「标记已听」那一排）——事件仍在 Column 上，连选不中断；滑到列表
+    // 上/下方外侧时分别触发向上 / 向下自动滚屏。手势坐标是相对 Column 的，先换算成
+    // 相对列表视口的 y 才能映射到行。
+    var columnTopInWindow by remember { mutableFloatStateOf(0f) }
+    var listTopInWindow by remember { mutableFloatStateOf(0f) }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { columnTopInWindow = it.positionInWindow().y }
+            .pointerInput(selecting, listItems) {
+                if (!selecting) return@pointerInput
+                // 上一步落点：只处理两步之间的增量区间，拖回去才能逐项还原
+                var lastIndex: Int? = null
+                val edgePx = EPISODE_SELECT_EDGE_ZONE.toPx()
+
+                fun guidAt(index: Int?): String? {
+                    if (index == null) return null
+                    val row = listItems.getOrNull(index) as? EpisodeListItem.Row
+                    return row?.episode?.guid
+                }
+
+                // 手指相对列表视口顶部的 y：负数 / 超过视口高度表示手指已滑出列表区
+                fun yInList(localY: Float): Float = localY + columnTopInWindow - listTopInWindow
+
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset ->
+                        val index = lazyItemIndexAt(listState, yInList(offset.y))
+                        lastIndex = index
+                        guidAt(index)?.let { guid ->
+                            selectedGuids = if (guid in selectedGuids) {
+                                selectedGuids - guid
+                            } else {
+                                selectedGuids + guid
+                            }
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        val to = lazyItemIndexAt(listState, yInList(change.position.y))
+                        val from = lastIndex
+                        if (from != null && to != null && to != from) {
+                            val step = if (to > from) 1 else -1
+                            var i = from
+                            while (i != to) {
+                                i += step
+                                guidAt(i)?.let { guid ->
+                                    // 常规划动选择：逐项看自己的状态翻转——
+                                    // 未选→已选，已选→未选（与单击切换同一套语义）
+                                    selectedGuids = if (guid in selectedGuids) {
+                                        selectedGuids - guid
+                                    } else {
+                                        selectedGuids + guid
+                                    }
+                                }
+                            }
+                        }
+                        // 滑出列表区时 to 为 null：保持 lastIndex，移回来接着选
+                        if (to != null) lastIndex = to
+                        // 拖到上下边缘（含滑出列表区）：交给自动滚屏循环处理
+                        val y = yInList(change.position.y)
+                        val viewportH = listState.layoutInfo.viewportSize.height.toFloat()
+                        selectionAutoScroll = when {
+                            y < edgePx -> -1f
+                            y > viewportH - edgePx -> 1f
+                            else -> 0f
+                        }
+                    },
+                    onDragEnd = {
+                        lastIndex = null
+                        selectionAutoScroll = 0f
+                    },
+                    onDragCancel = {
+                        lastIndex = null
+                        selectionAutoScroll = 0f
+                    },
+                )
+            },
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -1062,7 +1158,7 @@ fun PodcastEpisodesScreen(
         // 状态 chips：计数按全部期数，只筛列表不动数据
         if (!selecting) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
@@ -1126,22 +1222,6 @@ fun PodcastEpisodesScreen(
             )
         }
 
-        val listState = rememberLazyListState()
-        // 太短的列表不需要快速定位，保持原布局
-        val showScrollbar = listItems.size > EPISODE_SCROLLBAR_MIN_COUNT
-        var scrollbarIndex by remember { mutableStateOf<Int?>(null) }
-        // 多选连选拖到屏幕上下边缘时自动滚屏：否则一屏之外的期永远选不到
-        var selectionAutoScroll by remember { mutableFloatStateOf(0f) }
-        LaunchedEffect(selectionAutoScroll) {
-            if (selectionAutoScroll == 0f) return@LaunchedEffect
-            while (true) {
-                listState.scrollBy(selectionAutoScroll * EPISODE_SELECT_SCROLL_SPEED)
-                delay(SELECTION_AUTOSCROLL_FRAME_MS)
-            }
-        }
-        // 切换排序 / 筛选 / 搜索词后回到顶部，否则停在原位置会让人以为列表没变
-        LaunchedEffect(oldestFirst, filter, query) { listState.scrollToItem(0) }
-
         // 下拉刷新。空态也放进 LazyColumn：没有可滚动容器时下拉手势收不到。
         // 多选态不包 PullToRefreshBox：连选的长按拖动会被它误判成下拉刷新；
         // 同时禁用列表的手势滚动，把上下滑交给连选手势。
@@ -1157,70 +1237,9 @@ fun PodcastEpisodesScreen(
                     // 只让出 3dp 视觉空隙；滚动条触摸区会压住行尾少量区域，但按钮中心仍可点
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(end = if (showScrollbar) EPISODE_SCROLLBAR_INSET else 0.dp)
-                        // 多选时按住某行上下滑动：把手指经过的行连续选上
-                        .pointerInput(selecting, listItems) {
-                            if (!selecting) return@pointerInput
-                            // 上一步落点：只处理两步之间的增量区间，拖回去才能逐项还原
-                            var lastIndex: Int? = null
-                            val edgePx = EPISODE_SELECT_EDGE_ZONE.toPx()
-
-                            fun guidAt(index: Int?): String? {
-                                if (index == null) return null
-                                val row = listItems.getOrNull(index) as? EpisodeListItem.Row
-                                return row?.episode?.guid
-                            }
-
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = { offset ->
-                                    val index = lazyItemIndexAt(listState, offset.y)
-                                    lastIndex = index
-                                    guidAt(index)?.let { guid ->
-                                        selectedGuids = if (guid in selectedGuids) {
-                                            selectedGuids - guid
-                                        } else {
-                                            selectedGuids + guid
-                                        }
-                                    }
-                                },
-                                onDrag = { change, _ ->
-                                    change.consume()
-                                    val to = lazyItemIndexAt(listState, change.position.y)
-                                    val from = lastIndex
-                                    if (from != null && to != null && to != from) {
-                                        val step = if (to > from) 1 else -1
-                                        var i = from
-                                        while (i != to) {
-                                            i += step
-                                            guidAt(i)?.let { guid ->
-                                                // 常规划动选择：逐项看自己的状态翻转——
-                                                // 未选→已选，已选→未选（与单击切换同一套语义）
-                                                selectedGuids = if (guid in selectedGuids) {
-                                                    selectedGuids - guid
-                                                } else {
-                                                    selectedGuids + guid
-                                                }
-                                            }
-                                        }
-                                    }
-                                    lastIndex = to
-                                    // 拖到上下边缘：交给自动滚屏循环处理
-                                    selectionAutoScroll = when {
-                                        change.position.y < edgePx -> -1f
-                                        change.position.y > size.height - edgePx -> 1f
-                                        else -> 0f
-                                    }
-                                },
-                                onDragEnd = {
-                                    lastIndex = null
-                                    selectionAutoScroll = 0f
-                                },
-                                onDragCancel = {
-                                    lastIndex = null
-                                    selectionAutoScroll = 0f
-                                },
-                            )
-                        },
+                        // 连选手势（挂在根 Column）要靠它把手指坐标换算成相对列表的 y
+                        .onGloballyPositioned { listTopInWindow = it.positionInWindow().y }
+                        .padding(end = if (showScrollbar) EPISODE_SCROLLBAR_INSET else 0.dp),
                     contentPadding = PaddingValues(bottom = RadioSpacing.small),
                 ) {
                     if (listItems.isEmpty()) {
@@ -1611,7 +1630,7 @@ private fun EpisodeMonthHeader(item: EpisodeListItem.Month) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 7.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 4.dp),
     ) {
         Text(
             text = stringResource(R.string.podcast_month_header, item.year, item.month),
@@ -1621,7 +1640,7 @@ private fun EpisodeMonthHeader(item: EpisodeListItem.Month) {
             letterSpacing = 0.6.sp,
             maxLines = 1,
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         HorizontalDivider(Modifier.weight(1f), color = RadioOutline.copy(alpha = 0.6f))
     }
 }
@@ -1687,7 +1706,7 @@ private fun PodcastEpisodeListRow(
                     }
                 }
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 13.dp, end = 12.dp, top = 7.dp, bottom = 7.dp),
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -1713,10 +1732,10 @@ private fun PodcastEpisodeListRow(
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 3.dp),
+                        .padding(top = 2.dp),
                 ) {
                     val date = formatEpisodeDateShort(episode.publishedAtMs)
                     if (date.isNotEmpty()) {
@@ -1856,7 +1875,7 @@ private fun EpisodeBadge(text: String, color: Color, bold: Boolean = false) {
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(color.copy(alpha = 0.1f))
-            .padding(horizontal = 6.dp, vertical = 1.dp),
+            .padding(horizontal = 4.dp, vertical = 1.dp),
     )
 }
 
@@ -1870,10 +1889,10 @@ private fun EpisodeFilterChip(label: String, selected: Boolean, onClick: () -> U
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         maxLines = 1,
         modifier = Modifier
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(if (selected) RadioPrimary else RadioSurface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp),
     )
 }
 
