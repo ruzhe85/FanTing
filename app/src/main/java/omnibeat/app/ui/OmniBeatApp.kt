@@ -1795,6 +1795,20 @@ fun OmniBeatApp() {
             )
         }
 
+        /** 从指定的一期切相邻一期；面板预显示「上次播放的单集」时也用这条 */
+        fun playAdjacentEpisodeOf(
+            subscription: PodcastSubscription,
+            episode: PodcastEpisode,
+            direction: Int,
+        ): Boolean {
+            val index = subscription.episodes.indexOfFirst { it.guid == episode.guid }
+            if (index == -1) return false
+            val step = if (podcastEpisodesOldestFirst) -direction else direction
+            val target = subscription.episodes.getOrNull(index + step) ?: return true
+            playPodcastEpisode(subscription, target)
+            return true
+        }
+
         /**
          * 切换订阅内相邻的一期。
          *
@@ -1808,20 +1822,6 @@ fun OmniBeatApp() {
         fun playAdjacentEpisode(direction: Int): Boolean {
             val (subscription, episode) = currentEpisode() ?: return false
             return playAdjacentEpisodeOf(subscription, episode, direction)
-        }
-
-        /** 从指定的一期切相邻一期；面板预显示「上次播放的单集」时也用这条 */
-        fun playAdjacentEpisodeOf(
-            subscription: PodcastSubscription,
-            episode: PodcastEpisode,
-            direction: Int,
-        ): Boolean {
-            val index = subscription.episodes.indexOfFirst { it.guid == episode.guid }
-            if (index == -1) return false
-            val step = if (podcastEpisodesOldestFirst) -direction else direction
-            val target = subscription.episodes.getOrNull(index + step) ?: return true
-            playPodcastEpisode(subscription, target)
-            return true
         }
 
         /** 播放某订阅的最新一期（列表按期数倒序，第一条即最新） */
