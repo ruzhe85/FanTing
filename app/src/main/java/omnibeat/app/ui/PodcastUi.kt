@@ -937,9 +937,32 @@ fun PodcastEpisodesScreen(
                     maxLines = 1,
                 )
                 Spacer(Modifier.weight(1f))
+                // 预选开关：四个互斥预设，点哪项选中集就覆盖成哪项，
+                // 再点一次同一项 = 全部取消（toggle）；按钮文案跟随当前生效的预设
+                val allGuids = episodes.mapTo(mutableSetOf()) { it.guid }
+                val recent10Guids = episodes.take(10).mapTo(mutableSetOf()) { it.guid }
+                val recent25Guids = episodes.take(25).mapTo(mutableSetOf()) { it.guid }
+                val undownloadedGuids = episodes
+                    .filter { it.localFileName == null }
+                    .mapTo(mutableSetOf()) { it.guid }
+                val selectAllLabel = when {
+                    selectedGuids.isEmpty() -> stringResource(R.string.podcast_selection_all)
+                    selectedGuids == allGuids -> stringResource(R.string.podcast_select_all_items)
+                    selectedGuids == recent10Guids ->
+                        stringResource(R.string.podcast_select_recent, 10)
+
+                    selectedGuids == recent25Guids ->
+                        stringResource(R.string.podcast_select_recent, 25)
+
+                    selectedGuids == undownloadedGuids ->
+                        stringResource(R.string.podcast_select_undownloaded)
+
+                    // 手动混选：不冒充任何预设名，回落到默认动作名
+                    else -> stringResource(R.string.podcast_selection_all)
+                }
                 Box {
                     Text(
-                        text = stringResource(R.string.podcast_selection_all),
+                        text = "$selectAllLabel ▾",
                         color = RadioPrimary,
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -955,35 +978,45 @@ fun PodcastEpisodesScreen(
                         onDismissRequest = { selectAllMenuOpen = false },
                         containerColor = RadioSurface,
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.podcast_select_all_items)) },
-                            onClick = {
-                                selectAllMenuOpen = false
-                                selectedGuids = episodes.mapTo(mutableSetOf()) { it.guid }
-                            },
-                        )
-                        listOf(10, 25).forEach { recent ->
+                        // 当前生效的预设打勾，反选（再点一次）也能从勾选上看出来
+                        @Composable
+                        fun presetItem(label: String, target: Set<String>) {
+                            val active = selectedGuids == target
                             DropdownMenuItem(
-                                text = {
-                                    Text(stringResource(R.string.podcast_select_recent, recent))
+                                text = { Text(label) },
+                                trailingIcon = if (active) {
+                                    {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_check),
+                                            contentDescription = null,
+                                            tint = RadioPrimary,
+                                            modifier = Modifier.size(RadioSizes.iconInline),
+                                        )
+                                    }
+                                } else {
+                                    null
                                 },
                                 onClick = {
                                     selectAllMenuOpen = false
-                                    selectedGuids = selectedGuids +
-                                        episodes.take(recent).map { it.guid }
+                                    selectedGuids = if (active) emptySet() else target
                                 },
                             )
                         }
-                        DropdownMenuItem(
-                            text = {
-                                Text(stringResource(R.string.podcast_select_undownloaded))
-                            },
-                            onClick = {
-                                selectAllMenuOpen = false
-                                selectedGuids = episodes
-                                    .filter { it.localFileName == null }
-                                    .mapTo(mutableSetOf()) { it.guid }
-                            },
+                        presetItem(
+                            label = stringResource(R.string.podcast_select_all_items),
+                            target = allGuids,
+                        )
+                        presetItem(
+                            label = stringResource(R.string.podcast_select_recent, 10),
+                            target = recent10Guids,
+                        )
+                        presetItem(
+                            label = stringResource(R.string.podcast_select_recent, 25),
+                            target = recent25Guids,
+                        )
+                        presetItem(
+                            label = stringResource(R.string.podcast_select_undownloaded),
+                            target = undownloadedGuids,
                         )
                     }
                 }
@@ -1033,7 +1066,7 @@ fun PodcastEpisodesScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                    .padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
             ) {
                 EpisodeFilterChip(
                     label = stringResource(R.string.podcast_filter_all, orderedEpisodes.size),
@@ -1110,22 +1143,22 @@ fun PodcastEpisodesScreen(
         LaunchedEffect(oldestFirst, filter, query) { listState.scrollToItem(0) }
 
         // 下拉刷新。空态也放进 LazyColumn：没有可滚动容器时下拉手势收不到。
+        // 多选态不包 PullToRefreshBox：连选的长按拖动会被它误判成下拉刷新；
+        // 同时禁用列表的手势滚动，把上下滑交给连选手势。
         // weight(1f)：给多选底部操作栏留出空间，否则 fillMaxSize 会把整列占满。
-        PullToRefreshBox(
-            isRefreshing = loading,
-            onRefresh = onRefresh,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
+        val episodeListContent: @Composable () -> Unit = {
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
+                    // 多选态禁用手势滚动：LazyColumn 的 scrollable 与连选手势同在列表节点，
+                    // Main pass 更"叶"的 scrollable 会先消费拖动，导致长按连选失效、
+                    // 事件继续冒泡触发下拉刷新。边缘自动滚屏是编程 scrollBy，不受影响。
+                    userScrollEnabled = !selecting,
                     // 只让出 3dp 视觉空隙；滚动条触摸区会压住行尾少量区域，但按钮中心仍可点
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(end = if (showScrollbar) EPISODE_SCROLLBAR_INSET else 0.dp)
-                        // 多选时按住某行上下滑动：把手指经过的行连续选上（普通滑动仍是滚动）
+                        // 多选时按住某行上下滑动：把手指经过的行连续选上
                         .pointerInput(selecting, listItems) {
                             if (!selecting) return@pointerInput
                             // 上一步落点：只处理两步之间的增量区间，拖回去才能逐项还原
@@ -1299,6 +1332,19 @@ fun PodcastEpisodesScreen(
                                 vertical = RadioSpacing.extraSmall,
                             ),
                     )
+                }
+            }
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (selecting) {
+                episodeListContent()
+            } else {
+                PullToRefreshBox(
+                    isRefreshing = loading,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    episodeListContent()
                 }
             }
         }
@@ -1643,12 +1689,6 @@ private fun PodcastEpisodeListRow(
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         ) {
-            if (selected != null) {
-                EpisodeSelectBox(
-                    checked = selected,
-                    modifier = Modifier.padding(end = 9.dp, top = 2.dp),
-                )
-            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = episode.title,
@@ -1699,13 +1739,15 @@ private fun PodcastEpisodeListRow(
                         EpisodeMetaDot()
                     }
                     when {
-                        // 听过：百分比 + 已听时长；时长缺省（RSS 没给）就只显示已听时长
+                        // 在听：百分比 + 已听/总长（旧版写法，一眼看到听到哪儿还剩多少）；
+                        // 总长缺省（RSS 没给）就只显示已听时长
                         inProgress -> Text(
                             text = if (percent > 0) {
                                 stringResource(
-                                    R.string.podcast_progress_inline,
+                                    R.string.podcast_progress_ratio,
                                     percent,
                                     formatDuration(listenedSec),
+                                    formatDuration(totalSec),
                                 )
                             } else {
                                 formatDuration(listenedSec)
@@ -1715,15 +1757,19 @@ private fun PodcastEpisodeListRow(
                             maxLines = 1,
                         )
 
-                        // 听完只标 100%：不带已听时长；主色加粗比在听的进度更醒目
-                        episode.completed -> Text(
-                            text = "100%",
-                            color = primary,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
+                        // 听完：pill「听完」——主色 + 半粗，与未听的中性 pill 拉开层级
+                        episode.completed -> EpisodeBadge(
+                            text = stringResource(R.string.podcast_completed),
+                            color = RadioPrimary,
+                            bold = true,
                         )
-                        // 未读不挂徽标：meta 行没有任何进度信息自然就是未读
+
+                        // 未听：pill「未听」——muted 中性色，默认态不抢眼
+                        else -> EpisodeBadge(
+                            text = stringResource(R.string.podcast_badge_unplayed),
+                            color = RadioTextMuted,
+                            bold = true,
+                        )
                     }
                     when {
                         downloading -> EpisodeBadge(
@@ -1746,23 +1792,13 @@ private fun PodcastEpisodeListRow(
                         )
                     }
                 }
-                if (inProgress) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 5.dp)
-                            .height(2.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(Color(0xFF2B2B34)),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(percent.coerceIn(0, 100) / 100f)
-                                .fillMaxHeight()
-                                .background(primary),
-                        )
-                    }
-                }
+            }
+            // 勾选框在行尾右侧：不挡标题，也与「行尾操作区」的视觉习惯一致
+            if (selected != null) {
+                EpisodeSelectBox(
+                    checked = selected,
+                    modifier = Modifier.padding(start = 9.dp, top = 2.dp),
+                )
             }
         }
     }
@@ -1805,14 +1841,17 @@ private fun EpisodeSelectBox(checked: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-/** meta 行的小徽标：已下载 / 已听完 / 未听 */
+/**
+ * meta 行的小徽标：已下载 / 未听 / 听完 / 下载中。
+ * [bold] 给状态词（未听 / 听完）用：底色已经区分，字重再拉开一档。
+ */
 @Composable
-private fun EpisodeBadge(text: String, color: Color) {
+private fun EpisodeBadge(text: String, color: Color, bold: Boolean = false) {
     Text(
         text = text,
         color = color,
         fontSize = 10.sp,
-        fontWeight = FontWeight.Medium,
+        fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
@@ -1831,10 +1870,10 @@ private fun EpisodeFilterChip(label: String, selected: Boolean, onClick: () -> U
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         maxLines = 1,
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(9.dp))
             .background(if (selected) RadioPrimary else RadioSurface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 
@@ -2204,10 +2243,11 @@ private fun PodcastEpisodeRow(
     /** meta 行过长时跑马灯滚动（仍只一行）；false 维持省略号 */
     marqueeMeta: Boolean = false,
 ) {
-    // 进度文案与期数页统一：在听显示「百分比 · 已听时长」（总长拿不到就只给
-    // 已听时长），听完只给 100%，未听不给任何进度信息。
+    // 进度文案与期数页统一：在听「百分比 已听/总长」、听完「听完」、未听「未听」。
+    // 这里是单行 Text 拿不到 pill 底色，状态词用纯文字，靠文案本身区分。
     val currentSec = (episode.positionMs / 1000L).toInt()
     val totalSec = episode.durationSec
+    val progressHasTotal = episode.positionMs > 0L && !episode.completed && totalSec > 0
     val progressText = when {
         episode.positionMs > 0L && !episode.completed -> {
             val percent = if (totalSec > 0) {
@@ -2217,23 +2257,24 @@ private fun PodcastEpisodeRow(
             }
             if (percent > 0) {
                 stringResource(
-                    R.string.podcast_progress_inline,
+                    R.string.podcast_progress_ratio,
                     percent,
                     formatDuration(currentSec),
+                    formatDuration(totalSec),
                 )
             } else {
                 formatDuration(currentSec)
             }
         }
 
-        episode.completed -> stringResource(R.string.podcast_listened_progress_full)
-        else -> ""
+        episode.completed -> stringResource(R.string.podcast_completed)
+        else -> stringResource(R.string.podcast_badge_unplayed)
     }
-    // 总长照常显示（期数页也是「日期 · 总长 · 进度」的顺序），进度里不再重复总长
+    // 在听且进度文案已含总长时，不再单独显示一份，避免「40:13 · 13% 5:56/40:13」重复
     val meta = listOfNotNull(
         metaPrefix?.takeIf { it.isNotBlank() },
         formatEpisodeDate(episode.publishedAtMs),
-        formatDuration(totalSec),
+        if (progressHasTotal) "" else formatDuration(totalSec),
         progressText,
     ).filter { it.isNotEmpty() }.joinToString(" · ")
 

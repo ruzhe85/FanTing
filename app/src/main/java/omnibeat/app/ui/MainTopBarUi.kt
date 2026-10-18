@@ -168,15 +168,17 @@ fun MainTopBar(
             ) {
                 if (selectedPage in tabPages) {
                     tabPages.forEach { tab ->
-                        // 选中态用颜色 + 字重区分，不再画下划线指示条
+                        // 选中态用颜色 + 字重区分，不再画下划线指示条。
+                        // 字重差异拉满（Bold vs Normal）：SemiBold/Medium 只差一档，
+                        // 去下划线后选中态几乎看不出来
                         Text(
                             text = stringResource(tab.titleRes()),
                             color = if (visualSelectedPage == tab) RadioText else RadioTextMuted,
                             fontSize = RadioTextSizes.subtitle,
                             fontWeight = if (visualSelectedPage == tab) {
-                                FontWeight.SemiBold
+                                FontWeight.Bold
                             } else {
-                                FontWeight.Medium
+                                FontWeight.Normal
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

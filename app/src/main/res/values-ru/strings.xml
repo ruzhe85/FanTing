@@ -260,13 +260,15 @@
     <string name="podcast_filter_in_progress">В процессе %1$d</string>
     <string name="podcast_filter_completed">Прослушанные %1$d</string>
     <string name="podcast_month_header">%2$d.%1$d</string>
+    <string name="podcast_progress_ratio">%1$d%% %2$s/%3$s</string>
     <string name="podcast_badge_downloading">Загрузка</string>
-    <string name="podcast_progress_inline">%1$d%% · %2$s</string>
+    <string name="podcast_badge_unplayed">Не прослушано</string>
+    <string name="podcast_completed">Прослушано</string>
     <string name="podcast_selection_cancel">Выйти из выбора</string>
     <string name="podcast_selection_count">Выбрано: %1$d</string>
     <string name="podcast_selection_total">Всего: %1$d</string>
     <string name="podcast_selection_hint">Удерживайте строку и ведите вверх или вниз для выбора диапазона</string>
-    <string name="podcast_selection_all">Выбрать все ▾</string>
+    <string name="podcast_selection_all">Быстрый выбор</string>
     <string name="podcast_select_all_items">Все</string>
     <string name="podcast_select_recent">Последние %1$d</string>
     <string name="podcast_select_undownloaded">Все не скачанные</string>
