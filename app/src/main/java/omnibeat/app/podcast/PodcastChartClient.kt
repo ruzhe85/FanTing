@@ -98,7 +98,7 @@ class PodcastChartClient(context: Context) {
         } finally {
             connection.disconnect()
         }
-        try {
+        return try {
             JSONObject(body)
         } catch (error: JSONException) {
             throw IOException("榜单返回的内容无法解析", error)
