@@ -172,7 +172,6 @@ fun SettingsPage(
     podcastAutoRefreshOnEnterList: Boolean,
     podcastRefreshIntervalMinutes: Int,
     podcastSearchRegion: String,
-    podcastCompactList: Boolean,
     podcastWifiOnlyDownload: Boolean,
     stationCount: Int,
     podcastCount: Int,
@@ -199,7 +198,6 @@ fun SettingsPage(
     onPodcastAutoRefreshOnEnterListChange: (Boolean) -> Unit,
     onPodcastRefreshIntervalMinutesChange: (Int) -> Unit,
     onPodcastSearchRegionChange: (String) -> Unit,
-    onPodcastCompactListChange: (Boolean) -> Unit,
     onPodcastWifiOnlyDownloadChange: (Boolean) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit,
@@ -392,16 +390,6 @@ fun SettingsPage(
                 subtitle = stringResource(R.string.settings_podcast_search_region_subtitle),
                 selectedRegion = podcastSearchRegion,
                 onSelectedRegionChange = onPodcastSearchRegionChange,
-            )
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_podcast_compact_list_title),
-                subtitle = if (podcastCompactList) {
-                    stringResource(R.string.settings_podcast_compact_list_on)
-                } else {
-                    stringResource(R.string.settings_podcast_compact_list_off)
-                },
-                checked = podcastCompactList,
-                onCheckedChange = onPodcastCompactListChange,
             )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_podcast_wifi_only_download_title),

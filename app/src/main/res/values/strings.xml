@@ -357,6 +357,10 @@
     <string name="podcast_episode_search_empty">No matching episodes</string>
     <string name="podcast_sort_last_updated">Last updated</string>
     <string name="podcast_sort_title">Podcast title</string>
+    <string name="podcast_list_layout_title">List layout</string>
+    <string name="podcast_list_layout_standard">Standard</string>
+    <string name="podcast_list_layout_compact">Compact</string>
+    <string name="podcast_list_layout_cover">Covers only</string>
     <string name="podcast_play_latest">Play latest episode</string>
     <string name="podcast_list_subtitle_all">%1$d episodes · updated %2$s</string>
     <string name="podcast_refresh_failed">Refresh failed: %1$s</string>

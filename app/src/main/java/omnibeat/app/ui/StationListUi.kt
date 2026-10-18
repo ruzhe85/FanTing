@@ -297,6 +297,34 @@ internal fun StationArtwork(
     imageUrl: String?,
     modifier: Modifier = Modifier,
     size: Dp = RadioSizes.artwork,
+    contentDescription: String? = null,
+) {
+    StationArtworkContent(
+        imageUrl = imageUrl,
+        contentDescription = contentDescription,
+        modifier = modifier.size(size),
+    )
+}
+
+/** 纯封面网格用：尺寸由外部 modifier（fillMaxWidth + aspectRatio）决定，按实际像素取图 */
+@Composable
+internal fun StationArtworkFill(
+    imageUrl: String?,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
+) {
+    StationArtworkContent(
+        imageUrl = imageUrl,
+        contentDescription = contentDescription,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun StationArtworkContent(
+    imageUrl: String?,
+    contentDescription: String?,
+    modifier: Modifier,
 ) {
     val context = LocalContext.current.applicationContext
     val normalizedUrl = imageUrl?.takeIf { it.isNotBlank() }
@@ -328,7 +356,6 @@ internal fun StationArtwork(
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .size(size)
             .onSizeChanged { artworkSize = it }
             .clip(RoundedCornerShape(RadioCorners.small))
             .background(RadioSurfaceHigh.copy(alpha = 0.72f)),
@@ -336,7 +363,7 @@ internal fun StationArtwork(
         if (imageBitmap != null) {
             Image(
                 bitmap = imageBitmap!!,
-                contentDescription = null,
+                contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )

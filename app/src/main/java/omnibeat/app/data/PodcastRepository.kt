@@ -16,6 +16,7 @@ import omnibeat.app.model.PODCAST_PLAYBACK_SPEEDS
 import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
 import omnibeat.app.model.PODCAST_SEARCH_REGIONS
 import omnibeat.app.model.PodcastEpisode
+import omnibeat.app.model.PodcastListLayout
 import omnibeat.app.model.PodcastSortMode
 import omnibeat.app.model.PodcastSortState
 import omnibeat.app.model.PodcastSubscription
@@ -47,7 +48,9 @@ private val refreshIntervalMinutesKey = intPreferencesKey("podcast_refresh_inter
 private val searchRegionKey = stringPreferencesKey("podcast_search_region")
 private val chartRegionKey = stringPreferencesKey("podcast_chart_region")
 private val episodesOldestFirstKey = booleanPreferencesKey("podcast_episodes_oldest_first")
+/** 旧版紧凑列表开关：只用于迁移，新键存在时忽略 */
 private val compactListKey = booleanPreferencesKey("podcast_compact_list")
+private val listLayoutKey = stringPreferencesKey("podcast_list_layout")
 private val sortKey = stringPreferencesKey("podcast_sort")
 private val customOrderKey = stringPreferencesKey("podcast_custom_order")
 
@@ -89,9 +92,20 @@ class PodcastRepository(private val context: Context) {
     val episodesOldestFirst: Flow<Boolean> = context.podcastDataStore.data
         .map { preferences -> preferences[episodesOldestFirstKey] ?: false }
 
-    /** 订阅列表是否使用紧凑模式（无封面、两行、一屏显示更多） */
-    val compactList: Flow<Boolean> = context.podcastDataStore.data
-        .map { preferences -> preferences[compactListKey] ?: false }
+    /** 订阅列表显示方式；旧版紧凑开关作为迁移回退 */
+    val listLayout: Flow<PodcastListLayout> = context.podcastDataStore.data
+        .map { preferences ->
+            when (preferences[listLayoutKey]) {
+                PodcastListLayout.Compact.name -> PodcastListLayout.Compact
+                PodcastListLayout.Cover.name -> PodcastListLayout.Cover
+                PodcastListLayout.Standard.name -> PodcastListLayout.Standard
+                else -> if (preferences[compactListKey] == true) {
+                    PodcastListLayout.Compact
+                } else {
+                    PodcastListLayout.Standard
+                }
+            }
+        }
 
     /** 订阅列表排序方式（默认按最近更新倒序） */
     val sortState: Flow<PodcastSortState> = context.podcastDataStore.data
@@ -192,10 +206,12 @@ class PodcastRepository(private val context: Context) {
         }
     }
 
-    /** 保存订阅列表紧凑模式 */
-    suspend fun saveCompactList(compact: Boolean) {
+    /** 保存订阅列表显示方式 */
+    suspend fun saveListLayout(layout: PodcastListLayout) {
         context.podcastDataStore.edit { preferences ->
-            preferences[compactListKey] = compact
+            if (preferences[listLayoutKey] != layout.name) {
+                preferences[listLayoutKey] = layout.name
+            }
         }
     }
 

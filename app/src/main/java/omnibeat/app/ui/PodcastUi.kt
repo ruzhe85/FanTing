@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,6 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -47,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import omnibeat.app.R
@@ -66,6 +72,7 @@ import omnibeat.app.model.PODCAST_FEED_URL_MAX_LENGTH
 import omnibeat.app.model.PODCAST_IMAGE_URL_MAX_LENGTH
 import omnibeat.app.model.PODCAST_TITLE_MAX_LENGTH
 import omnibeat.app.model.PodcastEpisode
+import omnibeat.app.model.PodcastListLayout
 import omnibeat.app.model.PodcastSubscription
 import omnibeat.app.ui.appStringResource as stringResource
 import java.time.Instant
@@ -106,8 +113,8 @@ fun PodcastTabContent(
     onMoveSubscription: (Int, Int) -> Unit = { _, _ -> },
     /** 订阅标题是否参与「标题滚动显示」；关掉时超长标题只截断 */
     marqueeTitles: Boolean = false,
-    /** 订阅列表是否无封面的紧凑两行模式 */
-    compactList: Boolean = false,
+    /** 订阅列表显示方式：标准行 / 紧凑行 / 纯封面网格 */
+    listLayout: PodcastListLayout = PodcastListLayout.Standard,
     onRefreshSubscription: (PodcastSubscription) -> Unit,
     onRefreshAll: () -> Unit = {},
     refreshingAll: Boolean = false,
@@ -187,7 +194,7 @@ fun PodcastTabContent(
                 reordering = reordering,
                 onMove = onMoveSubscription,
                 marqueeTitles = marqueeTitles,
-                compact = compactList,
+                layout = listLayout,
                 onRefreshAll = onRefreshAll,
                 refreshingAll = refreshingAll,
                 refreshProgress = refreshProgress,
@@ -222,7 +229,7 @@ fun PodcastSubscriptionsPage(
     reordering: Boolean = false,
     onMove: (Int, Int) -> Unit = { _, _ -> },
     marqueeTitles: Boolean = false,
-    compact: Boolean = false,
+    layout: PodcastListLayout = PodcastListLayout.Standard,
     onRefreshAll: () -> Unit,
     refreshingAll: Boolean,
     refreshProgress: Pair<Int, Int>?,
@@ -239,7 +246,15 @@ fun PodcastSubscriptionsPage(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        if (layout == PodcastListLayout.Cover && !reordering) {
+            PodcastCoverGrid(
+                subscriptions = subscriptions,
+                onClick = onOpen,
+                onEdit = onEdit,
+                onDelete = onDelete,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -266,7 +281,7 @@ fun PodcastSubscriptionsPage(
                         } else {
                             Modifier
                         }
-                        if (compact) {
+                        if (layout == PodcastListLayout.Compact) {
                             CompactSubscriptionRow(
                                 subscription = subscription,
                                 marqueeTitles = marqueeTitles,
@@ -591,6 +606,93 @@ private fun subscriptionSubtitle(subscription: PodcastSubscription): String {
         subscription.episodes.size,
         formatStamp(subscription.lastFetchedAtMs),
     )
+}
+
+/** 纯封面网格：自适应列数，标题叠在封面底部，点击进节目列表 */
+@Composable
+private fun PodcastCoverGrid(
+    subscriptions: List<PodcastSubscription>,
+    onClick: (PodcastSubscription) -> Unit,
+    onEdit: (PodcastSubscription) -> Unit,
+    onDelete: (PodcastSubscription) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 100.dp),
+        modifier = modifier,
+        contentPadding = PaddingValues(
+            start = RadioSpacing.medium,
+            end = RadioSpacing.medium,
+            top = RadioSpacing.small,
+            // 底部避让右下角的一键刷新 FAB
+            bottom = RadioSizes.fabListClearance,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+        verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+    ) {
+        gridItems(subscriptions, key = { it.feedUrl }) { subscription ->
+            PodcastCoverTile(
+                subscription = subscription,
+                onClick = { onClick(subscription) },
+                onEdit = { onEdit(subscription) },
+                onDelete = { onDelete(subscription) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PodcastCoverTile(
+    subscription: PodcastSubscription,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(RadioCorners.small))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { menuExpanded = true },
+            ),
+    ) {
+        StationArtworkFill(
+            imageUrl = subscription.imageUrl,
+            contentDescription = subscription.title,
+            modifier = Modifier.fillMaxSize(),
+        )
+        // 底部渐变蒙层 + 最多两行标题：任何封面下都保证可读
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)),
+                    ),
+                )
+                .padding(horizontal = RadioSpacing.compact, vertical = RadioSpacing.compact),
+        ) {
+            Text(
+                text = subscription.title,
+                color = Color.White,
+                fontSize = RadioTextSizes.caption,
+                lineHeight = 17.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        SubscriptionMenu(
+            expanded = menuExpanded,
+            onDismiss = { menuExpanded = false },
+            onEdit = onEdit,
+            onDelete = onDelete,
+        )
+    }
 }
 
 /** 长按菜单：编辑 / 删除。标准与紧凑两种行共用 */

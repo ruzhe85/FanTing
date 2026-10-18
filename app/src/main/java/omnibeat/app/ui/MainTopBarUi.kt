@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import omnibeat.app.ui.appStringResource as stringResource
+import omnibeat.app.model.PodcastListLayout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +78,9 @@ fun MainTopBar(
     /** 订阅列表排序：与电台列表同一套菜单样式 */
     podcastSortState: PodcastSortState = PodcastSortState(),
     onPodcastSortModeSelected: (PodcastSortMode) -> Unit = {},
+    /** 订阅列表显示方式：标准 / 紧凑 / 纯封面，与排序放在同一个菜单里 */
+    podcastListLayout: PodcastListLayout = PodcastListLayout.Standard,
+    onPodcastListLayoutSelected: (PodcastListLayout) -> Unit = {},
     /** 期数页顶栏的搜索入口：在本地过滤当前订阅的全部期数 */
     onSearchPodcastEpisodes: () -> Unit = {},
     /**
@@ -234,7 +239,9 @@ fun MainTopBar(
                         // 订阅列表：排序 → 下载入口 → 「+」，与电台页的图标顺序一致
                         PodcastSortMenuButton(
                             sortState = podcastSortState,
+                            listLayout = podcastListLayout,
                             onSortModeSelected = onPodcastSortModeSelected,
+                            onListLayoutSelected = onPodcastListLayoutSelected,
                         )
                         if (onOpenDownloads != null) {
                             OmniIconButton(
@@ -348,7 +355,9 @@ private fun SortMenuButton(
 @Composable
 private fun PodcastSortMenuButton(
     sortState: PodcastSortState,
+    listLayout: PodcastListLayout,
     onSortModeSelected: (PodcastSortMode) -> Unit,
+    onListLayoutSelected: (PodcastListLayout) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -412,8 +421,62 @@ private fun PodcastSortMenuButton(
                     },
                 )
             }
+            HorizontalDivider(
+                color = RadioOutline.copy(alpha = 0.55f),
+                modifier = Modifier.padding(
+                    horizontal = RadioSpacing.large,
+                    vertical = RadioSpacing.extraSmall,
+                ),
+            )
+            Text(
+                text = stringResource(R.string.podcast_list_layout_title),
+                color = RadioTextMuted,
+                fontSize = RadioTextSizes.caption,
+                modifier = Modifier.padding(
+                    horizontal = RadioSpacing.large,
+                    vertical = RadioSpacing.extraSmall,
+                ),
+            )
+            PodcastListLayout.entries.forEach { option ->
+                val selected = option == listLayout
+                DropdownMenuItem(
+                    modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                    contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                    text = {
+                        Text(
+                            text = stringResource(option.labelRes()),
+                            color = RadioText,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onListLayoutSelected(option)
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(
+                                if (selected) {
+                                    R.drawable.ic_radio_button_checked
+                                } else {
+                                    R.drawable.ic_radio_button_unchecked
+                                },
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(RadioSizes.icon),
+                            tint = if (selected) RadioPrimary else RadioTextMuted,
+                        )
+                    },
+                )
+            }
         }
     }
+}
+
+/** 订阅列表显示方式的菜单文案 */
+private fun PodcastListLayout.labelRes(): Int = when (this) {
+    PodcastListLayout.Standard -> R.string.podcast_list_layout_standard
+    PodcastListLayout.Compact -> R.string.podcast_list_layout_compact
+    PodcastListLayout.Cover -> R.string.podcast_list_layout_cover
 }
 
 /** 期数页的排序菜单：最新在上 / 最旧在上，样式与电台的排序菜单一致 */

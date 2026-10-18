@@ -80,6 +80,7 @@ import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
 import omnibeat.app.model.PODCAST_CHART_LIMIT
 import omnibeat.app.model.PODCAST_DEFAULT_SEARCH_REGION
+import omnibeat.app.model.PodcastListLayout
 import omnibeat.app.model.PODCAST_SEARCH_FETCH_LIMIT
 import omnibeat.app.model.podcastChartRegionFor
 import omnibeat.app.model.AccentPalette
@@ -167,9 +168,9 @@ fun OmniBeatApp() {
     // 期数列表排序：false = 最新在上（默认）
     val podcastEpisodesOldestFirst by podcastRepository.episodesOldestFirst
         .collectAsState(initial = false)
-    // 订阅列表紧凑模式：无封面、两行，一屏显示更多
-    val podcastCompactList by podcastRepository.compactList
-        .collectAsState(initial = false)
+    // 订阅列表显示方式：标准 / 紧凑 / 纯封面
+    val podcastListLayout by podcastRepository.listLayout
+        .collectAsState(initial = PodcastListLayout.Standard)
     // 收藏 tab 上次停留的分段（电台 / 节目）
     val favoritesSection by repository.favoritesSection
         .collectAsState(initial = FavoritesSection.Stations)
@@ -2315,6 +2316,10 @@ fun OmniBeatApp() {
                         },
                         podcastSortState = podcastSortState,
                         onPodcastSortModeSelected = ::selectPodcastSortMode,
+                        podcastListLayout = podcastListLayout,
+                        onPodcastListLayoutSelected = { layout ->
+                            scope.launch { podcastRepository.saveListLayout(layout) }
+                        },
                         onSearchPodcastEpisodes = { podcastEpisodeSearchOpen = true },
                         // 下载管理页入口：播客订阅列表页（非期数页 / 非搜索 / 未在下载页）
                         // 且有下载任务或已下载节目时才在「+」左边渲染图标——进行中的下载
@@ -2533,7 +2538,7 @@ fun OmniBeatApp() {
                                         reordering = podcastReorderDraft != null,
                                         onMoveSubscription = ::movePodcastReorderDraft,
                                         marqueeTitles = marqueeTrackTitle,
-                                        compactList = podcastCompactList,
+                                        listLayout = podcastListLayout,
                                         onRefreshSubscription = { refreshPodcast(it, force = true) },
                                         onRefreshAll = {
                                             refreshAllPodcasts(podcastSubscriptions, silent = false)
@@ -2651,7 +2656,6 @@ fun OmniBeatApp() {
                                 podcastAutoRefreshOnEnterList = podcastAutoRefreshOnEnterList,
                                 podcastRefreshIntervalMinutes = podcastRefreshIntervalMinutes,
                                 podcastSearchRegion = podcastSearchRegion,
-                                podcastCompactList = podcastCompactList,
                                 podcastWifiOnlyDownload = podcastWifiOnlyDownload,
                                 stationCount = stations.size,
                                 podcastCount = podcastSubscriptions.size,
@@ -2733,9 +2737,6 @@ fun OmniBeatApp() {
                                 },
                                 onPodcastSearchRegionChange = { region ->
                                     scope.launch { podcastRepository.saveSearchRegion(region) }
-                                },
-                                onPodcastCompactListChange = { compact ->
-                                    scope.launch { podcastRepository.saveCompactList(compact) }
                                 },
                                 onPodcastWifiOnlyDownloadChange = { enabled ->
                                     scope.launch { podcastRepository.saveWifiOnlyDownload(enabled) }

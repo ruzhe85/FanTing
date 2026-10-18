@@ -6,6 +6,9 @@ const val PODCAST_FEED_URL_MAX_LENGTH = 2048
 const val PODCAST_TITLE_MAX_LENGTH = 200
 const val PODCAST_IMAGE_URL_MAX_LENGTH = 2048
 
+/** 播客订阅列表的显示方式：标准行 / 紧凑行 / 纯封面网格 */
+enum class PodcastListLayout { Standard, Compact, Cover }
+
 /** 单集倍速的可选项（面板菜单按此顺序展示） */
 val PODCAST_PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
 

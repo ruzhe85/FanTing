@@ -358,6 +358,10 @@
     <string name="podcast_episode_search_empty">没有匹配的期数</string>
     <string name="podcast_sort_last_updated">最近更新</string>
     <string name="podcast_sort_title">播客名称</string>
+    <string name="podcast_list_layout_title">显示方式</string>
+    <string name="podcast_list_layout_standard">标准列表</string>
+    <string name="podcast_list_layout_compact">紧凑列表</string>
+    <string name="podcast_list_layout_cover">纯封面</string>
     <string name="podcast_play_latest">播放最新一期</string>
     <string name="podcast_list_subtitle_all">%1$d 期 · %2$s 更新</string>
     <string name="podcast_refresh_failed">刷新失败：%1$s</string>
