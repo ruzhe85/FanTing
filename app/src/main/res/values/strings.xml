@@ -341,6 +341,11 @@
     <string name="podcast_search_no_description">No description</string>
     <string name="podcast_search_description_loading">Loading description…</string>
     <string name="podcast_search_episode_count">%1$d episodes</string>
+    <string name="podcast_chart_title">Hot podcasts</string>
+    <string name="podcast_chart_loading">Loading chart…</string>
+    <string name="podcast_chart_empty">No podcasts in this chart</string>
+    <string name="podcast_chart_failed">Couldn\'t load chart: %1$s</string>
+    <string name="podcast_chart_lookup_failed">Couldn\'t open this podcast: %1$s</string>
     <string name="podcast_feed_hint">RSS feed URL</string>
     <string name="podcast_subscribe">Subscribe</string>
     <string name="podcast_loading">Loading feed…</string>

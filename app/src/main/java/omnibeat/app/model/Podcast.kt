@@ -36,6 +36,46 @@ const val PODCAST_SEARCH_FETCH_LIMIT = 200
 const val PODCAST_SEARCH_PAGE_SIZE = 50
 
 /**
+ * 热门发现一次取多少条。
+ * 实测 100 条在各地区都稳定；200 条会被 Apple 拒绝或超时，不要调高。
+ */
+const val PODCAST_CHART_LIMIT = 100
+
+/** 热门榜单本地缓存有效期：6 小时。Apple 全天多次刷新，App 只在打开页面且过期时拉一次 */
+const val PODCAST_CHART_CACHE_TTL_MS = 6 * 60 * 60 * 1000L
+
+/**
+ * 热门榜单使用的 Apple 地区。
+ *
+ * 只有 6 个：中/港/台/日/英/美。其余语言一律落到美国区——
+ * 榜单只是发现入口，不追求覆盖所有 storefront；真有需求再加一个码即可。
+ */
+private const val PODCAST_CHART_FALLBACK_REGION = "us"
+
+/**
+ * 按界面语言决定榜单地区：
+ *   - 中文：港/澳 → hk，台/繁体 → tw，其余简中 → cn
+ *   - 日语 → jp；英语（英式）→ gb；其余英语 → us
+ *   - 其它语言（俄/德/法/韩…）→ us
+ *
+ * [locale] 传 `resources.configuration.locales[0]`，即 App 内语言覆盖后的生效语言。
+ */
+fun podcastChartRegionFor(locale: Locale): String {
+    val language = locale.language.lowercase(Locale.ROOT)
+    val country = locale.country.uppercase(Locale.ROOT)
+    return when (language) {
+        "zh" -> when {
+            country == "HK" || country == "MO" -> "hk"
+            country == "TW" || locale.script == "Hant" -> "tw"
+            else -> "cn"
+        }
+        "ja" -> "jp"
+        "en" -> if (country == "GB") "gb" else PODCAST_CHART_FALLBACK_REGION
+        else -> PODCAST_CHART_FALLBACK_REGION
+    }
+}
+
+/**
  * 订阅地址的归一化 key，用于判断「搜索到的播客是否已订阅」。
  *
  * iTunes 给出的 feedUrl 常与用户当初粘贴的只差协议或结尾斜杠，

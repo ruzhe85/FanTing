@@ -65,8 +65,10 @@ fun MainTopBar(
     onSearchOnline: () -> Unit,
     onAddPodcast: () -> Unit,
     onSearchPodcastOnline: () -> Unit,
-    /** 播客在线搜索页打开时隐藏「+」菜单，避免在搜索过程中再弹添加弹窗 */
-    podcastSearchActive: Boolean = false,
+    /** 播客「+」菜单的第三项：热门发现 */
+    onOpenPodcastChart: () -> Unit = {},
+    /** 播客的在线搜索 / 热门发现 / 详情页打开时隐藏「+」菜单，避免在浏览过程中再弹添加弹窗 */
+    podcastBrowseActive: Boolean = false,
     /** 期数页（打开了某个订阅）时在顶栏显示排序，与电台列表保持一致 */
     podcastEpisodeSortVisible: Boolean = false,
     podcastEpisodesOldestFirst: Boolean = false,
@@ -217,7 +219,7 @@ fun MainTopBar(
                 }
 
                 // 播客页：「+」与电台一致；期数页额外显示排序，顺序也跟电台一样（排序在「+」左边）
-                selectedPage == MainPage.Podcasts && !podcastSearchActive -> {
+                selectedPage == MainPage.Podcasts && !podcastBrowseActive -> {
                     if (podcastEpisodeSortVisible) {
                         PodcastEpisodeSortButton(
                             oldestFirst = podcastEpisodesOldestFirst,
@@ -245,6 +247,7 @@ fun MainTopBar(
                             onExpandedChange = { addMenuExpanded = it },
                             onAddManually = onAddPodcast,
                             onSearchOnline = onSearchPodcastOnline,
+                            onOpenChart = onOpenPodcastChart,
                         )
                     }
                 }
@@ -473,6 +476,8 @@ private fun AddMenuButton(
     onExpandedChange: (Boolean) -> Unit,
     onAddManually: () -> Unit,
     onSearchOnline: () -> Unit,
+    /** 传 null 时不显示「热门发现」：电台页的「+」只有手动添加 / 在线搜索 */
+    onOpenChart: (() -> Unit)? = null,
 ) {
     Box {
         OmniIconButton(
@@ -530,6 +535,31 @@ private fun AddMenuButton(
                     )
                 },
             )
+            val openChart = onOpenChart
+            if (openChart != null) {
+                DropdownMenuItem(
+                    modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                    contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                    text = {
+                        Text(
+                            text = stringResource(R.string.podcast_chart_title),
+                            color = RadioText,
+                        )
+                    },
+                    onClick = {
+                        onExpandedChange(false)
+                        openChart()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_trending_up),
+                            contentDescription = null,
+                            modifier = Modifier.size(RadioSizes.icon),
+                            tint = RadioText,
+                        )
+                    },
+                )
+            }
         }
     }
 }

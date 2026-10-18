@@ -198,6 +198,11 @@
     <string name="podcast_search_no_description">Описание отсутствует</string>
     <string name="podcast_search_description_loading">Загрузка описания…</string>
     <string name="podcast_search_episode_count">Выпусков: %1$d</string>
+    <string name="podcast_chart_title">Популярное</string>
+    <string name="podcast_chart_loading">Загрузка чарта…</string>
+    <string name="podcast_chart_empty">В этом чарте нет подкастов</string>
+    <string name="podcast_chart_failed">Не удалось загрузить чарт: %1$s</string>
+    <string name="podcast_chart_lookup_failed">Не удалось открыть подкаст: %1$s</string>
     <string name="station_editor_add_title">Добавить станцию</string>
     <string name="station_editor_edit_title">Редактировать станцию</string>
     <string name="station_editor_title_label">Название</string>

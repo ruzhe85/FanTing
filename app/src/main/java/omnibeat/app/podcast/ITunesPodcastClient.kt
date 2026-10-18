@@ -40,11 +40,13 @@ object ITunesPodcastClient {
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 15_000
     private const val SEARCH_URL = "https://itunes.apple.com/search"
+    private const val LOOKUP_URL = "https://itunes.apple.com/lookup"
     private const val DEFAULT_COUNTRY = "us"
     private const val DEFAULT_LIMIT = 25
     private const val MAX_LIMIT = 200
 
     private object Query {
+        const val ID = "id"
         const val TERM = "term"
         const val MEDIA = "media"
         const val ENTITY = "entity"
@@ -91,6 +93,24 @@ object ITunesPodcastClient {
             append('&').append(Query.TERM).append('=').append(urlEncode(keyword))
         }
         return decodeResults(getJson(url))
+    }
+
+    /**
+     * 用榜单里的 `collectionId` 换订阅所需的 `feedUrl`。
+     *
+     * 榜单接口不含 `feedUrl`，只能靠一次 lookup 补全；条目已下架或地区不匹配时
+     * iTunes 会返回空 results，这里返回 null 由调用方提示。
+     * [countryCode] 必须与榜单地区一致，否则可能查不到该条目的订阅源。
+     */
+    suspend fun lookup(collectionId: Long, countryCode: String): ITunesPodcast? {
+        if (collectionId <= 0L) return null
+        val country = normalizeCountry(countryCode)
+        val url = buildString {
+            append(LOOKUP_URL)
+            append('?').append(Query.ID).append('=').append(collectionId)
+            append('&').append(Query.COUNTRY).append('=').append(urlEncode(country))
+        }
+        return decodeResults(getJson(url)).firstOrNull()
     }
 
     /** 拉取 JSON；HTTP 非 2xx、响应不是 JSON 时抛带可展示文案的 [IOException] */

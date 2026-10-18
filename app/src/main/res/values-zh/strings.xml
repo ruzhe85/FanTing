@@ -342,6 +342,11 @@
     <string name="podcast_search_no_description">暂无简介</string>
     <string name="podcast_search_description_loading">正在加载简介…</string>
     <string name="podcast_search_episode_count">%1$d 期</string>
+    <string name="podcast_chart_title">热门发现</string>
+    <string name="podcast_chart_loading">正在加载榜单…</string>
+    <string name="podcast_chart_empty">当前地区榜单为空</string>
+    <string name="podcast_chart_failed">榜单加载失败：%1$s</string>
+    <string name="podcast_chart_lookup_failed">无法打开该播客：%1$s</string>
     <string name="podcast_feed_hint">RSS 订阅地址</string>
     <string name="podcast_subscribe">订阅</string>
     <string name="podcast_loading">正在加载订阅源…</string>

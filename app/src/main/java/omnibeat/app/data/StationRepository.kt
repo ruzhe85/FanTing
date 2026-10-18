@@ -77,9 +77,13 @@ class StationRepository(private val context: Context) {
 
     suspend fun loadImportedTranslation(): ImportedTranslation? = withContext(Dispatchers.IO) {
         context.stationDataStore.data.first()[importedTranslationKey]?.let { saved ->
-            val json = JSONObject(saved)
-            TranslationCodec.decode(json.getString("source"), context.resources)
-                .copy(previousLocaleTags = json.getString("previousLocaleTags"))
+            // 翻译包按导出时的字符串表校验：升级后新增/删除了字符串，旧包会校验不通过。
+            // 这种情况只当作「没有导入包」处理，不能让 App 启动就崩掉。
+            runCatching {
+                val json = JSONObject(saved)
+                TranslationCodec.decode(json.getString("source"), context.resources)
+                    .copy(previousLocaleTags = json.getString("previousLocaleTags"))
+            }.getOrNull()
         }
     }
 

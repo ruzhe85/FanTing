@@ -389,8 +389,9 @@ fun PodcastSearchDetailPage(
     }
 }
 
+/** 搜索页与热门发现页共用的居中状态文案 */
 @Composable
-private fun SearchStatus(text: String, modifier: Modifier = Modifier) {
+internal fun SearchStatus(text: String, modifier: Modifier = Modifier) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
@@ -406,8 +407,9 @@ private fun SearchStatus(text: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** 搜索页与热门发现页共用的错误 + 重试 */
 @Composable
-private fun SearchError(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+internal fun SearchError(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
