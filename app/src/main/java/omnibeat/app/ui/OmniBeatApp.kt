@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalNavigationDrawer
@@ -123,6 +124,22 @@ private const val ARTWORK_SYNC_DELAY_MS = 200L
 /** 播客 Tab 内的浏览态：在线搜索 / 热门发现；null 表示停留在订阅列表 */
 private enum class PodcastBrowseMode { Search, Chart }
 
+/** 榜单补全 feedUrl：iTunes lookup 一次最多带多少个 id */
+private const val CHART_FEED_LOOKUP_BATCH = 25
+
+/** 补全批次之间的间隔，避免连着打 Apple 接口 */
+private const val CHART_FEED_LOOKUP_GAP_MS = 150L
+
+/** 榜单条目已补全 feedUrl 时直接转成详情页模型，省一次 lookup */
+private fun PodcastChartEntry.asITunesPodcast(): ITunesPodcast = ITunesPodcast(
+    collectionId = collectionId,
+    title = title,
+    author = author,
+    feedUrl = requireNotNull(feedUrl),
+    artworkUrl = artworkUrl,
+    genre = genres.firstOrNull(),
+)
+
 @Composable
 fun OmniBeatApp() {
     val context = LocalContext.current
@@ -145,6 +162,8 @@ fun OmniBeatApp() {
     // 在线搜索使用的 iTunes 商店地区（设置-播客可选，默认美国区）
     val podcastSearchRegion by podcastRepository.searchRegion
         .collectAsState(initial = PODCAST_DEFAULT_SEARCH_REGION)
+    // 热门发现上次手动选择的地区；null = 没选过，按界面语言决定
+    val savedChartRegion by podcastRepository.chartRegion.collectAsState(initial = null)
     // 期数列表排序：false = 最新在上（默认）
     val podcastEpisodesOldestFirst by podcastRepository.episodesOldestFirst
         .collectAsState(initial = false)
@@ -371,11 +390,24 @@ fun OmniBeatApp() {
         var podcastChartResolvingId by remember { mutableStateOf<Long?>(null) }
         var podcastChartJob by remember { mutableStateOf<Job?>(null) }
         var podcastChartLookupJob by remember { mutableStateOf<Job?>(null) }
+        var podcastChartResolveJob by remember { mutableStateOf<Job?>(null) }
         var podcastChartRequest by remember { mutableIntStateOf(0) }
+        // 列表滚动位置提升到这里：从期数页返回发现页时保持原位
+        val podcastChartListState = rememberLazyListState()
+        // 从发现页订阅后，关闭期数页时回到发现页而不是订阅列表
+        var podcastReturnToChartFor by remember { mutableStateOf<String?>(null) }
         // 会话内二级缓存：切页面/重进时先出内容，避免每次都读盘
         val podcastChartMemoryCache = remember { mutableMapOf<String, PodcastChart>() }
         // 榜单条目 id → 已补全的订阅信息，重复点击不必再 lookup
         val podcastChartFeedCache = remember { mutableMapOf<Long, ITunesPodcast>() }
+        // 发现页「已订阅」：榜单条目补全 feedUrl 后与订阅集合比对
+        val subscribedChartIds = remember(podcastChartEntries, subscribedPodcastKeys) {
+            podcastChartEntries.asSequence()
+                .filter { entry ->
+                    entry.feedUrl?.let { podcastFeedKey(it) in subscribedPodcastKeys } == true
+                }
+                .mapTo(mutableSetOf()) { it.collectionId }
+        }
         // 播客页始终可见；收藏页在「一条收藏都没有且设置里关掉空收藏页」时隐藏
         val visibleTabPages = MainPage.allTabPages.filter { page ->
             page != MainPage.Favorites ||
@@ -933,6 +965,55 @@ fun OmniBeatApp() {
             leavePodcastBrowse()
         }
 
+        /** 把补全的 feedUrl 合并进列表 / 内存缓存 / 磁盘缓存，后续打开不再重复 lookup */
+        fun mergeChartFeedUrls(country: String, feedUrls: Map<Long, String>) {
+            if (feedUrls.isEmpty()) return
+            fun merge(entries: List<PodcastChartEntry>): List<PodcastChartEntry> = entries.map { entry ->
+                val feedUrl = feedUrls[entry.collectionId]
+                if (feedUrl != null && entry.feedUrl != feedUrl) entry.copy(feedUrl = feedUrl) else entry
+            }
+            podcastChartMemoryCache[country]?.let { chart ->
+                val updated = chart.copy(entries = merge(chart.entries))
+                podcastChartMemoryCache[country] = updated
+                scope.launch { podcastChartClient.saveChart(updated) }
+            }
+            if (podcastChartRegion == country) {
+                podcastChartEntries = merge(podcastChartEntries)
+            }
+        }
+
+        /**
+         * 榜单接口没有 feedUrl：有订阅时后台分批补全，用于显示「已订阅」与免 lookup 进详情。
+         * 只补当前地区缺失的条目，结果写回缓存；没有订阅时直接跳过，不发任何请求。
+         */
+        fun resolveChartFeedUrls(country: String, entries: List<PodcastChartEntry>) {
+            if (subscribedPodcastKeys.isEmpty()) return
+            val unresolved = entries.asSequence()
+                .filter { it.feedUrl == null }
+                .map { it.collectionId }
+                .distinct()
+                .toList()
+            if (unresolved.isEmpty()) return
+            podcastChartResolveJob?.cancel()
+            podcastChartResolveJob = scope.launch {
+                val resolved = mutableMapOf<Long, String>()
+                for (ids in unresolved.chunked(CHART_FEED_LOOKUP_BATCH)) {
+                    if (!NetworkStatus.isOnline(context)) break
+                    try {
+                        resolved.putAll(ITunesPodcastClient.lookupMany(ids, country))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // 单批失败不影响其它批次；未补全的条目下次打开再试
+                    }
+                    delay(CHART_FEED_LOOKUP_GAP_MS)
+                }
+                if (resolved.isNotEmpty()) {
+                    mergeChartFeedUrls(country, resolved)
+                }
+            }
+        }
+
         /**
          * 读取并（必要时）刷新热门榜单。
          *
@@ -952,6 +1033,9 @@ fun OmniBeatApp() {
                             podcastChartEntries = cached.entries
                         }
                         podcastChartError = null
+                        if (podcastChartRequest == request) {
+                            resolveChartFeedUrls(region, cached.entries)
+                        }
                     }
                     if (!force && cached?.isFresh() == true) {
                         podcastChartLoading = false
@@ -972,10 +1056,33 @@ fun OmniBeatApp() {
                     }
                     podcastChartLoading = true
                     val chart = podcastChartClient.fetch(region, PODCAST_CHART_LIMIT)
-                    podcastChartMemoryCache[region] = chart
+                    // 刷新会带回一批没有 feedUrl 的新条目：按 id 从当前内存缓存搬回来，
+                    // 否则每 6 小时刷新后都要重新批量 lookup 一次。
+                    // 用内存缓存而不是 cached，是为了带上后台补全可能刚写进去的 feedUrl。
+                    val previousFeedUrls = podcastChartMemoryCache[region]?.entries
+                        ?.mapNotNull { entry -> entry.feedUrl?.let { entry.collectionId to it } }
+                        ?.toMap()
+                        .orEmpty()
+                    val fresh = if (previousFeedUrls.isEmpty()) {
+                        chart
+                    } else {
+                        chart.copy(
+                            entries = chart.entries.map { entry ->
+                                val feedUrl = previousFeedUrls[entry.collectionId]
+                                if (entry.feedUrl == null && feedUrl != null) {
+                                    entry.copy(feedUrl = feedUrl)
+                                } else {
+                                    entry
+                                }
+                            },
+                        )
+                    }
+                    podcastChartMemoryCache[region] = fresh
                     if (podcastChartRequest == request) {
-                        podcastChartEntries = chart.entries
+                        podcastChartClient.saveChart(fresh)
+                        podcastChartEntries = fresh.entries
                         podcastChartError = null
+                        resolveChartFeedUrls(region, fresh.entries)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -994,12 +1101,12 @@ fun OmniBeatApp() {
 
         /** 打开热门发现：地区按当前界面语言现算，先出缓存再决定是否联网 */
         fun openPodcastChart() {
-            podcastBrowseMode = PodcastBrowseMode.Chart
             podcastSearchSelected = null
             podcastSearchError = null
             podcastSearchSubmitError = null
             podcastSearchDescriptionLoading = false
-            val region = podcastChartRegionFor(resources.configuration.locales[0])
+            // 手动选过就固定用最后选择的地区；没选过才按界面语言现算
+            val region = savedChartRegion ?: podcastChartRegionFor(resources.configuration.locales[0])
             podcastChartRegion = region
             // 切语言后内存里可能还是别的地区，先换成本地区的缓存（没有就清空）。
             // 清空后立刻进入加载态，避免读磁盘缓存前闪一下「榜单为空」。
@@ -1007,6 +1114,31 @@ fun OmniBeatApp() {
             podcastChartEntries = cachedEntries
             podcastChartLoading = cachedEntries.isEmpty()
             podcastChartError = null
+            // 地区与列表都就位后再切页面，避免首帧闪一下默认地区的空列表
+            podcastBrowseMode = PodcastBrowseMode.Chart
+            loadPodcastChart(region, force = false)
+        }
+
+        /** 手动切换地区：优先用该地区的新鲜缓存，过期才后台刷新；列表回到顶部 */
+        fun selectPodcastChartRegion(region: String) {
+            if (region == podcastChartRegion) return
+            podcastChartRegion = region
+            podcastChartRequest++
+            podcastChartJob?.cancel()
+            podcastChartJob = null
+            podcastChartResolveJob?.cancel()
+            podcastChartResolveJob = null
+            podcastChartLookupJob?.cancel()
+            podcastChartLookupJob = null
+            podcastChartResolvingId = null
+            val cachedEntries = podcastChartMemoryCache[region]?.entries.orEmpty()
+            podcastChartEntries = cachedEntries
+            podcastChartLoading = cachedEntries.isEmpty()
+            podcastChartError = null
+            scope.launch {
+                podcastRepository.saveChartRegion(region)
+                podcastChartListState.scrollToItem(0)
+            }
             loadPodcastChart(region, force = false)
         }
 
@@ -1015,9 +1147,12 @@ fun OmniBeatApp() {
             podcastChartRequest++
             podcastChartJob?.cancel()
             podcastChartJob = null
+            podcastChartResolveJob?.cancel()
+            podcastChartResolveJob = null
             podcastChartLookupJob?.cancel()
             podcastChartLookupJob = null
             podcastChartResolvingId = null
+            podcastReturnToChartFor = null
             podcastChartLoading = false
             podcastChartError = null
             podcastSearchSelected = null
@@ -1108,11 +1243,27 @@ fun OmniBeatApp() {
         }
 
         /**
+         * 订阅成功后立刻把 feedUrl 回填到榜单条目与缓存：
+         * 返回发现页时该项显示「已订阅」，也免得下次再 lookup。
+         */
+        fun markChartEntrySubscribed(podcast: ITunesPodcast) {
+            podcastChartFeedCache[podcast.collectionId] = podcast
+            mergeChartFeedUrls(podcastChartRegion, mapOf(podcast.collectionId to podcast.feedUrl))
+        }
+
+        /**
          * 点击榜单项：榜单没有 feedUrl，先用 collectionId 做一次 lookup。
          * 成功后复用现有详情页（订阅确认），会话内结果会缓存，重复点击不再请求。
          */
         fun openPodcastFromChart(entry: PodcastChartEntry) {
             podcastChartFeedCache[entry.collectionId]?.let { podcast ->
+                openPodcastSearchDetail(podcast)
+                return
+            }
+            // 之前已经批量补全过 feedUrl：直接进详情，不再请求
+            if (entry.feedUrl != null) {
+                val podcast = entry.asITunesPodcast()
+                podcastChartFeedCache[entry.collectionId] = podcast
                 openPodcastSearchDetail(podcast)
                 return
             }
@@ -1131,6 +1282,10 @@ fun OmniBeatApp() {
                         ).show()
                     } else {
                         podcastChartFeedCache[entry.collectionId] = podcast
+                        mergeChartFeedUrls(
+                            podcastChartRegion,
+                            mapOf(entry.collectionId to podcast.feedUrl),
+                        )
                         openPodcastSearchDetail(podcast)
                     }
                 } catch (cancelled: CancellationException) {
@@ -1159,6 +1314,7 @@ fun OmniBeatApp() {
             val feedUrl = podcast.feedUrl
             if (podcastFeedKey(feedUrl) in subscribedPodcastKeys) return
             if (!hasInternetOrToast()) return
+            val fromChart = podcastBrowseMode == PodcastBrowseMode.Chart
             val request = podcastSearchSubmitRequest + 1
             podcastSearchSubmitRequest = request
             podcastSearchSubmitting = true
@@ -1179,6 +1335,9 @@ fun OmniBeatApp() {
                         // 订阅成功：关掉搜索/发现页，直接进入这个订阅的期数页
                         leavePodcastBrowse()
                         openPodcastUrl = feedUrl
+                        // 从发现页进来的：关掉期数页时回到发现页原位
+                        podcastReturnToChartFor = feedUrl.takeIf { fromChart }
+                        if (fromChart) markChartEntrySubscribed(podcast)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -1378,11 +1537,14 @@ fun OmniBeatApp() {
             // 换订阅时清掉上一份搜索词，避免拿旧词过滤新列表
             podcastEpisodeSearchOpen = false
             podcastEpisodeSearchQuery = ""
+            // 手动打开别的订阅时，不再回发现页
+            podcastReturnToChartFor = null
             refreshPodcast(subscription)
         }
 
         fun removePodcast(subscription: PodcastSubscription) {
             if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = null
+            if (podcastReturnToChartFor == subscription.feedUrl) podcastReturnToChartFor = null
             scope.launch { podcastRepository.removeSubscription(subscription.feedUrl) }
         }
 
@@ -2332,9 +2494,13 @@ fun OmniBeatApp() {
 
                                         podcastBrowseMode == PodcastBrowseMode.Chart -> PodcastChartPage(
                                             entries = podcastChartEntries,
+                                            region = podcastChartRegion,
+                                            subscribedIds = subscribedChartIds,
+                                            listState = podcastChartListState,
                                             loading = podcastChartLoading,
                                             errorText = podcastChartError,
                                             resolvingId = podcastChartResolvingId,
+                                            onRegionChange = ::selectPodcastChartRegion,
                                             onOpen = ::openPodcastFromChart,
                                             onRefresh = { loadPodcastChart(podcastChartRegion, force = true) },
                                             onRetry = { loadPodcastChart(podcastChartRegion, force = true) },
@@ -2354,9 +2520,14 @@ fun OmniBeatApp() {
                                         onEpisodeSearchQueryChange = { podcastEpisodeSearchQuery = it },
                                         onOpenSubscription = ::openPodcast,
                                         onCloseSubscription = {
+                                            // 从发现页订阅进来的：关掉期数页时回到发现页原位置
+                                            val returnToChart = podcastReturnToChartFor != null &&
+                                                podcastReturnToChartFor == openPodcastUrl
+                                            podcastReturnToChartFor = null
                                             openPodcastUrl = null
                                             podcastEpisodeSearchOpen = false
                                             podcastEpisodeSearchQuery = ""
+                                            if (returnToChart) openPodcastChart()
                                         },
                                         onDeleteSubscription = { pendingPodcastRemoval = it },
                                         reordering = podcastReorderDraft != null,

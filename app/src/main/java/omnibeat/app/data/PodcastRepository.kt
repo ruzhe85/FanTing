@@ -19,6 +19,7 @@ import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSortMode
 import omnibeat.app.model.PodcastSortState
 import omnibeat.app.model.PodcastSubscription
+import omnibeat.app.model.isSupportedChartRegion
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -44,6 +45,7 @@ private val autoRefreshOnEnterListKey = booleanPreferencesKey("podcast_auto_refr
 private val wifiOnlyDownloadKey = booleanPreferencesKey("podcast_wifi_only_download")
 private val refreshIntervalMinutesKey = intPreferencesKey("podcast_refresh_interval_minutes")
 private val searchRegionKey = stringPreferencesKey("podcast_search_region")
+private val chartRegionKey = stringPreferencesKey("podcast_chart_region")
 private val episodesOldestFirstKey = booleanPreferencesKey("podcast_episodes_oldest_first")
 private val compactListKey = booleanPreferencesKey("podcast_compact_list")
 private val sortKey = stringPreferencesKey("podcast_sort")
@@ -78,6 +80,10 @@ class PodcastRepository(private val context: Context) {
     /** 在线搜索使用的 iTunes 商店地区（白名单之外回退美国区） */
     val searchRegion: Flow<String> = context.podcastDataStore.data
         .map { preferences -> normalizeSearchRegion(preferences[searchRegionKey]) }
+
+    /** 热门发现上次手动选择的地区；null = 从未选过，由界面语言决定 */
+    val chartRegion: Flow<String?> = context.podcastDataStore.data
+        .map { preferences -> preferences[chartRegionKey]?.takeIf(::isSupportedChartRegion) }
 
     /** 期数列表是否「最旧在上」（默认 false：最新在上） */
     val episodesOldestFirst: Flow<Boolean> = context.podcastDataStore.data
@@ -213,6 +219,17 @@ class PodcastRepository(private val context: Context) {
         context.podcastDataStore.edit { preferences ->
             if (preferences[searchRegionKey] != normalized) {
                 preferences[searchRegionKey] = normalized
+            }
+        }
+    }
+
+    /** 保存热门发现地区（只接受 6 个白名单值） */
+    suspend fun saveChartRegion(region: String) {
+        val normalized = region.trim().lowercase(Locale.ROOT)
+        if (!isSupportedChartRegion(normalized)) return
+        context.podcastDataStore.edit { preferences ->
+            if (preferences[chartRegionKey] != normalized) {
+                preferences[chartRegionKey] = normalized
             }
         }
     }

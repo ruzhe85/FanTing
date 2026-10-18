@@ -45,12 +45,17 @@ const val PODCAST_CHART_LIMIT = 100
 const val PODCAST_CHART_CACHE_TTL_MS = 6 * 60 * 60 * 1000L
 
 /**
- * 热门榜单使用的 Apple 地区。
+ * 热门发现支持的地区，顺序即发现页地区菜单顺序。
  *
- * 只有 6 个：中/港/台/日/英/美。其余语言一律落到美国区——
+ * 只有 6 个：中/港/台/日/美/英；其余语言一律落到美国区——
  * 榜单只是发现入口，不追求覆盖所有 storefront；真有需求再加一个码即可。
  */
+val PODCAST_CHART_REGIONS = listOf("cn", "hk", "tw", "jp", "us", "gb")
+
 private const val PODCAST_CHART_FALLBACK_REGION = "us"
+
+/** 地区白名单校验：DataStore 里的旧值、手写值都要过这一关 */
+fun isSupportedChartRegion(region: String): Boolean = region in PODCAST_CHART_REGIONS
 
 /**
  * 按界面语言决定榜单地区：

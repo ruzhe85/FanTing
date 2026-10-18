@@ -113,6 +113,28 @@ object ITunesPodcastClient {
         return decodeResults(getJson(url)).firstOrNull()
     }
 
+    /**
+     * 批量 lookup：热门榜单补全 feedUrl 用。
+     *
+     * iTunes 支持 `id=1,2,3` 一次查多条，返回 `collectionId → feedUrl`；
+     * 查不到的条目不会出现在结果里，由调用方当作「未补全」处理。
+     */
+    suspend fun lookupMany(collectionIds: List<Long>, countryCode: String): Map<Long, String> {
+        val ids = collectionIds.filter { it > 0L }.distinct()
+        if (ids.isEmpty()) return emptyMap()
+        val country = normalizeCountry(countryCode)
+        val url = buildString {
+            append(LOOKUP_URL)
+            append('?').append(Query.ID).append('=').append(ids.joinToString(","))
+            append('&').append(Query.COUNTRY).append('=').append(urlEncode(country))
+        }
+        return decodeResults(getJson(url))
+            .mapNotNull { podcast ->
+                podcast.feedUrl.takeIf { it.isNotBlank() }?.let { podcast.collectionId to it }
+            }
+            .toMap()
+    }
+
     /** 拉取 JSON；HTTP 非 2xx、响应不是 JSON 时抛带可展示文案的 [IOException] */
     private suspend fun getJson(requestUrl: String): JSONObject = withContext(Dispatchers.IO) {
         val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {

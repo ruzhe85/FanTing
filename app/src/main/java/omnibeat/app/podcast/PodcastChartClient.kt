@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.AtomicFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import omnibeat.app.model.PODCAST_CHART_CACHE_TTL_MS
@@ -16,16 +17,18 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.Locale
 
-/** 榜单条目：只有发现页需要的字段，`feedUrl` 要点击时再 lookup */
+/** 榜单条目：只有发现页需要的字段；`feedUrl` 由批量 lookup 补全后随缓存落盘 */
 data class PodcastChartEntry(
     val collectionId: Long,
     val title: String,
     val author: String,
     val artworkUrl: String? = null,
     val genres: List<String> = emptyList(),
+    val feedUrl: String? = null,
 )
 
 /** 一份地区榜单 + 拉取时间（决定缓存是否还新鲜） */
@@ -67,7 +70,7 @@ class PodcastChartClient(context: Context) {
         val country = normalizeCountry(countryCode)
         val count = limit.coerceIn(1, MAX_LIMIT)
         val url = "$CHART_URL/$country/podcasts/top/$count/podcasts.json"
-        val entries = decodeEntries(getJson(url))
+        val entries = decodeEntries(getJsonWithRetry(url))
         if (entries.isEmpty()) throw IOException("榜单暂时没有内容")
         val chart = PodcastChart(
             country = country,
@@ -77,6 +80,26 @@ class PodcastChartClient(context: Context) {
         // 缓存只是加速下次打开：写失败（磁盘满等）不该让本次结果也失败
         runCatching { writeCache(chart) }
         chart
+    }
+
+    /** 把补全了 feedUrl 的榜单写回缓存；写失败不抛错，内存里仍可用 */
+    suspend fun saveChart(chart: PodcastChart) {
+        withContext(Dispatchers.IO) {
+            runCatching { writeCache(chart) }
+        }
+    }
+
+    /**
+     * Apple 榜单首次连接偶发超时（用户实测重试即成功），这里静默重试一次。
+     * 只重试超时：HTTP 非 2xx / 解析失败照常抛给页面，避免掩盖真实错误。
+     */
+    private suspend fun getJsonWithRetry(requestUrl: String): JSONObject {
+        return try {
+            getJson(requestUrl)
+        } catch (timeout: SocketTimeoutException) {
+            delay(RETRY_DELAY_MS)
+            getJson(requestUrl)
+        }
     }
 
     /** 拉取 JSON；HTTP 非 2xx、响应不是 JSON 时抛带可展示文案的 [IOException] */
@@ -142,6 +165,8 @@ class PodcastChartClient(context: Context) {
                 .takeIf { it.isNotEmpty() }
                 ?.let(::upgradeArtwork),
             genres = decodeGenres(item.optJSONArray(Json.GENRES)),
+            // 榜单接口本身没有 feedUrl；这里读到的是批量 lookup 补全后写进缓存的
+            feedUrl = item.stringOrEmpty(Json.FEED_URL).takeIf { it.isNotEmpty() },
         )
     }
 
@@ -203,6 +228,7 @@ class PodcastChartClient(context: Context) {
                     .put(Json.NAME, entry.title)
                     .put(Json.ARTIST_NAME, entry.author)
                     .put(Json.ARTWORK_100, entry.artworkUrl.orEmpty())
+                    .put(Json.FEED_URL, entry.feedUrl.orEmpty())
                     // 与接口结构保持一致（genres 是 [{name}]），读缓存时复用同一套解析
                     .put(
                         Json.GENRES,
@@ -248,6 +274,7 @@ class PodcastChartClient(context: Context) {
         const val NAME = "name"
         const val ARTIST_NAME = "artistName"
         const val ARTWORK_100 = "artworkUrl100"
+        const val FEED_URL = "feedUrl"
         const val GENRES = "genres"
         const val GENRE_NAME = "name"
         const val ITEMS = "items"
@@ -258,8 +285,9 @@ class PodcastChartClient(context: Context) {
     private companion object {
         const val CHART_URL = "https://rss.marketingtools.apple.com/api/v2"
         const val USER_AGENT = "OmniBeatP Android"
-        const val CONNECT_TIMEOUT_MS = 10_000
-        const val READ_TIMEOUT_MS = 15_000
+        const val CONNECT_TIMEOUT_MS = 15_000
+        const val READ_TIMEOUT_MS = 20_000
+        const val RETRY_DELAY_MS = 600L
         const val MAX_LIMIT = 200
         const val FALLBACK_COUNTRY = "us"
         const val ARTWORK_SMALL = "100x100bb"
