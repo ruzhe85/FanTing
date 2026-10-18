@@ -35,6 +35,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -100,6 +101,7 @@ fun PodcastTabContent(
     playingEpisodeId: String?,
     loading: Boolean,
     episodesOldestFirst: Boolean = false,
+    onEpisodesOldestFirstChange: (Boolean) -> Unit = {},
     /** 期数页的本地搜索：打开状态与关键词由外层持有，切订阅时一并重置 */
     episodeSearchOpen: Boolean = false,
     episodeSearchQuery: String = "",
@@ -125,6 +127,10 @@ fun PodcastTabContent(
     onCancelDownload: (PodcastEpisode) -> Unit = {},
     onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    /** 批量下载 / 批量已听未听：由外层统一处理 Wi-Fi 确认与落库 */
+    onDownloadEpisodes: (PodcastSubscription, List<PodcastEpisode>) -> Unit = { _, _ -> },
+    onMarkEpisodesPlayed: (PodcastSubscription, List<PodcastEpisode>, Boolean) -> Unit =
+        { _, _, _ -> },
     /** 下载管理页列表（OmniBeatApp 合并：进行中/失败在前，已下载按发布时间在后） */
     downloads: List<Pair<PodcastSubscription, PodcastEpisode>> = emptyList(),
     downloadsOpen: Boolean = false,
@@ -140,11 +146,12 @@ fun PodcastTabContent(
     when {
         open != null -> {
             BackHandler { onCloseSubscription() }
-            PodcastEpisodesPage(
+            PodcastEpisodesScreen(
                 subscription = open,
                 playingEpisodeId = playingEpisodeId,
                 loading = loading,
                 oldestFirst = episodesOldestFirst,
+                onOldestFirstChange = onEpisodesOldestFirstChange,
                 marqueeTitles = marqueeTitles,
                 searchOpen = episodeSearchOpen,
                 searchQuery = episodeSearchQuery,
@@ -161,6 +168,10 @@ fun PodcastTabContent(
                 onCancelDownload = onCancelDownload,
                 onDeleteDownload = onDeleteDownload,
                 onExportDownload = onExportDownload,
+                onEdit = { onEditSubscription(open) },
+                onUnsubscribe = { onDeleteSubscription(open) },
+                onDownloadMany = onDownloadEpisodes,
+                onMarkManyPlayed = onMarkEpisodesPlayed,
                 modifier = modifier,
             )
         }
@@ -753,13 +764,21 @@ private fun SubscriptionMenu(
     }
 }
 
+/**
+ * 期数页：排序、搜索、编辑/退订与多选批量操作全部收在页内，顶栏不再放重复入口。
+ *
+ * 多选：长按任意一期进入多选并选中该期；多选状态下单击逐期切换，长按另一期会把
+ * 「锚点期 → 该期」整段选上（几百期时不用一一点）；头部 × 或系统返回键退出。
+ * 批量动作只作用于**当前可见**的选中项——被搜索过滤掉的不改，避免无感修改。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PodcastEpisodesPage(
+fun PodcastEpisodesScreen(
     subscription: PodcastSubscription,
     playingEpisodeId: String?,
     loading: Boolean,
     oldestFirst: Boolean = false,
+    onOldestFirstChange: (Boolean) -> Unit = {},
     marqueeTitles: Boolean = false,
     searchOpen: Boolean = false,
     searchQuery: String = "",
@@ -774,14 +793,56 @@ fun PodcastEpisodesPage(
     onCancelDownload: (PodcastEpisode) -> Unit = {},
     onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
+    /** 页内「更多」菜单：编辑订阅 / 取消订阅 */
+    onEdit: () -> Unit = {},
+    onUnsubscribe: () -> Unit = {},
+    /** 多选批量下载 / 批量已听未听：Wi-Fi 确认与落库都由外层统一处理 */
+    onDownloadMany: (PodcastSubscription, List<PodcastEpisode>) -> Unit = { _, _ -> },
+    onMarkManyPlayed: (PodcastSubscription, List<PodcastEpisode>, Boolean) -> Unit =
+        { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
-    // 搜索打开时，返回键先关搜索，而不是直接退出这个订阅
-    BackHandler(enabled = searchOpen) { onSearchOpenChange(false) }
+    // 多选状态跟着订阅走：换订阅必须从干净状态开始
+    var selecting by remember(subscription.feedUrl) { mutableStateOf(false) }
+    var selectedGuids by remember(subscription.feedUrl) {
+        mutableStateOf<Set<String>>(emptySet())
+    }
+    // 区间选择锚点：多选时长按另一期，把锚点到该期整段选上
+    var rangeAnchor by remember(subscription.feedUrl) { mutableStateOf<Int?>(null) }
+    var moreMenuOpen by remember { mutableStateOf(false) }
+
+    fun exitSelection() {
+        selecting = false
+        selectedGuids = emptySet()
+        rangeAnchor = null
+    }
+
+    // 返回键先退多选、再关搜索，最后才交给外层退出这个订阅
+    BackHandler(enabled = selecting) { exitSelection() }
+    BackHandler(enabled = !selecting && searchOpen) { onSearchOpenChange(false) }
+
     val searchFocusRequester = remember { FocusRequester() }
     LaunchedEffect(searchOpen) {
         if (searchOpen) searchFocusRequester.requestFocus()
     }
+
+    // 期数可能有几百条：排序只影响展示顺序，不改写订阅数据本身
+    val orderedEpisodes = if (oldestFirst) {
+        subscription.episodes.asReversed()
+    } else {
+        subscription.episodes
+    }
+    // 本地按标题过滤：一千多期时靠滑根本找不到，输入关键词即时缩小范围
+    val query = searchQuery.trim()
+    val searching = query.isNotEmpty()
+    val episodes = if (searching) {
+        orderedEpisodes.filter { it.title.contains(query, ignoreCase = true) }
+    } else {
+        orderedEpisodes
+    }
+    // 批量操作只认当前可见的选中项：被搜索过滤掉的选中项不该被无感修改
+    val selectedEpisodes = episodes.filter { it.guid in selectedGuids }
+    val allSelected = episodes.isNotEmpty() && selectedEpisodes.size == episodes.size
 
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -795,38 +856,191 @@ fun PodcastEpisodesPage(
                     bottom = RadioSpacing.small,
                 ),
         ) {
-            // 轻量返回键：不再用 53dp 的大按钮，把宽度让给标题
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_arrow_back),
-                    contentDescription = stringResource(R.string.action_back),
-                    tint = RadioText,
-                    modifier = Modifier.size(RadioSizes.iconCompact),
-                )
-            }
-            StationArtwork(imageUrl = subscription.imageUrl)
-            Column(
-                verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = RadioSpacing.medium),
-            ) {
-                // 标题必须单行：一旦换行，头部就比封面还高，把下面列表往下顶
-                SubscriptionTitle(
-                    title = subscription.title,
-                    marqueeTitles = marqueeTitles,
-                    fontSize = RadioTextSizes.stationTitle,
-                )
+            if (selecting) {
+                // 多选工具条：× 退出，标题让位给已选数量
+                IconButton(
+                    onClick = { exitSelection() },
+                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_close),
+                        contentDescription = stringResource(R.string.podcast_selection_cancel),
+                        tint = RadioText,
+                        modifier = Modifier.size(RadioSizes.iconCompact),
+                    )
+                }
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = RadioSpacing.medium),
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.podcast_selection_count,
+                            selectedEpisodes.size,
+                        ),
+                        color = RadioText,
+                        fontSize = RadioTextSizes.stationTitle,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = stringResource(R.string.podcast_selection_hint),
+                        color = RadioTextMuted,
+                        fontSize = RadioTextSizes.caption,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
-                    text = stringResource(R.string.podcast_episode_count, subscription.episodes.size),
-                    color = RadioTextMuted,
-                    fontSize = RadioTextSizes.caption,
+                    text = stringResource(
+                        if (allSelected) {
+                            R.string.podcast_selection_none
+                        } else {
+                            R.string.podcast_selection_all
+                        },
+                    ),
+                    color = RadioPrimary,
+                    fontSize = RadioTextSizes.body,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(RadioCorners.pill))
+                        .clickable {
+                            if (allSelected) {
+                                exitSelection()
+                            } else {
+                                selectedGuids = episodes.mapTo(mutableSetOf()) { it.guid }
+                            }
+                        }
+                        .padding(
+                            horizontal = RadioSpacing.compact,
+                            vertical = RadioSpacing.extraSmall,
+                        ),
                 )
+            } else {
+                // 轻量返回键：不再用 53dp 的大按钮，把宽度让给标题
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_back),
+                        contentDescription = stringResource(R.string.action_back),
+                        tint = RadioText,
+                        modifier = Modifier.size(RadioSizes.iconCompact),
+                    )
+                }
+                StationArtwork(imageUrl = subscription.imageUrl)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = RadioSpacing.medium),
+                ) {
+                    // 标题必须单行：一旦换行，头部就比封面还高，把下面列表往下顶
+                    SubscriptionTitle(
+                        title = subscription.title,
+                        marqueeTitles = marqueeTitles,
+                        fontSize = RadioTextSizes.stationTitle,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.podcast_episode_count,
+                            subscription.episodes.size,
+                        ),
+                        color = RadioTextMuted,
+                        fontSize = RadioTextSizes.caption,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // 排序：最新 / 最旧，点一下即切换并持久化（最旧在上时用主色标出来）
+                IconButton(
+                    onClick = { onOldestFirstChange(!oldestFirst) },
+                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_sort),
+                        contentDescription = stringResource(
+                            if (oldestFirst) {
+                                R.string.podcast_episodes_sort_oldest
+                            } else {
+                                R.string.podcast_episodes_sort_latest
+                            },
+                        ),
+                        tint = if (oldestFirst) RadioPrimary else RadioTextMuted,
+                        modifier = Modifier.size(RadioSizes.iconInline),
+                    )
+                }
+                IconButton(
+                    onClick = { onSearchOpenChange(true) },
+                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_search),
+                        contentDescription = stringResource(
+                            R.string.podcast_episode_search_hint,
+                        ),
+                        tint = if (searchOpen) RadioPrimary else RadioTextMuted,
+                        modifier = Modifier.size(RadioSizes.iconInline),
+                    )
+                }
+                Box {
+                    IconButton(
+                        onClick = { moreMenuOpen = true },
+                        modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_menu),
+                            contentDescription = stringResource(R.string.podcast_more_actions),
+                            tint = RadioTextMuted,
+                            modifier = Modifier.size(RadioSizes.iconInline),
+                        )
+                    }
+                    // 编辑 / 取消订阅；取消订阅沿用外层的确认弹窗，这里只发意图
+                    DropdownMenu(
+                        expanded = moreMenuOpen,
+                        onDismissRequest = { moreMenuOpen = false },
+                        containerColor = RadioSurface,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.podcast_edit_title)) },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_edit),
+                                    contentDescription = null,
+                                    tint = RadioTextMuted,
+                                    modifier = Modifier.size(RadioSizes.iconInline),
+                                )
+                            },
+                            onClick = {
+                                moreMenuOpen = false
+                                onEdit()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.podcast_unsubscribe),
+                                    color = RadioDanger,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_delete),
+                                    contentDescription = null,
+                                    tint = RadioDanger,
+                                    modifier = Modifier.size(RadioSizes.iconInline),
+                                )
+                            },
+                            onClick = {
+                                moreMenuOpen = false
+                                onUnsubscribe()
+                            },
+                        )
+                    }
+                }
             }
         }
 
@@ -847,20 +1061,6 @@ fun PodcastEpisodesPage(
             )
         }
 
-        // 期数可能有几百条：排序只影响展示顺序，不改写订阅数据本身
-        val orderedEpisodes = if (oldestFirst) {
-            subscription.episodes.asReversed()
-        } else {
-            subscription.episodes
-        }
-        // 本地按标题过滤：一千多期时靠滑根本找不到，输入关键词即时缩小范围
-        val query = searchQuery.trim()
-        val searching = query.isNotEmpty()
-        val episodes = if (searching) {
-            orderedEpisodes.filter { it.title.contains(query, ignoreCase = true) }
-        } else {
-            orderedEpisodes
-        }
         val listState = rememberLazyListState()
         // 太短的列表不需要快速定位，保持原布局
         val showScrollbar = episodes.size > EPISODE_SCROLLBAR_MIN_COUNT
@@ -869,10 +1069,13 @@ fun PodcastEpisodesPage(
         LaunchedEffect(oldestFirst, query) { listState.scrollToItem(0) }
 
         // 下拉刷新。空态也放进 LazyColumn：没有可滚动容器时下拉手势收不到。
+        // weight(1f)：给多选底部操作栏留出空间，否则 fillMaxSize 会把整列占满。
         PullToRefreshBox(
             isRefreshing = loading,
             onRefresh = onRefresh,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
@@ -908,11 +1111,50 @@ fun PodcastEpisodesPage(
                             }
                         }
                     } else {
-                        items(episodes, key = { it.guid }) { episode ->
+                        // itemsIndexed：区间选择要知道「锚点期」的行号
+                        itemsIndexed(
+                            items = episodes,
+                            key = { _, episode -> episode.guid },
+                        ) { index, episode ->
                             PodcastEpisodeRow(
                                 episode = episode,
                                 playing = episode.guid == playingEpisodeId,
-                                onClick = { onEpisodeClick(subscription, episode) },
+                                onClick = {
+                                    if (selecting) {
+                                        // 多选：单击逐期切换，最后一个取消后自动退出多选
+                                        val next = if (episode.guid in selectedGuids) {
+                                            selectedGuids - episode.guid
+                                        } else {
+                                            selectedGuids + episode.guid
+                                        }
+                                        if (next.isEmpty()) {
+                                            exitSelection()
+                                        } else {
+                                            selectedGuids = next
+                                        }
+                                    } else {
+                                        onEpisodeClick(subscription, episode)
+                                    }
+                                },
+                                onLongClick = {
+                                    if (selecting) {
+                                        // 已经是多选：把锚点到期整段选上
+                                        val anchor = rangeAnchor ?: index
+                                        val range = if (anchor <= index) {
+                                            anchor..index
+                                        } else {
+                                            index..anchor
+                                        }
+                                        selectedGuids = selectedGuids + range
+                                            .mapNotNull { episodes.getOrNull(it)?.guid }
+                                            .toSet()
+                                    } else {
+                                        selecting = true
+                                        rangeAnchor = index
+                                        selectedGuids = selectedGuids + episode.guid
+                                    }
+                                },
+                                selected = if (selecting) episode.guid in selectedGuids else null,
                                 onToggleFavorite = { onToggleFavorite(episode) },
                                 downloadState = downloadStates[episode.guid],
                                 onDownload = { onDownload(subscription, episode) },
@@ -952,13 +1194,99 @@ fun PodcastEpisodesPage(
                 }
             }
         }
+
+        // 多选底部操作栏：只放批量动作，Wi-Fi 确认与落库都在外层
+        if (selecting) {
+            HorizontalDivider(color = RadioOutline)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = RadioSpacing.extraSmall,
+                        vertical = RadioSpacing.extraSmall,
+                    ),
+            ) {
+                val manyEnabled = selectedEpisodes.isNotEmpty()
+                EpisodeBatchActionButton(
+                    icon = painterResource(R.drawable.ic_download),
+                    label = stringResource(R.string.podcast_batch_download),
+                    enabled = manyEnabled,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        // 先把选中项快照下来：exitSelection 会清空 selectedGuids
+                        val targets = selectedEpisodes
+                        exitSelection()
+                        onDownloadMany(subscription, targets)
+                    },
+                )
+                EpisodeBatchActionButton(
+                    icon = painterResource(R.drawable.ic_check),
+                    label = stringResource(R.string.podcast_batch_mark_played),
+                    enabled = manyEnabled,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        val targets = selectedEpisodes
+                        exitSelection()
+                        onMarkManyPlayed(subscription, targets, true)
+                    },
+                )
+                EpisodeBatchActionButton(
+                    icon = painterResource(R.drawable.ic_radio_button_unchecked),
+                    label = stringResource(R.string.podcast_batch_mark_unplayed),
+                    enabled = manyEnabled,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        val targets = selectedEpisodes
+                        exitSelection()
+                        onMarkManyPlayed(subscription, targets, false)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 多选底部操作栏里的单个动作：图标在上、文案在下，整块可点。
+ * 没有选中项时整体弱化（理论上进多选至少有一项，防御性处理）。
+ */
+@Composable
+private fun EpisodeBatchActionButton(
+    icon: Painter,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
+        modifier = modifier
+            .clip(RoundedCornerShape(RadioCorners.medium))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = RadioSpacing.small),
+    ) {
+        Icon(
+            painter = icon,
+            contentDescription = null,
+            tint = if (enabled) RadioText else RadioTextMuted,
+            modifier = Modifier.size(RadioSizes.iconInline),
+        )
+        Text(
+            text = label,
+            color = if (enabled) RadioText else RadioTextMuted,
+            fontSize = RadioTextSizes.caption,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 /** 期数超过这个数量才显示可拖动滚动条：太短的列表反而被它占掉右侧空间 */
 private const val EPISODE_SCROLLBAR_MIN_COUNT = 20
 
-/** 期数页头部的轻量图标按钮（返回 / 排序）：40dp，比 53dp 的顶栏按钮小一档，少挤标题宽度 */
+/** 期数页头部的轻量图标按钮（返回 / 排序 / 搜索 / 更多）：40dp，比 53dp 的顶栏按钮小一档，少挤标题宽度 */
 private val HEADER_ICON_BUTTON_SIZE = 40.dp
 
 /** 期数页的本地搜索框：输入即过滤，× 清空并关闭 */
@@ -1238,6 +1566,10 @@ private fun PodcastEpisodeRow(
     metaPrefix: String? = null,
     /** meta 行过长时跑马灯滚动（仍只一行）；false 维持省略号 */
     marqueeMeta: Boolean = false,
+    /** 多选状态：null = 不在多选；true / false = 是否被选中（多选时行尾换成勾选圈） */
+    selected: Boolean? = null,
+    /** 长按：期数页用来进入多选 / 选区间锚点 */
+    onLongClick: (() -> Unit)? = null,
 ) {
     // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完。
     // 有总长时显示「百分比 + 当前/总长」——一眼看出听到哪儿；总长拿不到
@@ -1284,10 +1616,14 @@ private fun PodcastEpisodeRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                color = if (playing) RadioSurfaceHigh else RadioSurface,
+                color = when {
+                    selected == true -> RadioPrimary.copy(alpha = 0.18f)
+                    playing -> RadioSurfaceHigh
+                    else -> RadioSurface
+                },
                 shape = RoundedCornerShape(RadioCorners.medium),
             )
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.rowVertical),
     ) {
         Column(
@@ -1322,30 +1658,50 @@ private fun PodcastEpisodeRow(
                 )
             }
         }
-        // 收藏与下载两个辅助按钮：38dp 小圆钮（比 53dp 正牌按钮小一档），
-        // 并排也不抢标题宽度；按钮自己吃掉点击，不会冒泡到整行的播放。
-        if (onToggleFavorite != null) {
-            EpisodeRowAuxButton(
-                icon = painterResource(
-                    if (episode.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
-                ),
-                onClick = onToggleFavorite,
-                tint = if (episode.favorite) RadioPrimary else RadioTextMuted,
-                contentDescription = stringResource(
-                    if (episode.favorite) R.string.podcast_favorite_remove
-                    else R.string.podcast_favorite_add,
-                ),
-            )
-        }
-        if (onDownload != null) {
-            EpisodeDownloadButton(
-                episode = episode,
-                downloadState = downloadState,
-                onDownload = onDownload,
-                onCancelDownload = onCancelDownload ?: {},
-                onDeleteDownload = onDeleteDownload ?: {},
-                onExportDownload = onExportDownload ?: {},
-            )
+        // 多选：行尾换成勾选圈，收藏 / 下载按钮先收起，避免误触
+        if (selected != null) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(EPISODE_ROW_AUX_BUTTON_SIZE)
+                    .clip(CircleShape)
+                    .background(if (selected) RadioPrimary else RadioSurfaceHigh),
+            ) {
+                if (selected) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_check),
+                        contentDescription = stringResource(R.string.podcast_selection_selected),
+                        tint = RadioOnPrimary,
+                        modifier = Modifier.size(RadioSizes.iconInline),
+                    )
+                }
+            }
+        } else {
+            // 收藏与下载两个辅助按钮：38dp 小圆钮（比 53dp 正牌按钮小一档），
+            // 并排也不抢标题宽度；按钮自己吃掉点击，不会冒泡到整行的播放。
+            if (onToggleFavorite != null) {
+                EpisodeRowAuxButton(
+                    icon = painterResource(
+                        if (episode.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
+                    ),
+                    onClick = onToggleFavorite,
+                    tint = if (episode.favorite) RadioPrimary else RadioTextMuted,
+                    contentDescription = stringResource(
+                        if (episode.favorite) R.string.podcast_favorite_remove
+                        else R.string.podcast_favorite_add,
+                    ),
+                )
+            }
+            if (onDownload != null) {
+                EpisodeDownloadButton(
+                    episode = episode,
+                    downloadState = downloadState,
+                    onDownload = onDownload,
+                    onCancelDownload = onCancelDownload ?: {},
+                    onDeleteDownload = onDeleteDownload ?: {},
+                    onExportDownload = onExportDownload ?: {},
+                )
+            }
         }
     }
 }

@@ -148,6 +148,9 @@ fun OmniBeatApp() {
     // 播客订阅存在独立的 DataStore 里，与电台库互不干扰
     val podcastRepository = remember(context) { PodcastRepository(context.applicationContext) }
     val podcastSubscriptions by podcastRepository.subscriptions.collectAsState(initial = emptyList())
+    // 订阅列表 / 刷新 / 统计只看未隐藏的；下载、收藏、播放仍用包含 hidden 的全量列表
+    val podcastVisibleSubscriptions by podcastRepository.visibleSubscriptions
+        .collectAsState(initial = emptyList())
     val podcastPlaybackSpeed by podcastRepository.playbackSpeed
         .collectAsState(initial = PODCAST_DEFAULT_PLAYBACK_SPEED)
     // 播客刷新偏好（设置-播客分组可改）：自动刷新开关与刷新间隔
@@ -175,8 +178,8 @@ fun OmniBeatApp() {
     val favoritesSection by repository.favoritesSection
         .collectAsState(initial = FavoritesSection.Stations)
     // 在线搜索结果的「已订阅」判定：按归一化后的 feedUrl 比较，避免协议/结尾斜杠差异漏判
-    val subscribedPodcastKeys = remember(podcastSubscriptions) {
-        podcastSubscriptions.mapTo(mutableSetOf()) { podcastFeedKey(it.feedUrl) }
+    val subscribedPodcastKeys = remember(podcastVisibleSubscriptions) {
+        podcastVisibleSubscriptions.mapTo(mutableSetOf()) { podcastFeedKey(it.feedUrl) }
     }
     // 收藏的节目：跨订阅聚合，按发布时间倒序（与订阅内排序一致）。
     // 纯读派生——数据源就是各订阅里 favorite = true 的期，不额外落库。
@@ -310,13 +313,13 @@ fun OmniBeatApp() {
         }
         // 拖动中的草稿优先，否则按当前排序偏好展示
         val podcastList = remember(
-            podcastSubscriptions,
+            podcastVisibleSubscriptions,
             podcastSortState,
             podcastCustomOrder,
             podcastReorderDraft,
         ) {
             podcastReorderDraft
-                ?: sortedPodcasts(podcastSubscriptions, podcastSortState, podcastCustomOrder)
+                ?: sortedPodcasts(podcastVisibleSubscriptions, podcastSortState, podcastCustomOrder)
         }
         var scrollToSelectedRequest by remember { mutableIntStateOf(0) }
         var scrollToStationId by remember { mutableStateOf<String?>(null) }
@@ -357,6 +360,10 @@ fun OmniBeatApp() {
         // 仅 Wi-Fi 下载：移动数据下点下载时先记下这一集，等弹窗确认（单次放行，不持久化）
         var pendingMobileDataDownload by remember {
             mutableStateOf<Pair<PodcastSubscription, PodcastEpisode>?>(null)
+        }
+        // 多选批量下载的同一套 Wi-Fi 确认
+        var pendingBatchDownload by remember {
+            mutableStateOf<Pair<PodcastSubscription, List<PodcastEpisode>>?>(null)
         }
         // 下载管理页是否打开（播客 Tab 内的二级页，顶栏图标进入）；与 openPodcastUrl 互斥显示
         var downloadsOpen by remember { mutableStateOf(false) }
@@ -1546,7 +1553,13 @@ fun OmniBeatApp() {
         fun removePodcast(subscription: PodcastSubscription) {
             if (openPodcastUrl == subscription.feedUrl) openPodcastUrl = null
             if (podcastReturnToChartFor == subscription.feedUrl) podcastReturnToChartFor = null
-            scope.launch { podcastRepository.removeSubscription(subscription.feedUrl) }
+            // 退订只隐藏并裁剪数据：正在下载的期要保留，下载完成时才能写回 localFileName
+            val activeGuids = PodcastDownloadManager.activeDownloads.value.values
+                .filter { (activeSubscription, _) -> activeSubscription.feedUrl == subscription.feedUrl }
+                .mapTo(mutableSetOf()) { (_, episode) -> episode.guid }
+            scope.launch {
+                podcastRepository.hideSubscription(subscription.feedUrl, activeGuids)
+            }
         }
 
         /**
@@ -1564,12 +1577,73 @@ fun OmniBeatApp() {
             }
         }
 
+        fun enqueueEpisodeDownloads(
+            subscription: PodcastSubscription,
+            episodes: List<PodcastEpisode>,
+        ) {
+            episodes.forEach { episode ->
+                PodcastDownloadManager.download(context, subscription, episode)
+            }
+            Toast.makeText(
+                context,
+                resources.appString(R.string.podcast_batch_download_queued, episodes.size),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+
+        /** 多选批量下载：过滤已下载/下载中，移动数据下一次确认整批 */
+        fun downloadEpisodes(
+            subscription: PodcastSubscription,
+            episodes: List<PodcastEpisode>,
+        ) {
+            val targets = episodes.filter { episode ->
+                // 没有播放地址的期（解析失败）不下：否则只会收获一串失败态
+                episode.audioUrl.isNotBlank() &&
+                    episode.localFileName == null &&
+                    !PodcastDownloadManager.isDownloading(episode.guid)
+            }
+            if (targets.isEmpty()) {
+                Toast.makeText(
+                    context,
+                    resources.appString(R.string.podcast_batch_download_none),
+                    Toast.LENGTH_SHORT,
+                ).show()
+                return
+            }
+            if (podcastWifiOnlyDownload && !NetworkStatus.isWifi(context)) {
+                pendingBatchDownload = subscription to targets
+            } else {
+                enqueueEpisodeDownloads(subscription, targets)
+            }
+        }
+
+        /** 多选批量标记已听 / 未听 */
+        fun markEpisodesPlayed(
+            subscription: PodcastSubscription,
+            episodes: List<PodcastEpisode>,
+            completed: Boolean,
+        ) {
+            if (episodes.isEmpty()) return
+            scope.launch {
+                podcastRepository.setEpisodesCompleted(
+                    feedUrl = subscription.feedUrl,
+                    guids = episodes.mapTo(mutableSetOf()) { it.guid },
+                    completed = completed,
+                )
+                Toast.makeText(
+                    context,
+                    resources.appString(R.string.podcast_batch_marked, episodes.size),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+
         // 启动时按设置自动刷新全部订阅（静默：只拉间隔已到的，成功不提示、失败才提示）。
         // 订阅列表从 DataStore 现读，避免组合首次时 collectAsState 还是空列表导致漏刷。
         // 注意：本地函数必须先声明后使用，这两个 effect 放在刷新函数之后。
         LaunchedEffect(Unit) {
             if (!podcastAutoRefreshOnStart) return@LaunchedEffect
-            val saved = podcastRepository.subscriptions.first()
+            val saved = podcastRepository.subscriptions.first().filterNot { it.hidden }
             if (saved.isNotEmpty()) {
                 refreshAllPodcasts(saved, silent = true)
             }
@@ -1591,7 +1665,7 @@ fun OmniBeatApp() {
         LaunchedEffect(selectedPage, openPodcastUrl) {
             if (selectedPage != MainPage.Podcasts || openPodcastUrl != null) return@LaunchedEffect
             if (!podcastAutoRefreshOnEnterList) return@LaunchedEffect
-            val saved = podcastRepository.subscriptions.first()
+            val saved = podcastRepository.subscriptions.first().filterNot { it.hidden }
             if (saved.isNotEmpty()) {
                 refreshAllPodcasts(saved, silent = true)
             }
@@ -2088,7 +2162,7 @@ fun OmniBeatApp() {
                 val draft = if (podcastCustomOrder.isEmpty()) {
                     podcastList
                 } else {
-                    customSortedPodcasts(podcastSubscriptions, podcastCustomOrder)
+                    customSortedPodcasts(podcastVisibleSubscriptions, podcastCustomOrder)
                 }
                 val nextSortState = PodcastSortState(mode = PodcastSortMode.Custom, ascending = false)
                 podcastSortState = nextSortState
@@ -2308,19 +2382,15 @@ fun OmniBeatApp() {
                         },
                         onOpenPodcastChart = ::openPodcastChart,
                         podcastBrowseActive = podcastBrowseMode != null,
-                        // 期数页才显示排序；与电台一致，排序按钮排在「+」左边
-                        podcastEpisodeSortVisible = podcastBrowseMode == null && openPodcastUrl != null,
-                        podcastEpisodesOldestFirst = podcastEpisodesOldestFirst,
-                        onPodcastEpisodesOldestFirstChange = { oldest ->
-                            scope.launch { podcastRepository.saveEpisodesOldestFirst(oldest) }
-                        },
+                        // 期数页的排序与搜索都在页内，顶栏不再放重复入口
+                        podcastEpisodesPageVisible =
+                            podcastBrowseMode == null && openPodcastUrl != null,
                         podcastSortState = podcastSortState,
                         onPodcastSortModeSelected = ::selectPodcastSortMode,
                         podcastListLayout = podcastListLayout,
                         onPodcastListLayoutSelected = { layout ->
                             scope.launch { podcastRepository.saveListLayout(layout) }
                         },
-                        onSearchPodcastEpisodes = { podcastEpisodeSearchOpen = true },
                         // 下载管理页入口：播客订阅列表页（非期数页 / 非搜索 / 未在下载页）
                         // 且有下载任务或已下载节目时才在「+」左边渲染图标——进行中的下载
                         // 也要能进管理页看到，否则第一个文件落盘前点了下载哪儿都找不到
@@ -2513,12 +2583,17 @@ fun OmniBeatApp() {
                                             modifier = contentModifier,
                                         )
 
-                                        else ->                                     PodcastTabContent(
+                                        else -> PodcastTabContent(
                                         subscriptions = podcastList,
                                         openSubscriptionUrl = openPodcastUrl,
                                         playingEpisodeId = playbackState.selectedStation?.id,
                                         loading = podcastLoading,
                                         episodesOldestFirst = podcastEpisodesOldestFirst,
+                                        onEpisodesOldestFirstChange = { oldest ->
+                                            scope.launch {
+                                                podcastRepository.saveEpisodesOldestFirst(oldest)
+                                            }
+                                        },
                                         episodeSearchOpen = podcastEpisodeSearchOpen,
                                         episodeSearchQuery = podcastEpisodeSearchQuery,
                                         onEpisodeSearchOpenChange = { podcastEpisodeSearchOpen = it },
@@ -2541,7 +2616,10 @@ fun OmniBeatApp() {
                                         listLayout = podcastListLayout,
                                         onRefreshSubscription = { refreshPodcast(it, force = true) },
                                         onRefreshAll = {
-                                            refreshAllPodcasts(podcastSubscriptions, silent = false)
+                                            refreshAllPodcasts(
+                                                podcastVisibleSubscriptions,
+                                                silent = false,
+                                            )
                                         },
                                         refreshingAll = podcastRefreshAllTotal > 0,
                                         refreshProgress = if (podcastRefreshAllTotal > 0) {
@@ -2575,6 +2653,8 @@ fun OmniBeatApp() {
                                         onExportDownload = { subscription, episode ->
                                             exportDownloadedEpisode(subscription, episode)
                                         },
+                                        onDownloadEpisodes = ::downloadEpisodes,
+                                        onMarkEpisodesPlayed = ::markEpisodesPlayed,
                                         downloads = downloadsPageItems,
                                         downloadsOpen = downloadsOpen,
                                         onOpenDownloads = { downloadsOpen = true },
@@ -2658,8 +2738,8 @@ fun OmniBeatApp() {
                                 podcastSearchRegion = podcastSearchRegion,
                                 podcastWifiOnlyDownload = podcastWifiOnlyDownload,
                                 stationCount = stations.size,
-                                podcastCount = podcastSubscriptions.size,
-                                episodeCount = podcastSubscriptions.sumOf { it.episodes.size },
+                                podcastCount = podcastVisibleSubscriptions.size,
+                                episodeCount = podcastVisibleSubscriptions.sumOf { it.episodes.size },
                                 onThemeModeChange = { nextThemeMode ->
                                     scope.launch { repository.saveThemeMode(nextThemeMode) }
                                 },
@@ -2835,6 +2915,22 @@ fun OmniBeatApp() {
                 onConfirm = {
                     pendingMobileDataDownload = null
                     PodcastDownloadManager.download(context, subscription, episode)
+                },
+            )
+        }
+
+        pendingBatchDownload?.let { (subscription, episodes) ->
+            OmniConfirmDialog(
+                title = resources.appString(R.string.dialog_mobile_data_download_title),
+                text = resources.appString(
+                    R.string.podcast_batch_mobile_data_text,
+                    episodes.size,
+                ),
+                confirmText = resources.appString(R.string.dialog_mobile_data_download_confirm),
+                onDismiss = { pendingBatchDownload = null },
+                onConfirm = {
+                    pendingBatchDownload = null
+                    enqueueEpisodeDownloads(subscription, episodes)
                 },
             )
         }

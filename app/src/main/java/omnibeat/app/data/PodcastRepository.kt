@@ -58,6 +58,10 @@ class PodcastRepository(private val context: Context) {
     val subscriptions: Flow<List<PodcastSubscription>> = context.podcastDataStore.data
         .map { preferences -> decodeSubscriptions(preferences[podcastsJsonKey].orEmpty()) }
 
+    /** 订阅列表只展示未隐藏的；下载/收藏/播放仍使用包含 hidden 的全量列表 */
+    val visibleSubscriptions: Flow<List<PodcastSubscription>> = subscriptions
+        .map { list -> list.filterNot { it.hidden } }
+
     /** 单集播放倍速（默认 1.0×）；电台直播不使用这个值 */
     val playbackSpeed: Flow<Float> = context.podcastDataStore.data
         .map { preferences -> preferences[playbackSpeedKey] ?: PODCAST_DEFAULT_PLAYBACK_SPEED }
@@ -405,11 +409,57 @@ class PodcastRepository(private val context: Context) {
         )
     }
 
-    suspend fun removeSubscription(feedUrl: String) {
+    /**
+     * 退订 = 隐藏 + 裁剪，不删除音频文件。
+     *
+     * 只保留有进度 / 完成 / 收藏 / 已下载的期数，隐藏记录因此只有几十 KB，
+     * 不会让每次进度写盘都背上整份 1000 期 JSON。
+     * [keepGuids] 用于保留仍在下载中的期，下载完成后还能写回 localFileName。
+     */
+    suspend fun hideSubscription(feedUrl: String, keepGuids: Set<String> = emptySet()) {
         context.podcastDataStore.edit { preferences ->
             val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
-            preferences[podcastsJsonKey] =
-                encodeSubscriptions(current.filterNot { it.feedUrl == feedUrl })
+            val index = current.indexOfFirst { it.feedUrl == feedUrl }
+            if (index == -1) return@edit
+            val subscription = current[index]
+            val keptEpisodes = subscription.episodes.filter { episode ->
+                episode.positionMs > 0L ||
+                    episode.completed ||
+                    episode.favorite ||
+                    episode.localFileName != null ||
+                    episode.guid in keepGuids
+            }
+            val next = current.toMutableList().also {
+                it[index] = subscription.copy(hidden = true, episodes = keptEpisodes)
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
+    /** 批量标记已听 / 未听：一次 edit 更新整组，进度归零 */
+    suspend fun setEpisodesCompleted(feedUrl: String, guids: Set<String>, completed: Boolean) {
+        if (guids.isEmpty()) return
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            val index = current.indexOfFirst { it.feedUrl == feedUrl }
+            if (index == -1) return@edit
+            val subscription = current[index]
+            val now = System.currentTimeMillis()
+            val updatedEpisodes = subscription.episodes.map { episode ->
+                if (episode.guid in guids) {
+                    episode.copy(
+                        positionMs = 0L,
+                        completed = completed,
+                        stateUpdatedAtMs = now,
+                    )
+                } else {
+                    episode
+                }
+            }
+            val next = current.toMutableList().also {
+                it[index] = subscription.copy(episodes = updatedEpisodes)
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
         }
     }
 
@@ -477,6 +527,7 @@ internal fun encodePodcastSubscriptions(subscriptions: List<PodcastSubscription>
                 .put("imageUrl", subscription.imageUrl.orEmpty())
                 .put("imageUrlManual", subscription.imageUrlManual)
                 .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
+                .put("hidden", subscription.hidden)
                 .put("episodes", episodes),
         )
     }
@@ -503,6 +554,7 @@ internal fun decodePodcastSubscriptions(subscriptionsJson: String): List<Podcast
                             imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
                             imageUrlManual = item.optBoolean("imageUrlManual", false),
                             lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
+                            hidden = item.optBoolean("hidden", false),
                             episodes = decodePodcastEpisodes(item.optJSONArray("episodes")),
                         ),
                     )

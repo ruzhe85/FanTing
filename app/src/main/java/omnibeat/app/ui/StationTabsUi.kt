@@ -59,7 +59,8 @@ fun StationTabsPager(
 ) {
     HorizontalPager(
         state = pagerState,
-        userScrollEnabled = reorderDraft == null,
+        // 主列表不再用左右滑动切页：只通过顶部标签切换，避免和列表内的横向手势打架
+        userScrollEnabled = false,
         modifier = modifier,
     ) { pageIndex ->
         Box(

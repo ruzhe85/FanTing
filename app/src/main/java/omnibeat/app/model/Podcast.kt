@@ -144,6 +144,13 @@ data class PodcastSubscription(
     val episodes: List<PodcastEpisode> = emptyList(),
     /** true = 封面是用户手动填的，刷新订阅源时不得覆盖 */
     val imageUrlManual: Boolean = false,
+    /**
+     * true = 已退订，仅从订阅列表隐藏。
+     *
+     * 下载文件、播放进度与收藏都保留：重新订阅同一 feed 时会按 guid 合并回来。
+     * 隐藏记录的期数会被裁剪到只剩有状态/已下载的条目，避免继续参与整表重写。
+     */
+    val hidden: Boolean = false,
 )
 
 /** 解析结果：订阅元数据 + 期数列表（顺序由解析层保证：按期数倒序） */

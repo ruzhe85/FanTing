@@ -71,18 +71,14 @@ fun MainTopBar(
     onOpenPodcastChart: () -> Unit = {},
     /** 播客的在线搜索 / 热门发现 / 详情页打开时隐藏「+」菜单，避免在浏览过程中再弹添加弹窗 */
     podcastBrowseActive: Boolean = false,
-    /** 期数页（打开了某个订阅）时在顶栏显示排序，与电台列表保持一致 */
-    podcastEpisodeSortVisible: Boolean = false,
-    podcastEpisodesOldestFirst: Boolean = false,
-    onPodcastEpisodesOldestFirstChange: (Boolean) -> Unit = {},
+    /** 期数页（打开了某个订阅）：排序 / 搜索都移到页内，顶栏不再放重复入口 */
+    podcastEpisodesPageVisible: Boolean = false,
     /** 订阅列表排序：与电台列表同一套菜单样式 */
     podcastSortState: PodcastSortState = PodcastSortState(),
     onPodcastSortModeSelected: (PodcastSortMode) -> Unit = {},
     /** 订阅列表显示方式：标准 / 紧凑 / 纯封面，与排序放在同一个菜单里 */
     podcastListLayout: PodcastListLayout = PodcastListLayout.Standard,
     onPodcastListLayoutSelected: (PodcastListLayout) -> Unit = {},
-    /** 期数页顶栏的搜索入口：在本地过滤当前订阅的全部期数 */
-    onSearchPodcastEpisodes: () -> Unit = {},
     /**
      * 下载管理页入口：非 null 时在播客订阅列表页「+」左边渲染下载图标（有下载才传）。
      * 期数页没有「+」，所以不放——用户明确入口是「添加源 icon 左边」。
@@ -223,19 +219,9 @@ fun MainTopBar(
                     )
                 }
 
-                // 播客页：「+」与电台一致；期数页额外显示排序，顺序也跟电台一样（排序在「+」左边）
+                // 播客页：「+」与电台一致。期数页的排序与搜索已移到页内，顶栏留空。
                 selectedPage == MainPage.Podcasts && !podcastBrowseActive -> {
-                    if (podcastEpisodeSortVisible) {
-                        PodcastEpisodeSortButton(
-                            oldestFirst = podcastEpisodesOldestFirst,
-                            onOldestFirstChange = onPodcastEpisodesOldestFirstChange,
-                        )
-                        // 期数页：「+」换成搜索，只过滤当前订阅的期数
-                        OmniIconButton(
-                            painter = painterResource(R.drawable.ic_search),
-                            onClick = onSearchPodcastEpisodes,
-                        )
-                    } else {
+                    if (!podcastEpisodesPageVisible) {
                         // 订阅列表：排序 → 下载入口 → 「+」，与电台页的图标顺序一致
                         PodcastSortMenuButton(
                             sortState = podcastSortState,
@@ -477,60 +463,6 @@ private fun PodcastListLayout.labelRes(): Int = when (this) {
     PodcastListLayout.Standard -> R.string.podcast_list_layout_standard
     PodcastListLayout.Compact -> R.string.podcast_list_layout_compact
     PodcastListLayout.Cover -> R.string.podcast_list_layout_cover
-}
-
-/** 期数页的排序菜单：最新在上 / 最旧在上，样式与电台的排序菜单一致 */
-@Composable
-private fun PodcastEpisodeSortButton(
-    oldestFirst: Boolean,
-    onOldestFirstChange: (Boolean) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        OmniIconButton(
-            painter = painterResource(R.drawable.ic_sort),
-            onClick = { expanded = true },
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            containerColor = RadioSurface,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(RadioCorners.medium),
-            offset = DpOffset(x = 0.dp, y = RadioSpacing.extraSmall),
-        ) {
-            listOf(
-                false to R.string.podcast_episodes_sort_latest,
-                true to R.string.podcast_episodes_sort_oldest,
-            ).forEach { (value, labelRes) ->
-                DropdownMenuItem(
-                    modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
-                    contentPadding = PaddingValues(horizontal = RadioSpacing.large),
-                    text = {
-                        Text(
-                            text = stringResource(labelRes),
-                            color = RadioText,
-                        )
-                    },
-                    trailingIcon = if (value == oldestFirst) {
-                        {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_check),
-                                contentDescription = null,
-                                modifier = Modifier.size(RadioSizes.iconInline),
-                                tint = RadioPrimary,
-                            )
-                        }
-                    } else {
-                        null
-                    },
-                    onClick = {
-                        expanded = false
-                        onOldestFirstChange(value)
-                    },
-                )
-            }
-        }
-    }
 }
 
 @Composable
