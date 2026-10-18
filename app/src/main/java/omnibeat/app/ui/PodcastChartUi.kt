@@ -45,8 +45,11 @@ import omnibeat.app.model.PODCAST_CHART_REGIONS
 import omnibeat.app.podcast.PodcastChartEntry
 import omnibeat.app.ui.appStringResource as stringResource
 
-/** 序号列固定宽度：1～3 位数都右对齐，避免标题起始位置左右跳 */
-private val RANK_COLUMN_WIDTH = 30.dp
+/** 序号列宽度与后退图标一致：3 位数占满，1～2 位数居中 */
+private val RANK_COLUMN_WIDTH = RadioSizes.icon
+
+/** 行首内边距：配合列表 13dp 内容边距，让序号列左缘与顶栏返回图标对齐 */
+private val ROW_START_PADDING = 5.dp
 
 /** 地区名在页头最多占这么宽，俄语等长名称截断，避免把标题挤没 */
 private val REGION_LABEL_MAX_WIDTH = 116.dp
@@ -181,19 +184,24 @@ private fun PodcastChartRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(RadioCorners.medium))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = RadioSpacing.compact, vertical = RadioSpacing.rowVertical),
+            .padding(
+                start = ROW_START_PADDING,
+                end = RadioSpacing.compact,
+                top = RadioSpacing.rowVertical,
+                bottom = RadioSpacing.rowVertical,
+            ),
     ) {
-        // 前 3 名用主色 + 加粗，其余弱化为辅助信息
+        // 全体统一视觉：字号加大、加粗，但与标题区分开，不使用主色
         Text(
             text = rank.toString(),
-            color = if (rank <= 3) RadioPrimary else RadioTextMuted,
-            fontSize = RadioTextSizes.caption,
-            fontWeight = if (rank <= 3) FontWeight.SemiBold else FontWeight.Normal,
-            textAlign = TextAlign.End,
+            color = RadioTextMuted,
+            fontSize = RadioTextSizes.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
             maxLines = 1,
             modifier = Modifier.width(RANK_COLUMN_WIDTH),
         )
-        Spacer(modifier = Modifier.width(RadioSpacing.small))
+        Spacer(modifier = Modifier.width(RadioSpacing.medium))
         StationArtwork(imageUrl = entry.artworkUrl)
         Column(
             verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
