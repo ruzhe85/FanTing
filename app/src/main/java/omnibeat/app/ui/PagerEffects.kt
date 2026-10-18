@@ -27,6 +27,12 @@ fun <T> SyncPagerWithSelectedPage(
     pagerState: PagerState,
     pages: List<T>,
     selectedPage: T,
+    /**
+     * 程序化切页是否播放横向滑动动画。默认播放（顶栏点 tab 的手感）；
+     * 抽屉开关过程中应传 false——抽屉关闭动画与整页横滑同时发生时方向感很怪，
+     * 直接呈现目标页更自然。
+     */
+    animate: Boolean = true,
     onPageSettled: (T) -> Unit,
 ) {
     LaunchedEffect(selectedPage, pages) {
@@ -39,7 +45,11 @@ fun <T> SyncPagerWithSelectedPage(
             snapshotFlow { pagerState.isScrollInProgress }.first { !it }
         }
         if (pagerState.currentPage != pageIndex) {
-            pagerState.animateScrollToPage(pageIndex)
+            if (animate) {
+                pagerState.animateScrollToPage(pageIndex)
+            } else {
+                pagerState.scrollToPage(pageIndex)
+            }
         }
     }
 

@@ -1793,18 +1793,21 @@ private fun PodcastEpisodeListRow(
                             maxLines = 1,
                         )
 
-                        // 听完：pill「听完」——主色 + 半粗，与未听的中性 pill 拉开层级
-                        episode.completed -> EpisodeBadge(
+                        // 听完：主色 + 半粗——与在听的主色常规字重拉开一档
+                        episode.completed -> Text(
                             text = stringResource(R.string.podcast_completed),
-                            color = RadioPrimary,
-                            bold = true,
+                            color = primary,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
                         )
 
-                        // 未听：pill「未听」——muted 中性色，默认态不抢眼
-                        else -> EpisodeBadge(
+                        // 未听：muted + 常规字重，默认态最弱
+                        else -> Text(
                             text = stringResource(R.string.podcast_badge_unplayed),
                             color = RadioTextMuted,
-                            bold = true,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
                         )
                     }
                     when {
@@ -1878,16 +1881,15 @@ private fun EpisodeSelectBox(checked: Boolean, modifier: Modifier = Modifier) {
 }
 
 /**
- * meta 行的小徽标：已下载 / 未听 / 听完 / 下载中。
- * [bold] 给状态词（未听 / 听完）用：底色已经区分，字重再拉开一档。
+ * meta 行的小徽标：已下载 / 下载中。
  */
 @Composable
-private fun EpisodeBadge(text: String, color: Color, bold: Boolean = false) {
+private fun EpisodeBadge(text: String, color: Color) {
     Text(
         text = text,
         color = color,
         fontSize = 10.sp,
-        fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Medium,
+        fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))

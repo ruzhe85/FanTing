@@ -754,6 +754,10 @@ fun OmniBeatApp() {
             pagerState = pagerState,
             pages = visibleTabPages,
             selectedPage = selectedPage,
+            // 抽屉开/关过程中（含关闭动画进行中）程序化切页不播横滑动画：
+            // 否则「抽屉滑走 + 整页横向滑回」两个动画叠在一起，方向感很怪。
+            // 顶栏点 tab 时抽屉已关闭，仍保留横滑手感。
+            animate = drawerState.isClosed,
         ) { page ->
             if (selectedPage in visibleTabPages && selectedPage != page) {
                 selectMainPage(page)
