@@ -2930,7 +2930,7 @@ fun OmniBeatApp() {
 
         pendingPodcastRemoval?.let { subscription ->
             OmniConfirmDialog(
-                title = resources.appString(R.string.podcast_remove_title),
+                title = resources.appString(R.string.podcast_remove_title, subscription.title),
                 text = resources.appString(R.string.podcast_remove_text, subscription.title),
                 confirmText = resources.appString(R.string.podcast_remove_confirm),
                 destructive = true,

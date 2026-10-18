@@ -902,10 +902,41 @@ fun PodcastEpisodesScreen(
     var scrollbarIndex by remember { mutableStateOf<Int?>(null) }
     // 多选连选拖到屏幕上下边缘时自动滚屏：否则一屏之外的期永远选不到
     var selectionAutoScroll by remember { mutableFloatStateOf(0f) }
+    // 连选的跨帧状态：滚屏循环也要驱动选择，提升到 composable 级
+    var selectionLastIndex by remember { mutableStateOf<Int?>(null) }
+    var selectionFingerY by remember { mutableFloatStateOf(Float.NaN) }
+
+    /** 把落点从 selectionLastIndex 逐步推到 [to]，逐项翻转选中状态（单击切换同语义） */
+    fun applySelectionStep(to: Int?) {
+        val from = selectionLastIndex
+        if (from != null && to != null && to != from) {
+            val step = if (to > from) 1 else -1
+            var i = from
+            while (i != to) {
+                i += step
+                val guid = (listItems.getOrNull(i) as? EpisodeListItem.Row)?.episode?.guid
+                if (guid != null) {
+                    selectedGuids = if (guid in selectedGuids) {
+                        selectedGuids - guid
+                    } else {
+                        selectedGuids + guid
+                    }
+                }
+            }
+        }
+        if (to != null) selectionLastIndex = to
+    }
+
     LaunchedEffect(selectionAutoScroll) {
         if (selectionAutoScroll == 0f) return@LaunchedEffect
         while (true) {
             listState.scrollBy(selectionAutoScroll * EPISODE_SELECT_SCROLL_SPEED)
+            // 滚屏时手指常停在边缘不动（没有新的 drag 事件）：按当前锚点补一步选择，
+            // 把新滚到手指位置的行选上——否则滑出列表区只会滚屏、不会选中
+            val y = selectionFingerY
+            if (!y.isNaN()) {
+                applySelectionStep(lazyItemIndexAt(listState, y))
+            }
             delay(SELECTION_AUTOSCROLL_FRAME_MS)
         }
     }
@@ -924,24 +955,26 @@ fun PodcastEpisodesScreen(
             .onGloballyPositioned { columnTopInWindow = it.positionInWindow().y }
             .pointerInput(selecting, listItems) {
                 if (!selecting) return@pointerInput
-                // 上一步落点：只处理两步之间的增量区间，拖回去才能逐项还原
-                var lastIndex: Int? = null
                 val edgePx = EPISODE_SELECT_EDGE_ZONE.toPx()
 
-                fun guidAt(index: Int?): String? {
-                    if (index == null) return null
-                    val row = listItems.getOrNull(index) as? EpisodeListItem.Row
-                    return row?.episode?.guid
-                }
+                // 手指相对列表视口顶部的原始 y：负数 / 超过视口高度表示已滑出列表区
+                fun rawY(localY: Float): Float = localY + columnTopInWindow - listTopInWindow
 
-                // 手指相对列表视口顶部的 y：负数 / 超过视口高度表示手指已滑出列表区
-                fun yInList(localY: Float): Float = localY + columnTopInWindow - listTopInWindow
+                // 选择用的 y：滑出列表区时钳制到首行 / 末行——页头区选第一行并上滚，
+                // 底部多选栏区选最后一行并下滚，不会出现「滑出去就选不动」
+                fun clampedY(localY: Float): Float {
+                    val viewportH = listState.layoutInfo.viewportSize.height.toFloat()
+                    return rawY(localY).coerceIn(0f, (viewportH - 1f).coerceAtLeast(0f))
+                }
 
                 detectDragGesturesAfterLongPress(
                     onDragStart = { offset ->
-                        val index = lazyItemIndexAt(listState, yInList(offset.y))
-                        lastIndex = index
-                        guidAt(index)?.let { guid ->
+                        val to = lazyItemIndexAt(listState, clampedY(offset.y))
+                        selectionLastIndex = to
+                        selectionFingerY = clampedY(offset.y)
+                        val guid = (listItems.getOrNull(to ?: -1) as? EpisodeListItem.Row)
+                            ?.episode?.guid
+                        if (guid != null) {
                             selectedGuids = if (guid in selectedGuids) {
                                 selectedGuids - guid
                             } else {
@@ -951,41 +984,25 @@ fun PodcastEpisodesScreen(
                     },
                     onDrag = { change, _ ->
                         change.consume()
-                        val to = lazyItemIndexAt(listState, yInList(change.position.y))
-                        val from = lastIndex
-                        if (from != null && to != null && to != from) {
-                            val step = if (to > from) 1 else -1
-                            var i = from
-                            while (i != to) {
-                                i += step
-                                guidAt(i)?.let { guid ->
-                                    // 常规划动选择：逐项看自己的状态翻转——
-                                    // 未选→已选，已选→未选（与单击切换同一套语义）
-                                    selectedGuids = if (guid in selectedGuids) {
-                                        selectedGuids - guid
-                                    } else {
-                                        selectedGuids + guid
-                                    }
-                                }
-                            }
-                        }
-                        // 滑出列表区时 to 为 null：保持 lastIndex，移回来接着选
-                        if (to != null) lastIndex = to
+                        val y = clampedY(change.position.y)
+                        selectionFingerY = y
+                        applySelectionStep(lazyItemIndexAt(listState, y))
                         // 拖到上下边缘（含滑出列表区）：交给自动滚屏循环处理
-                        val y = yInList(change.position.y)
                         val viewportH = listState.layoutInfo.viewportSize.height.toFloat()
                         selectionAutoScroll = when {
-                            y < edgePx -> -1f
-                            y > viewportH - edgePx -> 1f
+                            rawY(change.position.y) < edgePx -> -1f
+                            rawY(change.position.y) > viewportH - edgePx -> 1f
                             else -> 0f
                         }
                     },
                     onDragEnd = {
-                        lastIndex = null
+                        selectionLastIndex = null
+                        selectionFingerY = Float.NaN
                         selectionAutoScroll = 0f
                     },
                     onDragCancel = {
-                        lastIndex = null
+                        selectionLastIndex = null
+                        selectionFingerY = Float.NaN
                         selectionAutoScroll = 0f
                     },
                 )
@@ -1162,7 +1179,7 @@ fun PodcastEpisodesScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+                    .padding(start = 12.dp, end = 12.dp, bottom = 2.dp),
             ) {
                 EpisodeFilterChip(
                     label = stringResource(R.string.podcast_filter_all, orderedEpisodes.size),
@@ -1892,7 +1909,7 @@ private fun EpisodeFilterChip(label: String, selected: Boolean, onClick: () -> U
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) RadioPrimary else RadioSurface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .padding(horizontal = 4.dp, vertical = 1.dp),
     )
 }
 
