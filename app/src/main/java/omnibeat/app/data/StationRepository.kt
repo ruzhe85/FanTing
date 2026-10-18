@@ -8,7 +8,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaButtonReceiver
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -32,10 +31,8 @@ import java.time.Instant
 import java.util.UUID
 
 private val Context.stationDataStore by preferencesDataStore(name = "stations")
-private const val DEFAULT_APP_VOLUME = 0.75f
 const val STOP_SERVICE_AFTER_PAUSE_NEVER = 0
 const val DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES = 5
-private val appVolumeKey = floatPreferencesKey("app_volume")
 private val themeModeKey = stringPreferencesKey("theme_mode")
 private val accentPaletteKey = stringPreferencesKey("accent_palette")
 private val stopServiceAfterPauseMinutesKey = intPreferencesKey("stop_service_after_pause_minutes")
@@ -111,9 +108,6 @@ class StationRepository(private val context: Context) {
     suspend fun clearImportedTranslation() {
         context.stationDataStore.edit { it.remove(importedTranslationKey) }
     }
-
-    val appVolume: Flow<Float> = context.stationDataStore.data
-        .map { preferences -> preferences[appVolumeKey] ?: DEFAULT_APP_VOLUME }
 
     val themeMode: Flow<ThemeMode> = context.stationDataStore.data
         .map { preferences ->
@@ -206,12 +200,6 @@ class StationRepository(private val context: Context) {
 
     val customFavoriteOrder: Flow<List<String>> = context.stationDataStore.data
         .map { preferences -> decodeStringList(preferences[customFavoriteOrderKey]) }
-
-    suspend fun saveAppVolume(volume: Float) {
-        context.stationDataStore.edit { preferences ->
-            preferences[appVolumeKey] = volume.coerceIn(0f, 1f)
-        }
-    }
 
     suspend fun saveThemeMode(themeMode: ThemeMode) {
         context.stationDataStore.edit { preferences ->

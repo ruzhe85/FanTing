@@ -225,6 +225,8 @@
 
     <string name="player_bitrate_format">%1$d кбит/с</string>
     <string name="player_live_badge">LIVE</string>
+    <string name="player_not_playing">Ничего не играет</string>
+    <string name="player_not_playing_hint">Нажмите воспроизведение, чтобы продолжить</string>
     <string name="podcast_refresh_failed">Не удалось обновить: %1$s</string>
     <string name="podcast_refresh_nothing">Нет подписок для обновления</string>
     <string name="podcast_refresh_auto_failed">Не удалось обновить подписок: %1$d</string>

@@ -50,11 +50,6 @@ object RadioSizes {
     val drawerWidth = 300.dp
     val themeSegmentWidth = 57.dp
     val themeSegmentHeight = 35.dp
-    val volumeSliderHeight = 352.dp
-    val volumeSliderWidth = 79.dp
-    val volumeTrackWidth = 20.dp
-    val volumeThumbWidth = 44.dp
-    val volumeThumbHeight = 9.dp
     val signalWidth = 18.dp
     val signalHeight = 20.dp
     val screenshotHeight = 330.dp

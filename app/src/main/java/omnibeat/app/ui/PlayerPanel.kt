@@ -1,53 +1,45 @@
 package omnibeat.app.ui
 
-import androidx.compose.foundation.layout.heightIn
-
 import omnibeat.app.R
 
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,23 +53,22 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import omnibeat.app.ui.appStringResource as stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_PLAYBACK_SPEEDS
 import omnibeat.app.model.Station
-import omnibeat.app.playback.PlaybackTrackStatus
 import omnibeat.app.playback.PlaybackStreamInfo
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
+import omnibeat.app.playback.PlaybackTrackStatus
+import omnibeat.app.ui.appStringResource as stringResource
 import java.util.Locale
 
 /** 播客单集的快退 / 快进步长 */
@@ -85,12 +76,25 @@ private const val SKIP_BACKWARD_MS = 15_000L
 private const val SKIP_FORWARD_MS = 30_000L
 
 /**
- * 时间行里倍速 / 音量两颗次要按钮的直径。
- * 它们紧贴在总时长左侧，比播放控制按钮（53dp）小一档，避免抢戏。
+ * 播放面板的固定尺寸。
+ *
+ * 折叠态是 64dp 的信息条；展开态在同一个容器里长高到 149dp，
+ * 两态左右内边距相同、都没有圆角和外边距 —— 展开只是「面板长高」，
+ * 不是浮起一张卡片。
  */
-private val AUX_BUTTON_SIZE = 38.dp
-
-
+private val PANEL_SIDE_PADDING = 16.dp
+private val COLLAPSED_HEIGHT = 64.dp
+private val EXPANDED_TOP_PADDING = 12.dp
+private val EXPANDED_BOTTOM_PADDING = 14.dp
+private val EXPANDED_ARTWORK_SIZE = 42.dp
+private val EXPANDED_ROW_HEIGHT = 42.dp
+private val EXPANDED_MID_HEIGHT = 21.dp
+private val CONTROL_ROW_HEIGHT = 44.dp
+private val PLAY_BUTTON_SIZE = 44.dp
+private val SIDE_BUTTON_SIZE = 38.dp
+private val SECONDARY_BUTTON_SIZE = 34.dp
+private val COLLAPSED_CHEVRON_SIZE = 28.dp
+private val EXPANDED_CHEVRON_SIZE = 26.dp
 
 @Composable
 fun PlayerPanel(
@@ -101,7 +105,6 @@ fun PlayerPanel(
     streamInfo: PlaybackStreamInfo,
     loading: Boolean,
     isPlaying: Boolean,
-    appVolume: Float,
     showBitrate: Boolean,
     showPlayerMetadata: Boolean,
     marqueeTrackTitle: Boolean,
@@ -117,7 +120,6 @@ fun PlayerPanel(
     onPreviousStation: () -> Unit,
     onNextStation: () -> Unit,
     onRandomStation: () -> Unit,
-    onVolumeChange: (Float) -> Unit,
     onSeek: (Long) -> Unit = {},
     onSpeedChange: (Float) -> Unit = {},
 ) {
@@ -127,279 +129,87 @@ fun PlayerPanel(
     val trackCopiedText = stringResource(R.string.player_track_copied)
     val streamInfoClipboardLabel = stringResource(R.string.player_clipboard_stream_info_label)
     val streamInfoCopiedText = stringResource(R.string.player_stream_info_copied)
-    // 播客单集是 HLS 点播，**没有 ICY 元数据这一层**：服务端等不到元数据会把第二行
-    // 永久停在「无元数据」，所以单集时第二行只在出错时出现；电台保留原来的
-    // 「曲目名 / 播放状态」逻辑（那边有 ICY 元数据，是有信息量的）。
+
     val onDemand = seekable
+    // 播客单集是 HLS 点播，没有 ICY 元数据层；单集时第二行只在出错时出现。
+    // 电台保留「曲目名 / 播放状态」逻辑（那边有 ICY 元数据，有信息量）。
     val displayTrackText: String? = if (onDemand) {
         errorText?.takeIf { it.isNotBlank() }
     } else {
-        // 元数据可以整体关掉：不少电台没有 ICY 信息，只会在「正在等待元数据 / 无元数据」之间跳；
-        // 错误提示不受开关影响，必须保留
         errorText ?: if (showPlayerMetadata) {
             trackStatus?.let { trackStatusText(it) } ?: trackText
         } else {
             null
         }
     }
-    val bitrateText = if (showBitrate) {
-        streamInfo.bitrateKbps?.let { bitrate ->
-            stringResource(R.string.player_bitrate_format, bitrate)
-        }
+    val subtitle: String? = if (onDemand) station?.artist?.takeIf { it.isNotBlank() } else displayTrackText
+    val bitratePart = if (showBitrate) {
+        streamInfo.bitrateKbps?.let { stringResource(R.string.player_bitrate_format, it) }
     } else {
         null
     }
+    val paramsText = listOfNotNull(bitratePart, streamInfo.sampleRateText, streamInfo.formatLabel)
+        .joinToString(" · ")
     val hasActivePlaybackRequest = isPlaying || loading
+
+    val onInfoClick: () -> Unit = {
+        if (trackStatus == null && trackText.isNotBlank()) {
+            copyTextToClipboard(context = context, label = trackClipboardLabel, text = trackText)
+            android.widget.Toast.makeText(context, trackCopiedText, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    val onInfoLongClick: () -> Unit = { showStreamInfo = true }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(RadioSurface)
-            .navigationBarsPadding(),
+            .navigationBarsPadding()
+            .animateContentSize(),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(RadioSizes.playerHeaderHeight)
-                .padding(horizontal = RadioSpacing.page),
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(RadioSizes.playerDividerThickness)
-                    .background(RadioOutline),
+        if (collapsed) {
+            CollapsedPlayerBar(
+                title = station?.title.orEmpty(),
+                subtitle = subtitle,
+                isLive = !onDemand && station != null,
+                loading = loading,
+                hasActivePlaybackRequest = hasActivePlaybackRequest,
+                enabled = station != null,
+                marquee = marqueeTrackTitle,
+                onClick = onInfoClick,
+                onLongClick = onInfoLongClick,
+                onPrevious = onPreviousStation,
+                onPlayPause = onPlayPause,
+                onStop = onStop,
+                onNext = onNextStation,
+                onExpand = { onCollapsedChange(false) },
             )
-            OmniIconButton(
-                painter = painterResource(R.drawable.ic_player_collapse),
-                onClick = { onCollapsedChange(!collapsed) },
-                tint = RadioTextMuted,
-                modifier = Modifier.size(RadioSizes.playerCollapseButton),
-                iconModifier = Modifier
-                    .size(RadioSizes.playerCollapseIcon)
-                    .rotate(if (collapsed) 180f else 0f),
+        } else {
+            ExpandedPlayerPanel(
+                imageUrl = station?.imageUrl,
+                title = station?.title.orEmpty(),
+                subtitle = subtitle,
+                isLive = !onDemand && station != null,
+                loading = loading,
+                paramsText = paramsText,
+                onDemand = onDemand,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                playbackSpeed = playbackSpeed,
+                hasActivePlaybackRequest = hasActivePlaybackRequest,
+                enabled = station != null,
+                marquee = marqueeTrackTitle,
+                onClick = onInfoClick,
+                onLongClick = onInfoLongClick,
+                onCollapse = { onCollapsedChange(true) },
+                onPrevious = onPreviousStation,
+                onPlayPause = onPlayPause,
+                onStop = onStop,
+                onNext = onNextStation,
+                onRandom = onRandomStation,
+                onSeek = onSeek,
+                onSpeedChange = onSpeedChange,
             )
-        }
-        AnimatedVisibility(
-            visible = !collapsed,
-            enter = slideInVertically(
-                animationSpec = tween(),
-                initialOffsetY = { it },
-            ) + expandVertically(animationSpec = tween(), expandFrom = Alignment.Bottom),
-            exit = slideOutVertically(
-                animationSpec = tween(),
-                targetOffsetY = { it },
-            ) + shrinkVertically(animationSpec = tween(), shrinkTowards = Alignment.Bottom),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(RadioSurface)
-                    .padding(start = RadioSpacing.page, end = RadioSpacing.page, bottom = RadioSpacing.large),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .combinedClickable(
-                            enabled = station != null,
-                            onClick = {
-                                if (trackStatus == null && trackText.isNotBlank()) {
-                                    copyTextToClipboard(
-                                        context = context,
-                                        label = trackClipboardLabel,
-                                        text = trackText,
-                                    )
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        trackCopiedText,
-                                        android.widget.Toast.LENGTH_SHORT,
-                                    ).show()
-                                }
-                            },
-                            onLongClick = { showStreamInfo = true },
-                        )
-                        .fillMaxWidth(),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = station?.title.orEmpty(),
-                            color = RadioText,
-                            fontSize = RadioTextSizes.title,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            // 播客的超长节目名也走同一套滚动设置（此前只有电台的曲目行会滚）；
-                            // 电台的台名保持不滚 —— 那边第二行才是「曲目名」
-                            overflow = if (marqueeTrackTitle && onDemand) {
-                                TextOverflow.Clip
-                            } else {
-                                TextOverflow.Ellipsis
-                            },
-                            softWrap = false,
-                            modifier = Modifier
-                                .weight(1f)
-                                .then(
-                                    if (marqueeTrackTitle && onDemand) {
-                                        Modifier.basicMarquee(
-                                            iterations = Int.MAX_VALUE,
-                                            repeatDelayMillis = 1_500,
-                                        )
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                        )
-                        if (loading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier
-                                    .padding(start = RadioSpacing.medium)
-                                    .size(RadioSizes.icon),
-                                strokeWidth = 2.dp,
-                                color = RadioPrimary,
-                            )
-                        }
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = RadioSpacing.extraSmall),
-                    ) {
-                        displayTrackText?.let { trackText ->
-                            Text(
-                                text = trackText,
-                                color = RadioTextMuted,
-                                fontSize = RadioTextSizes.body,
-                                maxLines = 1,
-                                overflow = if (marqueeTrackTitle) TextOverflow.Clip else TextOverflow.Ellipsis,
-                                softWrap = false,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .then(
-                                        if (marqueeTrackTitle) {
-                                            Modifier.basicMarquee(
-                                                iterations = Int.MAX_VALUE,
-                                                repeatDelayMillis = 1_500,
-                                            )
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
-                            )
-                        }
-                        if (!onDemand && station != null) {
-                            LiveBadge()
-                        }
-                        bitrateText?.let { bitrate ->
-                            Text(
-                                text = bitrate,
-                                color = RadioTextMuted,
-                                fontSize = RadioTextSizes.bodySmall,
-                                maxLines = 1,
-                                modifier = Modifier.padding(start = RadioSpacing.medium),
-                            )
-                        }
-                    }
-                }
-                // 进度区：仅点播单集显示，且等时长真正拿到再画（避免 0:00/0:00 闪烁）。
-                // 直播没有可拖动的进度，这块区域直接不占位。
-                if (onDemand && durationMs > 0L) {
-                    PlaybackProgress(
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        playbackSpeed = playbackSpeed,
-                        appVolume = appVolume,
-                        onSeek = onSeek,
-                        onSpeedChange = onSpeedChange,
-                        onVolumeChange = onVolumeChange,
-                    )
-                }
-                // 控制行：统一五槽骨架 —— 同位置、同尺寸、整组居中，只槽位内容随内容类型变：
-                //   直播 = 随机 / 上一台 / 播放暂停 / 下一台 / 音量
-                //   点播 = −15s / 上一集 / 播放暂停 / 下一集 / +30s
-                // 倍速与音量（点播）不在这行 —— 五控 288dp + 倍速音量 106dp = 394dp，
-                // 超过 360dp 屏可用的 316dp 会重叠，所以那两个右对齐挂在进度条那一行。
-                // 间隔用固定值 + 整组居中：SpaceBetween 会把按钮摊到整行两端，观感很散。
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(
-                        RadioSpacing.extraSmall,
-                        Alignment.CenterHorizontally,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = RadioSpacing.large),
-                ) {
-                    // 槽1：直播随机 / 点播快退 15s
-                    if (onDemand) {
-                        PlayerTextButton(
-                            label = stringResource(R.string.podcast_skip_backward_label),
-                            onClick = { onSeek((positionMs - SKIP_BACKWARD_MS).coerceAtLeast(0L)) },
-                        )
-                    } else {
-                        PlayerIconButton(
-                            enabled = true,
-                            onClick = onRandomStation,
-                            modifier = Modifier.size(RadioSizes.button),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_shuffle),
-                                contentDescription = null,
-                                modifier = Modifier.size(RadioSizes.icon),
-                            )
-                        }
-                    }
-                    // 槽2：上一台 / 上一集
-                    PlayerIconButton(
-                        enabled = true,
-                        onClick = onPreviousStation,
-                        modifier = Modifier.size(RadioSizes.button),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_skip_previous),
-                            contentDescription = null,
-                            modifier = Modifier.size(RadioSizes.icon),
-                        )
-                    }
-                    // 槽3：播放 / 暂停（长按停止）
-                    PlayerIconButton(
-                        enabled = true,
-                        onClick = onPlayPause,
-                        onLongClick = onStop,
-                        modifier = Modifier.size(RadioSizes.primaryPlaybackButton),
-                    ) {
-                        Icon(
-                            painter = painterResource(
-                                if (hasActivePlaybackRequest) R.drawable.ic_pause else R.drawable.ic_play_arrow,
-                            ),
-                            contentDescription = null,
-                            modifier = Modifier.size(RadioSizes.iconPlayback),
-                        )
-                    }
-                    // 槽4：下一台 / 下一集
-                    PlayerIconButton(
-                        enabled = true,
-                        onClick = onNextStation,
-                        modifier = Modifier.size(RadioSizes.button),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_skip_next),
-                            contentDescription = null,
-                            modifier = Modifier.size(RadioSizes.icon),
-                        )
-                    }
-                    // 槽5：直播音量 / 点播快进 30s
-                    if (onDemand) {
-                        PlayerTextButton(
-                            label = stringResource(R.string.podcast_skip_forward_label),
-                            onClick = { onSeek((positionMs + SKIP_FORWARD_MS).coerceAtMost(durationMs)) },
-                        )
-                    } else {
-                        VolumeButton(
-                            volume = appVolume,
-                            onVolumeChange = onVolumeChange,
-                        )
-                    }
-                }
-            }
         }
     }
 
@@ -418,165 +228,477 @@ fun PlayerPanel(
 }
 
 /**
- * 直播徽标：曲目行里的小 pill。
- * 直播没有可拖动的进度（点播有进度条），用徽标把「这是直播」说明白，
- * 免得用户以为进度条缺失是 bug。只在电台直播且已选中电台时显示。
+ * 折叠态：64dp 信息条。
+ * 左：台名 + 副行；右：上一 / 播放 / 下一 / 展开。展开内容从它上方生长，条本身位置不动。
  */
 @Composable
-private fun LiveBadge(modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(R.string.player_live_badge),
-        color = RadioOnPrimary,
-        fontSize = RadioTextSizes.badge,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
-        modifier = modifier
-            .padding(start = RadioSpacing.medium)
-            .clip(RoundedCornerShape(RadioCorners.pill))
-            .background(RadioPrimary)
-            .padding(horizontal = RadioSpacing.compact, vertical = RadioSpacing.extraSmall),
-    )
+private fun CollapsedPlayerBar(
+    title: String,
+    subtitle: String?,
+    isLive: Boolean,
+    loading: Boolean,
+    hasActivePlaybackRequest: Boolean,
+    enabled: Boolean,
+    marquee: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onPrevious: () -> Unit,
+    onPlayPause: () -> Unit,
+    onStop: () -> Unit,
+    onNext: () -> Unit,
+    onExpand: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(COLLAPSED_HEIGHT)
+            .padding(horizontal = PANEL_SIDE_PADDING),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .weight(1f)
+                .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = onLongClick),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title.ifBlank { stringResource(R.string.player_not_playing) },
+                    color = if (title.isBlank()) RadioTextMuted else RadioText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    softWrap = false,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .then(
+                            if (marquee) {
+                                Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
+                            } else {
+                                Modifier
+                            },
+                        ),
+                )
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(12.dp),
+                        strokeWidth = 1.5.dp,
+                        color = RadioPrimary,
+                    )
+                }
+            }
+            val sub = if (!enabled) {
+                stringResource(R.string.player_not_playing_hint)
+            } else {
+                subtitle
+            }
+            if (sub != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                ) {
+                    if (isLive) {
+                        LiveDot()
+                    }
+                    Text(
+                        text = sub,
+                        color = RadioTextMuted,
+                        fontSize = 11.5.sp,
+                        maxLines = 1,
+                        overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+                        softWrap = false,
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(
+                                if (marquee) {
+                                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    )
+                }
+            }
+        }
+        PanelIconButton(
+            painter = painterResource(R.drawable.ic_skip_previous),
+            size = SIDE_BUTTON_SIZE,
+            iconSize = 22.dp,
+            enabled = enabled,
+            onClick = onPrevious,
+        )
+        PlayButton(
+            hasActivePlaybackRequest = hasActivePlaybackRequest,
+            onClick = onPlayPause,
+            onLongClick = onStop,
+        )
+        PanelIconButton(
+            painter = painterResource(R.drawable.ic_skip_next),
+            size = SIDE_BUTTON_SIZE,
+            iconSize = 22.dp,
+            enabled = enabled,
+            onClick = onNext,
+        )
+        PanelIconButton(
+            painter = painterResource(R.drawable.ic_player_collapse),
+            size = COLLAPSED_CHEVRON_SIZE,
+            iconSize = 22.dp,
+            tint = RadioTextMuted.copy(alpha = 0.65f),
+            modifier = Modifier.rotate(180f),
+            onClick = onExpand,
+        )
+    }
 }
 
 /**
- * 点播单集的进度条：拖动中只更新本地值，松手才真正跳转 ——
- * 否则每移动一格都会往服务发一次 seek。
+ * 展开态：149dp 面板。封面 + 信息、参数 / 进度、控制行三段。
+ * 与折叠态共用同一个容器宽度和左右内边距，展开时只增加高度。
  */
 @Composable
-private fun PlaybackProgress(
+private fun ExpandedPlayerPanel(
+    imageUrl: String?,
+    title: String,
+    subtitle: String?,
+    isLive: Boolean,
+    loading: Boolean,
+    paramsText: String,
+    onDemand: Boolean,
     positionMs: Long,
     durationMs: Long,
     playbackSpeed: Float,
-    appVolume: Float,
+    hasActivePlaybackRequest: Boolean,
+    enabled: Boolean,
+    marquee: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onCollapse: () -> Unit,
+    onPrevious: () -> Unit,
+    onPlayPause: () -> Unit,
+    onStop: () -> Unit,
+    onNext: () -> Unit,
+    onRandom: () -> Unit,
     onSeek: (Long) -> Unit,
     onSpeedChange: (Float) -> Unit,
-    onVolumeChange: (Float) -> Unit,
 ) {
-    var scrubbing by remember { mutableStateOf(false) }
-    var scrubFraction by remember { mutableFloatStateOf(0f) }
-    val totalMs = durationMs.coerceAtLeast(1L)
-    val playedFraction = (positionMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f)
-    val shownFraction = if (scrubbing) scrubFraction else playedFraction
-    val shownPosition = if (scrubbing) (scrubFraction * totalMs).toLong() else positionMs
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = RadioSpacing.large),
-    ) {
-        Slider(
-            value = shownFraction,
-            onValueChange = {
-                scrubbing = true
-                scrubFraction = it.coerceIn(0f, 1f)
-            },
-            onValueChangeFinished = {
-                scrubbing = false
-                onSeek((scrubFraction * totalMs).toLong())
-            },
-            colors = SliderDefaults.colors(
-                thumbColor = RadioPrimary,
-                activeTrackColor = RadioPrimary,
-                inactiveTrackColor = RadioOutline,
+            .padding(
+                start = PANEL_SIDE_PADDING,
+                end = PANEL_SIDE_PADDING,
+                top = EXPANDED_TOP_PADDING,
+                bottom = EXPANDED_BOTTOM_PADDING,
             ),
-            modifier = Modifier.fillMaxWidth(),
-        )
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(EXPANDED_ROW_HEIGHT)
+                .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = onLongClick),
         ) {
-            Text(
-                text = formatPlaybackTime(shownPosition),
-                color = RadioTextMuted,
-                fontSize = RadioTextSizes.caption,
+            StationArtwork(
+                imageUrl = imageUrl,
+                size = EXPANDED_ARTWORK_SIZE,
+                modifier = Modifier.clip(RoundedCornerShape(11.dp)),
             )
-            Spacer(Modifier.weight(1f))
-            // 顺序：已播（左）→ 倍速 → 音量 → 总时长（最右）。
-            // 两颗次要按钮紧贴总时长，总时长落在行尾 —— 一眼就能看出哪里是结尾
-            PlaybackSpeedButton(
-                speed = playbackSpeed,
-                onSpeedChange = onSpeedChange,
+            Column(
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 11.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title.ifBlank { stringResource(R.string.player_not_playing) },
+                        color = if (title.isBlank()) RadioTextMuted else RadioText,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+                        softWrap = false,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .then(
+                                if (marquee) {
+                                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    )
+                    if (loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(12.dp),
+                            strokeWidth = 1.5.dp,
+                            color = RadioPrimary,
+                        )
+                    }
+                }
+                val sub = if (!enabled) {
+                    stringResource(R.string.player_not_playing_hint)
+                } else {
+                    subtitle
+                }
+                if (sub != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                    ) {
+                        if (isLive) {
+                            LiveDot()
+                        }
+                        Text(
+                            text = sub,
+                            color = RadioTextMuted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+                            softWrap = false,
+                            modifier = Modifier
+                                .weight(1f)
+                                .then(
+                                    if (marquee) {
+                                        Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                        )
+                    }
+                }
+            }
+            PanelIconButton(
+                painter = painterResource(R.drawable.ic_player_collapse),
+                size = EXPANDED_CHEVRON_SIZE,
+                iconSize = 20.dp,
+                tint = RadioTextMuted.copy(alpha = 0.62f),
+                onClick = onCollapse,
             )
-            Spacer(Modifier.width(RadioSpacing.labelGap))
-            VolumeButton(
-                volume = appVolume,
-                onVolumeChange = onVolumeChange,
-                buttonSize = AUX_BUTTON_SIZE,
-                iconSize = RadioSizes.iconInline,
-            )
-            Spacer(Modifier.width(RadioSpacing.small))
-            Text(
-                text = formatPlaybackTime(durationMs),
-                color = RadioTextMuted,
-                fontSize = RadioTextSizes.caption,
-            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // 中段固定 21dp：直播放流参数，点播放可拖动的进度 + 时间，两态因此等高
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(EXPANDED_MID_HEIGHT),
+        ) {
+            if (onDemand && durationMs > 0L) {
+                CompactSeekBar(
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeek = onSeek,
+                )
+            } else if (paramsText.isNotBlank()) {
+                Text(
+                    text = paramsText,
+                    color = RadioTextMuted,
+                    fontSize = 10.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.align(Alignment.CenterStart),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (onDemand) {
+                Arrangement.SpaceBetween
+            } else {
+                Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(CONTROL_ROW_HEIGHT),
+        ) {
+            if (onDemand) {
+                SkipTextButton(
+                    label = stringResource(R.string.podcast_skip_backward_label),
+                    onClick = { onSeek((positionMs - SKIP_BACKWARD_MS).coerceAtLeast(0L)) },
+                )
+                PanelIconButton(
+                    painter = painterResource(R.drawable.ic_skip_previous),
+                    size = SECONDARY_BUTTON_SIZE,
+                    iconSize = 20.dp,
+                    enabled = enabled,
+                    onClick = onPrevious,
+                )
+                PlayButton(
+                    hasActivePlaybackRequest = hasActivePlaybackRequest,
+                    onClick = onPlayPause,
+                    onLongClick = onStop,
+                )
+                PanelIconButton(
+                    painter = painterResource(R.drawable.ic_skip_next),
+                    size = SECONDARY_BUTTON_SIZE,
+                    iconSize = 20.dp,
+                    enabled = enabled,
+                    onClick = onNext,
+                )
+                SkipTextButton(
+                    label = stringResource(R.string.podcast_skip_forward_label),
+                    onClick = { onSeek((positionMs + SKIP_FORWARD_MS).coerceAtMost(durationMs)) },
+                )
+                SpeedChip(speed = playbackSpeed, onSpeedChange = onSpeedChange)
+            } else {
+                PanelIconButton(
+                    painter = painterResource(R.drawable.ic_shuffle),
+                    size = SECONDARY_BUTTON_SIZE,
+                    iconSize = 20.dp,
+                    enabled = enabled,
+                    onClick = onRandom,
+                )
+                PanelIconButton(
+                    painter = painterResource(R.drawable.ic_skip_previous),
+                    size = SECONDARY_BUTTON_SIZE,
+                    iconSize = 20.dp,
+                    enabled = enabled,
+                    onClick = onPrevious,
+                )
+                PlayButton(
+                    hasActivePlaybackRequest = hasActivePlaybackRequest,
+                    onClick = onPlayPause,
+                    onLongClick = onStop,
+                )
+                PanelIconButton(
+                    painter = painterResource(R.drawable.ic_skip_next),
+                    size = SECONDARY_BUTTON_SIZE,
+                    iconSize = 20.dp,
+                    enabled = enabled,
+                    onClick = onNext,
+                )
+            }
         }
     }
 }
 
-private fun formatPlaybackTime(millis: Long): String {
-    val totalSeconds = (millis / 1000).coerceAtLeast(0L)
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.US, "%d:%02d", minutes, seconds)
+/** 直播小圆点：5dp 主色圆点 + 3dp 光晕，比原来的实色 pill 更克制 */
+@Composable
+private fun LiveDot() {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .padding(end = 5.dp)
+            .size(11.dp),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(color = RadioPrimary.copy(alpha = 0.18f), radius = size.minDimension / 2f)
+            drawCircle(color = RadioPrimary, radius = size.minDimension / 2f * 0.55f)
+        }
     }
 }
 
-/**
- * 文字式圆形按钮：快退 / 快进（`15s` / `30s`）用。
- * 项目里没有这类图标，且全仓不使用 Material Icons，所以用文字；尺寸与周围圆形按钮一致。
- */
+/** 播放 / 暂停：44dp 实心主色，长按停止 */
 @Composable
-private fun PlayerTextButton(
+private fun PlayButton(
+    hasActivePlaybackRequest: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(PLAY_BUTTON_SIZE)
+            .clip(CircleShape)
+            .background(RadioPrimary)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        Icon(
+            painter = painterResource(
+                if (hasActivePlaybackRequest) R.drawable.ic_pause else R.drawable.ic_play_arrow,
+            ),
+            contentDescription = null,
+            tint = RadioOnPrimary,
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+/** 无底色的次要图标按钮：视觉尺寸小，但由外层尺寸决定触摸区 */
+@Composable
+private fun PanelIconButton(
+    painter: Painter,
+    size: Dp,
+    iconSize: Dp,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    tint: Color = RadioText,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+    ) {
+        Icon(
+            painter = painter,
+            contentDescription = null,
+            tint = if (enabled) tint.copy(alpha = 0.87f) else RadioTextMuted.copy(alpha = 0.35f),
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+/** 文字式圆形按钮：−15s / +30s */
+@Composable
+private fun SkipTextButton(
     label: String,
     onClick: () -> Unit,
 ) {
-    PlayerIconButton(
-        enabled = true,
-        onClick = onClick,
-        modifier = Modifier.size(RadioSizes.button),
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(SECONDARY_BUTTON_SIZE)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
     ) {
         Text(
             text = label,
-            color = RadioText,
-            fontSize = RadioTextSizes.bodySmall,
+            color = RadioText.copy(alpha = 0.87f),
+            fontSize = 10.5.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
     }
 }
 
-/**
- * 单集倍速按钮：用纯文字显示当前倍速，点开是速率菜单，当前项带对勾。
- */
+/** 倍速胶囊：点开是速率菜单，当前项带对勾 */
 @Composable
-private fun PlaybackSpeedButton(
+private fun SpeedChip(
     speed: Float,
     onSpeedChange: (Float) -> Unit,
-    buttonSize: androidx.compose.ui.unit.Dp = AUX_BUTTON_SIZE,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Box {
-        // 与音量按钮同款同尺寸的圆形按钮（不做胶囊，避免两颗次要按钮割裂）；
-        // 圆里是文字，字号要比图标小一档，否则「1.25×」会擦到圆弧
-        PlayerIconButton(
-            enabled = true,
-            onClick = { expanded = true },
-            modifier = Modifier.size(buttonSize),
-        ) {
-            Text(
-                text = formatSpeedLabel(speed),
-                color = RadioPrimary,
-                fontSize = RadioTextSizes.badge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
-        }
+        Text(
+            text = formatSpeedLabel(speed),
+            color = RadioPrimary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            modifier = Modifier
+                .clip(RoundedCornerShape(RadioCorners.pill))
+                .background(RadioPrimary.copy(alpha = 0.12f))
+                .clickable { expanded = true }
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        )
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
@@ -611,6 +733,110 @@ private fun PlaybackSpeedButton(
                 )
             }
         }
+    }
+}
+
+/**
+ * 点播进度：3dp 细轨道 + 10dp 拖钮，整块 21dp 都是触摸区。
+ * 拖动中只更新本地值，松手才真正 seek。
+ */
+@Composable
+private fun CompactSeekBar(
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+) {
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubFraction by remember { mutableFloatStateOf(0f) }
+    val totalMs = durationMs.coerceAtLeast(1L)
+    val playedFraction = (positionMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f)
+    val shownFraction = if (scrubbing) scrubFraction else playedFraction
+    val shownPosition = if (scrubbing) (scrubFraction * totalMs).toLong() else positionMs
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(totalMs) {
+                fun fractionAt(x: Float): Float {
+                    if (size.width <= 0) return 0f
+                    return (x / size.width.toFloat()).coerceIn(0f, 1f)
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    scrubbing = true
+                    scrubFraction = fractionAt(down.position.x)
+                    down.consume()
+                    drag(down.id) { change ->
+                        scrubFraction = fractionAt(change.position.x)
+                        change.consume()
+                    }
+                    scrubbing = false
+                    onSeek((scrubFraction * totalMs).toLong())
+                }
+            },
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(9.dp)
+                .align(Alignment.TopStart),
+        ) {
+            val trackHeight = 3.dp.toPx()
+            val centerY = size.height / 2f
+            val radius = trackHeight / 2f
+            drawRoundRect(
+                color = RadioOutline,
+                topLeft = Offset(0f, centerY - radius),
+                size = Size(size.width, trackHeight),
+                cornerRadius = CornerRadius(radius, radius),
+            )
+            val activeWidth = size.width * shownFraction
+            if (activeWidth > 0f) {
+                drawRoundRect(
+                    color = RadioPrimary,
+                    topLeft = Offset(0f, centerY - radius),
+                    size = Size(activeWidth, trackHeight),
+                    cornerRadius = CornerRadius(radius, radius),
+                )
+            }
+            drawCircle(
+                color = RadioPrimary,
+                radius = 5.dp.toPx(),
+                center = Offset(activeWidth.coerceIn(0f, size.width), centerY),
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomStart),
+        ) {
+            Text(
+                text = formatPlaybackTime(shownPosition),
+                color = RadioTextMuted,
+                fontSize = 10.sp,
+                lineHeight = 11.sp,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = formatPlaybackTime(durationMs),
+                color = RadioTextMuted,
+                fontSize = 10.sp,
+                lineHeight = 11.sp,
+            )
+        }
+    }
+}
+
+private fun formatPlaybackTime(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 }
 
@@ -732,199 +958,4 @@ private fun copyTextToClipboard(context: Context, label: String, text: String) {
     val clipboardManager = context.getSystemService(ClipboardManager::class.java)
     @Suppress("UsePropertyAccessSyntax")
     clipboardManager.setPrimaryClip(ClipData.newPlainText(label, text))
-}
-
-@Composable
-private fun PlayerIconButton(
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
-    content: @Composable () -> Unit,
-) {
-    if (onLongClick != null) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = modifier
-                .clip(CircleShape)
-                .background(if (enabled) RadioSurfaceHigh else RadioSurfaceHigh)
-                .combinedClickable(
-                    enabled = enabled,
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                ),
-        ) {
-            CompositionLocalProvider(LocalContentColor provides if (enabled) RadioPrimary else RadioTextMuted) {
-                content()
-            }
-        }
-        return
-    }
-
-    OmniFilledIconButton(
-        enabled = enabled,
-        onClick = onClick,
-        modifier = modifier,
-    ) {
-        content()
-    }
-}
-
-@Composable
-private fun VolumeButton(
-    volume: Float,
-    onVolumeChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-    buttonSize: androidx.compose.ui.unit.Dp = RadioSizes.button,
-    iconSize: androidx.compose.ui.unit.Dp = RadioSizes.icon,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val sliderHeight = RadioSizes.volumeSliderHeight
-    val sliderTrackBottomGap = RadioSpacing.rowVertical
-    val sliderTrackBottomInset = RadioSpacing.medium
-    val popupOffsetY = with(LocalDensity.current) {
-        -(sliderHeight + sliderTrackBottomGap - sliderTrackBottomInset).roundToPx()
-    }
-
-    Box(contentAlignment = Alignment.Center, modifier = modifier) {
-        OmniFilledIconButton(
-            enabled = true,
-            onClick = { expanded = !expanded },
-            modifier = Modifier.size(buttonSize),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_volume),
-                contentDescription = null,
-                modifier = Modifier.size(iconSize),
-            )
-        }
-
-        if (expanded) {
-            Popup(
-                alignment = Alignment.TopCenter,
-                offset = IntOffset(x = 0, y = popupOffsetY),
-                onDismissRequest = { expanded = false },
-                properties = PopupProperties(focusable = true),
-            ) {
-                VerticalVolumeSlider(
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    modifier = Modifier
-                        .width(RadioSizes.volumeSliderWidth)
-                        .height(sliderHeight),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun VerticalVolumeSlider(
-    volume: Float,
-    onVolumeChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-    trackColor: Color? = null,
-    activeTrackColor: Color? = null,
-    thumbColor: Color? = null,
-) {
-    val coercedVolume = volume.coerceIn(0f, 1f)
-    val resolvedTrackColor = trackColor ?: RadioOutline
-    val resolvedActiveTrackColor = activeTrackColor ?: RadioPrimary
-    val resolvedThumbColor = thumbColor ?: RadioText
-
-    fun positionToVolume(y: Float, height: Float, thumbHeight: Float, verticalPadding: Float): Float {
-        val trackTop = verticalPadding + thumbHeight / 2f
-        val trackBottom = height - verticalPadding - thumbHeight / 2f
-        if (trackBottom <= trackTop) return coercedVolume
-        return ((trackBottom - y) / (trackBottom - trackTop)).coerceIn(0f, 1f)
-    }
-
-    Canvas(
-        modifier = modifier.pointerInput(Unit) {
-            val thumbHeight = RadioSizes.volumeThumbHeight.toPx()
-            val verticalPadding = RadioSpacing.small.toPx()
-
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                onVolumeChange(positionToVolume(down.position.y, size.height.toFloat(), thumbHeight, verticalPadding))
-                down.consume()
-
-                drag(down.id) { change ->
-                    onVolumeChange(positionToVolume(change.position.y, size.height.toFloat(), thumbHeight, verticalPadding))
-                    change.consume()
-                }
-            }
-        },
-    ) {
-        val trackWidth = RadioSizes.volumeTrackWidth.toPx()
-        val thumbWidth = RadioSizes.volumeThumbWidth.toPx()
-        val thumbHeight = RadioSizes.volumeThumbHeight.toPx()
-        val verticalPadding = RadioSpacing.small.toPx()
-        val centerX = size.width / 2f
-        val trackTop = verticalPadding + thumbHeight / 2f
-        val trackBottom = size.height - verticalPadding - thumbHeight / 2f
-        val trackHeight = trackBottom - trackTop
-        val thumbCenterY = trackBottom - trackHeight * coercedVolume
-        val trackRadius = trackWidth / 2f
-        val thumbRadius = thumbWidth / 2f
-        val thumbTrackGap = RadioSpacing.extraSmall.toPx()
-        val inactiveTrackBottom = (thumbCenterY - thumbHeight / 2f - thumbTrackGap).coerceAtLeast(trackTop)
-        val activeTrackTop = (thumbCenterY + thumbHeight / 2f + thumbTrackGap).coerceAtMost(trackBottom)
-
-        fun drawTrackSegment(
-            color: Color,
-            top: Float,
-            bottom: Float,
-            roundTop: Boolean,
-            roundBottom: Boolean,
-        ) {
-            if (bottom <= top) return
-
-            val left = centerX - trackWidth / 2f
-            val rectTop = if (roundTop) top + trackRadius else top
-            val rectBottom = if (roundBottom) bottom - trackRadius else bottom
-
-            if (rectBottom > rectTop) {
-                drawRect(
-                    color = color,
-                    topLeft = Offset(left, rectTop),
-                    size = Size(trackWidth, rectBottom - rectTop),
-                )
-            }
-            if (roundTop) {
-                drawCircle(
-                    color = color,
-                    radius = trackRadius,
-                    center = Offset(centerX, top + trackRadius),
-                )
-            }
-            if (roundBottom) {
-                drawCircle(
-                    color = color,
-                    radius = trackRadius,
-                    center = Offset(centerX, bottom - trackRadius),
-                )
-            }
-        }
-        drawTrackSegment(
-            color = resolvedTrackColor,
-            top = trackTop,
-            bottom = inactiveTrackBottom,
-            roundTop = true,
-            roundBottom = false,
-        )
-        drawTrackSegment(
-            color = resolvedActiveTrackColor,
-            top = activeTrackTop,
-            bottom = trackBottom,
-            roundTop = false,
-            roundBottom = true,
-        )
-        drawRoundRect(
-            color = resolvedThumbColor,
-            topLeft = Offset(centerX - thumbWidth / 2f, thumbCenterY - thumbHeight / 2f),
-            size = Size(thumbWidth, thumbHeight),
-            cornerRadius = CornerRadius(thumbRadius, thumbRadius),
-        )
-    }
 }

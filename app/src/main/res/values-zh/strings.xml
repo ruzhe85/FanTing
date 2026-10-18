@@ -244,6 +244,8 @@
 
     <string name="player_bitrate_format">%1$d kbps</string>
     <string name="player_live_badge">直播</string>
+    <string name="player_not_playing">未在播放</string>
+    <string name="player_not_playing_hint">点播放键继续上次的电台</string>
     <string name="player_clipboard_track_label">曲目</string>
     <string name="player_track_copied">已复制曲目名称</string>
     <string name="player_clipboard_stream_info_label">音频流信息</string>

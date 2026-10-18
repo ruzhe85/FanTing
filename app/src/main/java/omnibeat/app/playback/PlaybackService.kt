@@ -81,7 +81,6 @@ data class PlaybackState(
     val buffering: Boolean = false,
     val isPlaying: Boolean = false,
     val errorText: String? = null,
-    val volume: Float = 0.75f,
     val streamInfo: PlaybackStreamInfo = PlaybackStreamInfo(),
     /** 点播单集的播放进度与总时长（直播恒为 0）；播放面板据此画可拖动的进度条 */
     val positionMs: Long = 0L,
@@ -227,12 +226,6 @@ class PlaybackService : MediaLibraryService() {
                     }
                     syncSession()
                 }
-            }
-        }
-        scope.launch {
-            repository.appVolume.collect { savedVolume ->
-                player.volume = savedVolume
-                _state.update { it.copy(volume = savedVolume) }
             }
         }
         scope.launch {

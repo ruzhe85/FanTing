@@ -243,6 +243,8 @@
 
     <string name="player_bitrate_format">%1$d kbps</string>
     <string name="player_live_badge">LIVE</string>
+    <string name="player_not_playing">Not playing</string>
+    <string name="player_not_playing_hint">Tap play to resume the last station</string>
     <string name="player_clipboard_track_label">Track</string>
     <string name="player_track_copied">Track name copied</string>
     <string name="player_clipboard_stream_info_label">Stream info</string>

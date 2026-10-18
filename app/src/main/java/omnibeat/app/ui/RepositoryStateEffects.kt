@@ -13,7 +13,6 @@ fun RepositoryStateEffects(
     selectedPage: MainPage,
     visibleTabPages: List<MainPage>,
     onStationsChange: (List<Station>) -> Unit,
-    onAppVolumeChange: (Float) -> Unit,
     onAutoPlayNextEpisodeChange: (Boolean) -> Unit,
     onStopServiceAfterPauseMinutesChange: (Int) -> Unit,
     onKeepMediaCardChange: (Boolean) -> Unit,
@@ -40,12 +39,6 @@ fun RepositoryStateEffects(
     LaunchedEffect(repository) {
         repository.stations.collect { savedStations ->
             onStationsChange(savedStations)
-        }
-    }
-
-    LaunchedEffect(repository) {
-        repository.appVolume.collect { savedVolume ->
-            onAppVolumeChange(savedVolume)
         }
     }
 

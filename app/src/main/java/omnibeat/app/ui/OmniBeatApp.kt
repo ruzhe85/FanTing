@@ -37,7 +37,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -276,7 +275,6 @@ fun OmniBeatApp() {
         val playbackState by PlaybackService.state.collectAsState()
 
         var stations by remember { mutableStateOf(emptyList<Station>()) }
-        var appVolume by remember { mutableFloatStateOf(0.75f) }
         var autoPlayNextEpisode by remember { mutableStateOf(true) }
         var stopServiceAfterPauseMinutes by remember { mutableIntStateOf(DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES) }
         var keepMediaCard by remember { mutableStateOf(repository.keepMediaCard.value) }
@@ -442,7 +440,6 @@ fun OmniBeatApp() {
             selectedPage = selectedPage,
             visibleTabPages = visibleTabPages,
             onStationsChange = { stations = it },
-            onAppVolumeChange = { appVolume = it },
             onAutoPlayNextEpisodeChange = { autoPlayNextEpisode = it },
             onStopServiceAfterPauseMinutesChange = { stopServiceAfterPauseMinutes = it },
             onKeepMediaCardChange = { keepMediaCard = it },
@@ -2480,7 +2477,6 @@ fun OmniBeatApp() {
                             streamInfo = playbackState.streamInfo,
                             loading = playbackState.resolving || playbackState.buffering,
                             isPlaying = playbackState.isPlaying,
-                            appVolume = appVolume,
                             showBitrate = showBitrateInControlPanel,
                             showPlayerMetadata = showPlayerMetadata,
                             marqueeTrackTitle = marqueeTrackTitle,
@@ -2509,10 +2505,6 @@ fun OmniBeatApp() {
                             onPreviousStation = { if (!playAdjacentEpisode(-1)) playAdjacentStation(-1) },
                             onNextStation = { if (!playAdjacentEpisode(1)) playAdjacentStation(1) },
                             onRandomStation = { playRandomStation() },
-                            onVolumeChange = { volume ->
-                                appVolume = volume
-                                scope.launch { repository.saveAppVolume(volume) }
-                            },
                         )
                     }
                 },
