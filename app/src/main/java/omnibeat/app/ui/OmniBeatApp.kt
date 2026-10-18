@@ -370,6 +370,9 @@ fun OmniBeatApp() {
         // 期数页的本地搜索：只过滤当前订阅的期数，不联网
         var podcastEpisodeSearchOpen by remember { mutableStateOf(false) }
         var podcastEpisodeSearchQuery by remember { mutableStateOf("") }
+        // 顶栏 ⋮「多选」的触发计数：期数页监听其变化进入多选（打开订阅时归零，
+        // 否则新开的期数页首帧就会读到旧计数、意外进入多选）
+        var podcastMultiSelectRequest by remember { mutableIntStateOf(0) }
         // 在线搜索 / 热门发现：两者都是播客 Tab 内的二级页，用同一个浏览态互斥
         var podcastBrowseMode by remember { mutableStateOf<PodcastBrowseMode?>(null) }
         var podcastSearchQuery by remember { mutableStateOf("") }
@@ -1545,6 +1548,8 @@ fun OmniBeatApp() {
             // 换订阅时清掉上一份搜索词，避免拿旧词过滤新列表
             podcastEpisodeSearchOpen = false
             podcastEpisodeSearchQuery = ""
+            // 多选触发计数归零：新期数页首帧不应读到旧计数而意外进多选
+            podcastMultiSelectRequest = 0
             // 手动打开别的订阅时，不再回发现页
             podcastReturnToChartFor = null
             refreshPodcast(subscription)
@@ -2293,6 +2298,10 @@ fun OmniBeatApp() {
             drawerState = drawerState,
             gesturesEnabled = drawerState.isOpen,
             drawerContent = {
+                // 注意：抽屉里凡是跳到「可见 tab」（电台 / 收藏 / 播客……）的项，
+                // 都必须走 selectMainPage——它会同步 lastMainPage 与持久化值。
+                // 裸设 selectedPage 会被 RepositoryStateEffects 用持久化旧值覆盖，
+                // 表现为「抽屉点了没反应」。跳到非 tab 页（设置 / 关于）不受影响。
                 DrawerContent(
                     selectedPage = selectedPage,
                     isOpen = drawerState.isOpen,
@@ -2309,8 +2318,13 @@ fun OmniBeatApp() {
                         scope.launch { drawerState.close() }
                     },
                     onStationsClick = {
-                        // lastMainPage 可能是播客页（它不属于电台区）：那就回到电台首页
-                        selectedPage = lastMainPage.takeIf { it in MainPage.tabPages } ?: MainPage.Stations
+                        // lastMainPage 可能是播客页（它不属于电台区）：那就回到电台首页。
+                        // 必须走 selectMainPage：它同步更新 lastMainPage 与持久化值，
+                        // 否则 RepositoryStateEffects 会在切页后用持久化的旧值（Podcasts）
+                        // 把 selectedPage 覆盖回去，表现为「抽屉点电台没反应」
+                        val target = lastMainPage.takeIf { it in MainPage.tabPages }
+                            ?: MainPage.Stations
+                        selectMainPage(target)
                         scope.launch { drawerState.close() }
                     },
                     onPodcastClick = {
@@ -2382,9 +2396,35 @@ fun OmniBeatApp() {
                         },
                         onOpenPodcastChart = ::openPodcastChart,
                         podcastBrowseActive = podcastBrowseMode != null,
-                        // 期数页的排序与搜索都在页内，顶栏不再放重复入口
+                        // 期数页：顶栏放搜索与 ⋮ 菜单（排序 / 刷新 / 编辑 / 多选 / 退订）
                         podcastEpisodesPageVisible =
                             podcastBrowseMode == null && openPodcastUrl != null,
+                        onOpenEpisodeSearch = { podcastEpisodeSearchOpen = true },
+                        episodesOldestFirst = podcastEpisodesOldestFirst,
+                        onEpisodeOldestFirstChange = { oldest ->
+                            scope.launch {
+                                podcastRepository.saveEpisodesOldestFirst(oldest)
+                            }
+                        },
+                        onRefreshEpisodeFeed = {
+                            podcastList
+                                .firstOrNull { it.feedUrl == openPodcastUrl }
+                                ?.let { refreshPodcast(it, force = true) }
+                        },
+                        onEditPodcast = {
+                            podcastList
+                                .firstOrNull { it.feedUrl == openPodcastUrl }
+                                ?.let {
+                                    podcastError = null
+                                    editPodcastUrl = it.feedUrl
+                                }
+                        },
+                        onEpisodeMultiSelect = { podcastMultiSelectRequest += 1 },
+                        onUnsubscribePodcast = {
+                            podcastList
+                                .firstOrNull { it.feedUrl == openPodcastUrl }
+                                ?.let { pendingPodcastRemoval = it }
+                        },
                         podcastSortState = podcastSortState,
                         onPodcastSortModeSelected = ::selectPodcastSortMode,
                         podcastListLayout = podcastListLayout,
@@ -2596,6 +2636,7 @@ fun OmniBeatApp() {
                                         },
                                         episodeSearchOpen = podcastEpisodeSearchOpen,
                                         episodeSearchQuery = podcastEpisodeSearchQuery,
+                                        episodeMultiSelectRequest = podcastMultiSelectRequest,
                                         onEpisodeSearchOpenChange = { podcastEpisodeSearchOpen = it },
                                         onEpisodeSearchQueryChange = { podcastEpisodeSearchQuery = it },
                                         onOpenSubscription = ::openPodcast,

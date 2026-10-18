@@ -357,8 +357,8 @@
     <string name="podcast_episode_search_empty">No matching episodes</string>
     <string name="podcast_more_actions">More actions</string>
     <string name="podcast_unsubscribe">Unsubscribe</string>
-    <string name="podcast_menu_sort_latest">Sort: newest first</string>
-    <string name="podcast_menu_sort_oldest">Sort: oldest first</string>
+    <string name="podcast_sort_latest_first">Latest first</string>
+    <string name="podcast_sort_earliest_first">Earliest first</string>
     <string name="podcast_menu_refresh">Refresh feed</string>
     <string name="podcast_menu_multi_select">Select multiple</string>
     <string name="podcast_filter_all">All %1$d</string>
@@ -366,7 +366,6 @@
     <string name="podcast_filter_in_progress">In progress %1$d</string>
     <string name="podcast_filter_completed">Finished %1$d</string>
     <string name="podcast_month_header">%2$d/%1$d</string>
-    <string name="podcast_badge_unplayed">New</string>
     <string name="podcast_badge_downloading">Downloading</string>
     <string name="podcast_progress_inline">%1$d%% · %2$s</string>
     <string name="podcast_selection_cancel">Exit selection</string>
@@ -428,10 +427,7 @@
     <string name="podcast_remove_text">It only disappears from your list. Downloaded audio, playback progress and favorites are kept, and everything comes back if you subscribe again.</string>
     <string name="podcast_remove_confirm">Unsubscribe</string>
     <string name="podcast_unfinished_count">%1$d unfinished</string>
-    <string name="podcast_listened_progress">Played %1$s</string>
-    <string name="podcast_listened_progress_with_total">%1$d%% %2$s/%3$s</string>
     <string name="podcast_listened_progress_full">100%</string>
-    <string name="podcast_completed">Finished</string>
     <string name="downloads_title">Downloads</string>
     <string name="downloads_summary">%1$d episodes · %2$s used</string>
     <string name="downloads_in_progress">Downloading %1$d episodes</string>

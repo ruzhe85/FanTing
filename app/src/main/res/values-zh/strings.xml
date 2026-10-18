@@ -358,8 +358,8 @@
     <string name="podcast_episode_search_empty">没有匹配的期数</string>
     <string name="podcast_more_actions">更多操作</string>
     <string name="podcast_unsubscribe">取消订阅</string>
-    <string name="podcast_menu_sort_latest">排序：最新在上</string>
-    <string name="podcast_menu_sort_oldest">排序：最旧在上</string>
+    <string name="podcast_sort_latest_first">最新在前</string>
+    <string name="podcast_sort_earliest_first">最早在前</string>
     <string name="podcast_menu_refresh">刷新节目</string>
     <string name="podcast_menu_multi_select">多选</string>
     <string name="podcast_filter_all">全部 %1$d</string>
@@ -367,7 +367,6 @@
     <string name="podcast_filter_in_progress">在听 %1$d</string>
     <string name="podcast_filter_completed">听完 %1$d</string>
     <string name="podcast_month_header">%1$d 年 %2$d 月</string>
-    <string name="podcast_badge_unplayed">未听</string>
     <string name="podcast_badge_downloading">下载中</string>
     <string name="podcast_progress_inline">%1$d%% · %2$s</string>
     <string name="podcast_selection_cancel">退出多选</string>
@@ -429,10 +428,7 @@
     <string name="podcast_remove_text">只会从订阅列表移除，不会删除本地已下载的音频；播放进度与收藏也会保留，重新订阅后自动恢复。</string>
     <string name="podcast_remove_confirm">取消订阅</string>
     <string name="podcast_unfinished_count">%1$d 期未听完</string>
-    <string name="podcast_listened_progress">已听 %1$s</string>
-    <string name="podcast_listened_progress_with_total">%1$d%% %2$s/%3$s</string>
     <string name="podcast_listened_progress_full">100%</string>
-    <string name="podcast_completed">已听完</string>
     <string name="downloads_title">下载</string>
     <string name="downloads_summary">%1$d 个节目 · 占用 %2$s</string>
     <string name="downloads_in_progress">正在下载 %1$d 个节目</string>

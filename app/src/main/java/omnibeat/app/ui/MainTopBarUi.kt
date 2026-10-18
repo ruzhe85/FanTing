@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.DropdownMenu
@@ -71,8 +69,20 @@ fun MainTopBar(
     onOpenPodcastChart: () -> Unit = {},
     /** 播客的在线搜索 / 热门发现 / 详情页打开时隐藏「+」菜单，避免在浏览过程中再弹添加弹窗 */
     podcastBrowseActive: Boolean = false,
-    /** 期数页（打开了某个订阅）：排序 / 搜索都移到页内，顶栏不再放重复入口 */
+    /**
+     * 期数页（打开了某个订阅）：顶栏放搜索与 ⋮ 菜单，页头节目名行不再放功能按钮
+     */
     podcastEpisodesPageVisible: Boolean = false,
+    /** 期数页顶栏：打开页内搜索框 */
+    onOpenEpisodeSearch: () -> Unit = {},
+    /** 期数页顶栏 ⋮ 菜单：期数排序（最新 / 最旧在上，带勾选） */
+    episodesOldestFirst: Boolean = false,
+    onEpisodeOldestFirstChange: (Boolean) -> Unit = {},
+    /** 期数页顶栏 ⋮ 菜单：刷新节目 / 编辑订阅 / 进入多选 / 取消订阅 */
+    onRefreshEpisodeFeed: () -> Unit = {},
+    onEditPodcast: () -> Unit = {},
+    onEpisodeMultiSelect: () -> Unit = {},
+    onUnsubscribePodcast: () -> Unit = {},
     /** 订阅列表排序：与电台列表同一套菜单样式 */
     podcastSortState: PodcastSortState = PodcastSortState(),
     onPodcastSortModeSelected: (PodcastSortMode) -> Unit = {},
@@ -158,8 +168,18 @@ fun MainTopBar(
             ) {
                 if (selectedPage in tabPages) {
                     tabPages.forEach { tab ->
-                        var tabTextWidth by remember(tab) { mutableStateOf(0.dp) }
-                        Column(
+                        // 选中态用颜色 + 字重区分，不再画下划线指示条
+                        Text(
+                            text = stringResource(tab.titleRes()),
+                            color = if (visualSelectedPage == tab) RadioText else RadioTextMuted,
+                            fontSize = RadioTextSizes.subtitle,
+                            fontWeight = if (visualSelectedPage == tab) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Medium
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
                                 .selectable(
                                     selected = visualSelectedPage == tab,
@@ -167,29 +187,15 @@ fun MainTopBar(
                                     role = Role.Tab,
                                     onClick = { onPageSelected(tab) },
                                 )
-                                .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.small),
-                        ) {
-                            Text(
-                                text = stringResource(tab.titleRes()),
-                                color = if (visualSelectedPage == tab) RadioText else RadioTextMuted,
-                                fontSize = RadioTextSizes.subtitle,
-                                fontWeight = if (visualSelectedPage == tab) FontWeight.SemiBold else FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.onSizeChanged { size ->
-                                    tabTextWidth = with(density) { size.width.toDp() }
-                                    // 同一个宽度两用：画下划线 + 算标签在滚动内容里的偏移
+                                .padding(
+                                    horizontal = RadioSpacing.medium,
+                                    vertical = RadioSpacing.small,
+                                )
+                                .onSizeChanged { size ->
+                                    // 宽度只用于算标签在滚动内容里的偏移（不再画下划线）
                                     tabTextWidths[tab] = size.width
                                 },
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = RadioSpacing.compact)
-                                    .width(tabTextWidth)
-                                    .height(2.dp)
-                                    .background(if (visualSelectedPage == tab) RadioPrimary else RadioOutline),
-                            )
-                        }
+                        )
                     }
                 } else {
                     Text(
@@ -219,7 +225,7 @@ fun MainTopBar(
                     )
                 }
 
-                // 播客页：「+」与电台一致。期数页的排序与搜索已移到页内，顶栏留空。
+                // 播客页：「+」与电台一致；期数页顶栏放搜索与 ⋮ 菜单
                 selectedPage == MainPage.Podcasts && !podcastBrowseActive -> {
                     if (!podcastEpisodesPageVisible) {
                         // 订阅列表：排序 → 下载入口 → 「+」，与电台页的图标顺序一致
@@ -241,6 +247,20 @@ fun MainTopBar(
                             onAddManually = onAddPodcast,
                             onSearchOnline = onSearchPodcastOnline,
                             onOpenChart = onOpenPodcastChart,
+                        )
+                    } else {
+                        // 期数页：搜索 + ⋮（排序 / 刷新 / 编辑 / 多选 / 退订）
+                        OmniIconButton(
+                            painter = painterResource(R.drawable.ic_search),
+                            onClick = onOpenEpisodeSearch,
+                        )
+                        EpisodeTopBarMenu(
+                            oldestFirst = episodesOldestFirst,
+                            onOldestFirstChange = onEpisodeOldestFirstChange,
+                            onRefresh = onRefreshEpisodeFeed,
+                            onEdit = onEditPodcast,
+                            onMultiSelect = onEpisodeMultiSelect,
+                            onUnsubscribe = onUnsubscribePodcast,
                         )
                     }
                 }
@@ -555,6 +575,127 @@ private fun AddMenuButton(
                     },
                 )
             }
+        }
+    }
+}
+
+/**
+ * 期数页顶栏的 ⋮ 菜单：排序（一个切换项，文案即当前顺序）/ 刷新 / 编辑 / 多选 / 取消订阅。
+ * 纯文字无图标：菜单更窄更清爽，也不再被图标拉高每项的高度。
+ */
+@Composable
+private fun EpisodeTopBarMenu(
+    oldestFirst: Boolean,
+    onOldestFirstChange: (Boolean) -> Unit,
+    onRefresh: () -> Unit,
+    onEdit: () -> Unit,
+    onMultiSelect: () -> Unit,
+    onUnsubscribe: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OmniIconButton(
+            painter = painterResource(R.drawable.ic_more_vert),
+            onClick = { expanded = true },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = RadioSurface,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(RadioCorners.medium),
+            offset = DpOffset(x = 0.dp, y = RadioSpacing.extraSmall),
+        ) {
+            // 排序：一个切换项，文案直接告诉用户当前顺序，点了就翻面
+            DropdownMenuItem(
+                modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                text = {
+                    Text(
+                        text = stringResource(
+                            if (oldestFirst) {
+                                R.string.podcast_sort_earliest_first
+                            } else {
+                                R.string.podcast_sort_latest_first
+                            },
+                        ),
+                        color = RadioText,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onOldestFirstChange(!oldestFirst)
+                },
+            )
+            HorizontalDivider(
+                color = RadioOutline.copy(alpha = 0.55f),
+                modifier = Modifier.padding(
+                    horizontal = RadioSpacing.large,
+                    vertical = RadioSpacing.extraSmall,
+                ),
+            )
+            DropdownMenuItem(
+                modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                text = {
+                    Text(
+                        text = stringResource(R.string.podcast_menu_refresh),
+                        color = RadioText,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onRefresh()
+                },
+            )
+            DropdownMenuItem(
+                modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                text = {
+                    Text(
+                        text = stringResource(R.string.podcast_edit_title),
+                        color = RadioText,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                text = {
+                    Text(
+                        text = stringResource(R.string.podcast_menu_multi_select),
+                        color = RadioText,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onMultiSelect()
+                },
+            )
+            HorizontalDivider(
+                color = RadioOutline.copy(alpha = 0.55f),
+                modifier = Modifier.padding(
+                    horizontal = RadioSpacing.large,
+                    vertical = RadioSpacing.extraSmall,
+                ),
+            )
+            DropdownMenuItem(
+                modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
+                contentPadding = PaddingValues(horizontal = RadioSpacing.large),
+                text = {
+                    Text(
+                        text = stringResource(R.string.podcast_unsubscribe),
+                        color = RadioDanger,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onUnsubscribe()
+                },
+            )
         }
     }
 }

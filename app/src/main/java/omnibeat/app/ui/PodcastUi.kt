@@ -10,7 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +56,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -97,6 +98,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -124,6 +126,8 @@ fun PodcastTabContent(
     episodeSearchQuery: String = "",
     onEpisodeSearchOpenChange: (Boolean) -> Unit = {},
     onEpisodeSearchQueryChange: (String) -> Unit = {},
+    /** 顶栏 ⋮「多选」的触发计数器（ OmniBeatApp 持有，期数页监听进入多选） */
+    episodeMultiSelectRequest: Int = 0,
     onOpenSubscription: (PodcastSubscription) -> Unit,
     onCloseSubscription: () -> Unit,
     onDeleteSubscription: (PodcastSubscription) -> Unit,
@@ -189,6 +193,7 @@ fun PodcastTabContent(
                 onUnsubscribe = { onDeleteSubscription(open) },
                 onDownloadMany = onDownloadEpisodes,
                 onMarkManyPlayed = onMarkEpisodesPlayed,
+                multiSelectRequest = episodeMultiSelectRequest,
                 modifier = modifier,
             )
         }
@@ -805,6 +810,7 @@ fun PodcastEpisodesScreen(
     onSearchOpenChange: (Boolean) -> Unit = {},
     onSearchQueryChange: (String) -> Unit = {},
     onBack: () -> Unit,
+    /** 下拉刷新；顶栏 ⋮ 的「刷新节目」由外层直接触发，不经本页 */
     onRefresh: () -> Unit,
     onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
     onToggleFavorite: (PodcastEpisode) -> Unit = {},
@@ -813,13 +819,18 @@ fun PodcastEpisodesScreen(
     onCancelDownload: (PodcastEpisode) -> Unit = {},
     onDeleteDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
     onExportDownload: (PodcastSubscription, PodcastEpisode) -> Unit = { _, _ -> },
-    /** 页内「更多」菜单：编辑订阅 / 取消订阅 */
+    /** 编辑 / 退订入口已移到顶栏 ⋮ 菜单（OmniBeatApp 直接调），这两个保留给兼容 */
     onEdit: () -> Unit = {},
     onUnsubscribe: () -> Unit = {},
     /** 多选批量下载 / 批量已听未听：Wi-Fi 确认与落库都由外层统一处理 */
     onDownloadMany: (PodcastSubscription, List<PodcastEpisode>) -> Unit = { _, _ -> },
     onMarkManyPlayed: (PodcastSubscription, List<PodcastEpisode>, Boolean) -> Unit =
         { _, _, _ -> },
+    /**
+     * 顶栏 ⋮「多选」的触发计数器：值变大即进入多选。
+     * 菜单入口在全局 topbar（计数器由外层持有），多选状态仍在本页。
+     */
+    multiSelectRequest: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     // 收听状态筛选（chips）：计数按全部期数算，搜索词只影响列表，不改数字
@@ -829,7 +840,6 @@ fun PodcastEpisodesScreen(
     var selectedGuids by remember(subscription.feedUrl) {
         mutableStateOf<Set<String>>(emptySet())
     }
-    var moreMenuOpen by remember { mutableStateOf(false) }
     var selectAllMenuOpen by remember { mutableStateOf(false) }
     // 长按某一期打开的单集操作弹层
     var sheetEpisode by remember(subscription.feedUrl) { mutableStateOf<PodcastEpisode?>(null) }
@@ -845,6 +855,11 @@ fun PodcastEpisodesScreen(
     // 返回键先退多选、再关搜索，最后才交给外层退出这个订阅
     BackHandler(enabled = selecting) { exitSelection() }
     BackHandler(enabled = !selecting && searchOpen) { onSearchOpenChange(false) }
+
+    // 顶栏 ⋮「多选」：计数器变化即进入（不预选任何一期，由点选 / 滑动连选补齐）
+    LaunchedEffect(multiSelectRequest) {
+        if (multiSelectRequest > 0) selecting = true
+    }
 
     val searchFocusRequester = remember { FocusRequester() }
     LaunchedEffect(searchOpen) {
@@ -1006,144 +1021,8 @@ fun PodcastEpisodesScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                // 搜索独立一个图标，⋮ 收拢排序 / 刷新 / 编辑 / 多选 / 退订
-                IconButton(
-                    onClick = { onSearchOpenChange(true) },
-                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_search),
-                        contentDescription = stringResource(
-                            R.string.podcast_episode_search_hint,
-                        ),
-                        tint = if (searchOpen) RadioPrimary else RadioTextMuted,
-                        modifier = Modifier.size(RadioSizes.iconInline),
-                    )
-                }
-                Box {
-                    IconButton(
-                        onClick = { moreMenuOpen = true },
-                        modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_more_vert),
-                            contentDescription = stringResource(R.string.podcast_more_actions),
-                            tint = if (moreMenuOpen) RadioPrimary else RadioTextMuted,
-                            modifier = Modifier.size(RadioSizes.iconInline),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = moreMenuOpen,
-                        onDismissRequest = { moreMenuOpen = false },
-                        containerColor = RadioSurface,
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.podcast_menu_sort_latest)) },
-                            trailingIcon = if (!oldestFirst) {
-                                {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_check),
-                                        contentDescription = null,
-                                        tint = RadioPrimary,
-                                        modifier = Modifier.size(RadioSizes.iconInline),
-                                    )
-                                }
-                            } else {
-                                null
-                            },
-                            onClick = {
-                                moreMenuOpen = false
-                                onOldestFirstChange(false)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.podcast_menu_sort_oldest)) },
-                            trailingIcon = if (oldestFirst) {
-                                {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_check),
-                                        contentDescription = null,
-                                        tint = RadioPrimary,
-                                        modifier = Modifier.size(RadioSizes.iconInline),
-                                    )
-                                }
-                            } else {
-                                null
-                            },
-                            onClick = {
-                                moreMenuOpen = false
-                                onOldestFirstChange(true)
-                            },
-                        )
-                        HorizontalDivider(color = RadioOutline)
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.podcast_menu_refresh)) },
-                            leadingIcon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_sync),
-                                    contentDescription = null,
-                                    tint = RadioTextMuted,
-                                    modifier = Modifier.size(RadioSizes.iconInline),
-                                )
-                            },
-                            onClick = {
-                                moreMenuOpen = false
-                                onRefresh()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.podcast_edit_title)) },
-                            leadingIcon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_edit),
-                                    contentDescription = null,
-                                    tint = RadioTextMuted,
-                                    modifier = Modifier.size(RadioSizes.iconInline),
-                                )
-                            },
-                            onClick = {
-                                moreMenuOpen = false
-                                onEdit()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.podcast_menu_multi_select)) },
-                            leadingIcon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_check),
-                                    contentDescription = null,
-                                    tint = RadioTextMuted,
-                                    modifier = Modifier.size(RadioSizes.iconInline),
-                                )
-                            },
-                            onClick = {
-                                moreMenuOpen = false
-                                selecting = true
-                            },
-                        )
-                        HorizontalDivider(color = RadioOutline)
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringResource(R.string.podcast_unsubscribe),
-                                    color = RadioDanger,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_delete),
-                                    contentDescription = null,
-                                    tint = RadioDanger,
-                                    modifier = Modifier.size(RadioSizes.iconInline),
-                                )
-                            },
-                            onClick = {
-                                moreMenuOpen = false
-                                onUnsubscribe()
-                            },
-                        )
-                    }
-                }
+                // 搜索与 ⋮ 菜单（排序 / 刷新 / 编辑 / 多选 / 退订）已移到全局 topbar，
+                // 节目名行只保留返回 + 封面 + 标题
             }
         }
 
@@ -1218,6 +1097,15 @@ fun PodcastEpisodesScreen(
         // 太短的列表不需要快速定位，保持原布局
         val showScrollbar = listItems.size > EPISODE_SCROLLBAR_MIN_COUNT
         var scrollbarIndex by remember { mutableStateOf<Int?>(null) }
+        // 多选连选拖到屏幕上下边缘时自动滚屏：否则一屏之外的期永远选不到
+        var selectionAutoScroll by remember { mutableFloatStateOf(0f) }
+        LaunchedEffect(selectionAutoScroll) {
+            if (selectionAutoScroll == 0f) return@LaunchedEffect
+            while (true) {
+                listState.scrollBy(selectionAutoScroll * EPISODE_SELECT_SCROLL_SPEED)
+                delay(SELECTION_AUTOSCROLL_FRAME_MS)
+            }
+        }
         // 切换排序 / 筛选 / 搜索词后回到顶部，否则停在原位置会让人以为列表没变
         LaunchedEffect(oldestFirst, filter, query) { listState.scrollToItem(0) }
 
@@ -1240,7 +1128,9 @@ fun PodcastEpisodesScreen(
                         // 多选时按住某行上下滑动：把手指经过的行连续选上（普通滑动仍是滚动）
                         .pointerInput(selecting, listItems) {
                             if (!selecting) return@pointerInput
-                            var anchor: Int? = null
+                            // 上一步落点：只处理两步之间的增量区间，拖回去才能逐项还原
+                            var lastIndex: Int? = null
+                            val edgePx = EPISODE_SELECT_EDGE_ZONE.toPx()
 
                             fun guidAt(index: Int?): String? {
                                 if (index == null) return null
@@ -1251,24 +1141,51 @@ fun PodcastEpisodesScreen(
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { offset ->
                                     val index = lazyItemIndexAt(listState, offset.y)
-                                    anchor = index
+                                    lastIndex = index
                                     guidAt(index)?.let { guid ->
-                                        selectedGuids = selectedGuids + guid
+                                        selectedGuids = if (guid in selectedGuids) {
+                                            selectedGuids - guid
+                                        } else {
+                                            selectedGuids + guid
+                                        }
                                     }
                                 },
                                 onDrag = { change, _ ->
                                     change.consume()
-                                    val from = anchor
                                     val to = lazyItemIndexAt(listState, change.position.y)
-                                    if (from != null && to != null) {
-                                        val range = if (from <= to) from..to else to..from
-                                        selectedGuids = selectedGuids + range
-                                            .mapNotNull { guidAt(it) }
-                                            .toSet()
+                                    val from = lastIndex
+                                    if (from != null && to != null && to != from) {
+                                        val step = if (to > from) 1 else -1
+                                        var i = from
+                                        while (i != to) {
+                                            i += step
+                                            guidAt(i)?.let { guid ->
+                                                // 常规划动选择：逐项看自己的状态翻转——
+                                                // 未选→已选，已选→未选（与单击切换同一套语义）
+                                                selectedGuids = if (guid in selectedGuids) {
+                                                    selectedGuids - guid
+                                                } else {
+                                                    selectedGuids + guid
+                                                }
+                                            }
+                                        }
+                                    }
+                                    lastIndex = to
+                                    // 拖到上下边缘：交给自动滚屏循环处理
+                                    selectionAutoScroll = when {
+                                        change.position.y < edgePx -> -1f
+                                        change.position.y > size.height - edgePx -> 1f
+                                        else -> 0f
                                     }
                                 },
-                                onDragEnd = { anchor = null },
-                                onDragCancel = { anchor = null },
+                                onDragEnd = {
+                                    lastIndex = null
+                                    selectionAutoScroll = 0f
+                                },
+                                onDragCancel = {
+                                    lastIndex = null
+                                    selectionAutoScroll = 0f
+                                },
                             )
                         },
                     contentPadding = PaddingValues(bottom = RadioSpacing.small),
@@ -1325,6 +1242,7 @@ fun PodcastEpisodesScreen(
                                         // 分组头下方第一行不画分隔线
                                         showDivider = index > 0 &&
                                             listItems[index - 1] is EpisodeListItem.Row,
+                                        marqueeTitle = marqueeTitles,
                                         onClick = {
                                             if (selecting) {
                                                 val next = if (
@@ -1348,10 +1266,6 @@ fun PodcastEpisodesScreen(
                                             null
                                         } else {
                                             ({ sheetEpisode = episode })
-                                        },
-                                        onSwipeSelect = {
-                                            selecting = true
-                                            selectedGuids = selectedGuids + episode.guid
                                         },
                                     )
                                 }
@@ -1656,7 +1570,7 @@ private fun EpisodeMonthHeader(item: EpisodeListItem.Month) {
         Text(
             text = stringResource(R.string.podcast_month_header, item.year, item.month),
             color = Color(0xFF928CA2),
-            fontSize = 11.5.sp,
+            fontSize = 13.5.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.6.sp,
             maxLines = 1,
@@ -1668,7 +1582,7 @@ private fun EpisodeMonthHeader(item: EpisodeListItem.Month) {
 
 /**
  * 期数行（设计稿）：标题单行，meta 行内联日期 / 时长 / 进度 / 徽标 / 收藏，底部 2dp 进度条。
- * 行内不再放收藏与下载按钮——长按弹「单集操作」，左滑进多选。
+ * 行内不再放收藏与下载按钮——长按弹「单集操作」；多选从页头 ⋮ 菜单进入。
  */
 @Composable
 private fun PodcastEpisodeListRow(
@@ -1678,9 +1592,10 @@ private fun PodcastEpisodeListRow(
     selected: Boolean?,
     downloadState: PodcastDownloadState?,
     showDivider: Boolean,
+    /** 超长标题滚动显示（跟随设置里的「标题滚动」开关）；false 维持截断 */
+    marqueeTitle: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)?,
-    onSwipeSelect: () -> Unit,
 ) {
     val primary = RadioPrimary
     val totalSec = episode.durationSec
@@ -1725,28 +1640,6 @@ private fun PodcastEpisodeListRow(
                         )
                     }
                 }
-                // 左滑进多选（自动选中这一期）；纵向滑动仍是列表滚动
-                .pointerInput(selected == null) {
-                    if (selected != null) return@pointerInput
-                    var dragged = 0f
-                    var fired = false
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            dragged = 0f
-                            fired = false
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            dragged += dragAmount
-                            if (!fired && dragged < -56.dp.toPx()) {
-                                fired = true
-                                change.consume()
-                                onSwipeSelect()
-                            }
-                        },
-                        onDragEnd = { dragged = 0f },
-                        onDragCancel = { dragged = 0f },
-                    )
-                }
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         ) {
@@ -1763,7 +1656,20 @@ private fun PodcastEpisodeListRow(
                     fontSize = 15.sp,
                     fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    // 滚动模式下必须 Clip：Ellipsis 会抢在 marquee 之前把文本截断
+                    overflow = if (marqueeTitle) {
+                        TextOverflow.Clip
+                    } else {
+                        TextOverflow.Ellipsis
+                    },
+                    modifier = if (marqueeTitle) {
+                        Modifier.basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            repeatDelayMillis = 1_500,
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1793,28 +1699,31 @@ private fun PodcastEpisodeListRow(
                         EpisodeMetaDot()
                     }
                     when {
-                        inProgress && percent > 0 -> Text(
-                            text = stringResource(
-                                R.string.podcast_progress_inline,
-                                percent,
-                                formatDuration(listenedSec),
-                            ),
+                        // 听过：百分比 + 已听时长；时长缺省（RSS 没给）就只显示已听时长
+                        inProgress -> Text(
+                            text = if (percent > 0) {
+                                stringResource(
+                                    R.string.podcast_progress_inline,
+                                    percent,
+                                    formatDuration(listenedSec),
+                                )
+                            } else {
+                                formatDuration(listenedSec)
+                            },
                             color = primary,
                             fontSize = 11.5.sp,
                             maxLines = 1,
                         )
 
+                        // 听完只标 100%：不带已听时长；主色加粗比在听的进度更醒目
                         episode.completed -> Text(
-                            text = stringResource(R.string.podcast_listened_progress_full),
-                            color = RadioTextMuted,
+                            text = "100%",
+                            color = primary,
                             fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                         )
-
-                        else -> EpisodeBadge(
-                            text = stringResource(R.string.podcast_badge_unplayed),
-                            color = primary,
-                        )
+                        // 未读不挂徽标：meta 行没有任何进度信息自然就是未读
                     }
                     when {
                         downloading -> EpisodeBadge(
@@ -1827,12 +1736,7 @@ private fun PodcastEpisodeListRow(
                             color = RadioTextMuted,
                         )
                     }
-                    if (episode.completed) {
-                        EpisodeBadge(
-                            text = stringResource(R.string.podcast_completed),
-                            color = Color(0xFF8FD99B),
-                        )
-                    }
+                    // 听完不再挂「已听完」徽标：meta 里的 100% 已经说明状态
                     if (episode.favorite) {
                         Icon(
                             painter = painterResource(R.drawable.ic_favorite),
@@ -1923,14 +1827,14 @@ private fun EpisodeFilterChip(label: String, selected: Boolean, onClick: () -> U
     Text(
         text = label,
         color = if (selected) RadioOnPrimary else RadioTextMuted,
-        fontSize = 12.5.sp,
+        fontSize = 11.5.sp,
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         maxLines = 1,
         modifier = Modifier
-            .clip(RoundedCornerShape(11.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(if (selected) RadioPrimary else RadioSurface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 7.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
     )
 }
 
@@ -2009,6 +1913,15 @@ private fun formatEpisodeDateShort(epochMs: Long): String {
 
 /** 期数超过这个数量才显示可拖动滚动条：太短的列表反而被它占掉右侧空间 */
 private const val EPISODE_SCROLLBAR_MIN_COUNT = 20
+
+/** 多选连选：拖到距屏幕上下边缘这个距离内开始自动滚屏 */
+private val EPISODE_SELECT_EDGE_ZONE = 72.dp
+
+/** 多选连选：自动滚屏每帧滚动的 px（16ms 一帧，合计约 840px/s） */
+private const val EPISODE_SELECT_SCROLL_SPEED = 14f
+
+/** 多选连选：自动滚屏的帧间隔 */
+private const val SELECTION_AUTOSCROLL_FRAME_MS = 16L
 
 /** 期数页头部的轻量图标按钮（返回 / 搜索 / ⋮）：40dp，比 53dp 的顶栏按钮小一档，少挤标题宽度 */
 private val HEADER_ICON_BUTTON_SIZE = 40.dp
@@ -2291,43 +2204,36 @@ private fun PodcastEpisodeRow(
     /** meta 行过长时跑马灯滚动（仍只一行）；false 维持省略号 */
     marqueeMeta: Boolean = false,
 ) {
-    // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完。
-    // 有总长时显示「百分比 + 当前/总长」——一眼看出听到哪儿；总长拿不到
-    // （feed 没给 durationSec）就只显示当前进度。百分比打满 100% 时只给
-    // 「100%」：满进度再报当前/总长是纯噪音。
+    // 进度文案与期数页统一：在听显示「百分比 · 已听时长」（总长拿不到就只给
+    // 已听时长），听完只给 100%，未听不给任何进度信息。
     val currentSec = (episode.positionMs / 1000L).toInt()
     val totalSec = episode.durationSec
-    val progressHasTotal = episode.positionMs > 0L && totalSec > 0
     val progressText = when {
-        progressHasTotal -> {
-            val percent = (episode.positionMs * 100 / (totalSec * 1000L))
-                .toInt()
-                .coerceIn(0, 100)
-            if (percent >= 100) {
-                stringResource(R.string.podcast_listened_progress_full)
+        episode.positionMs > 0L && !episode.completed -> {
+            val percent = if (totalSec > 0) {
+                (episode.positionMs * 100 / (totalSec * 1000L)).toInt().coerceIn(0, 100)
             } else {
+                0
+            }
+            if (percent > 0) {
                 stringResource(
-                    R.string.podcast_listened_progress_with_total,
+                    R.string.podcast_progress_inline,
                     percent,
                     formatDuration(currentSec),
-                    formatDuration(totalSec),
                 )
+            } else {
+                formatDuration(currentSec)
             }
         }
 
-        episode.positionMs > 0L -> stringResource(
-            R.string.podcast_listened_progress,
-            formatDuration(currentSec),
-        )
-
-        episode.completed -> stringResource(R.string.podcast_completed)
+        episode.completed -> stringResource(R.string.podcast_listened_progress_full)
         else -> ""
     }
-    // 进度文案里已带总长时不再单独显示一份，避免「45:00 · 28% 12:34/45:00」重复
+    // 总长照常显示（期数页也是「日期 · 总长 · 进度」的顺序），进度里不再重复总长
     val meta = listOfNotNull(
         metaPrefix?.takeIf { it.isNotBlank() },
         formatEpisodeDate(episode.publishedAtMs),
-        if (progressHasTotal) "" else formatDuration(totalSec),
+        formatDuration(totalSec),
         progressText,
     ).filter { it.isNotEmpty() }.joinToString(" · ")
 

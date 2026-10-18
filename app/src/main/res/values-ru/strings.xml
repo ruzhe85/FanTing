@@ -251,8 +251,8 @@
     <string name="podcast_episode_search_empty">Нет подходящих выпусков</string>
     <string name="podcast_more_actions">Другие действия</string>
     <string name="podcast_unsubscribe">Отписаться</string>
-    <string name="podcast_menu_sort_latest">Сортировка: сначала новые</string>
-    <string name="podcast_menu_sort_oldest">Сортировка: сначала старые</string>
+    <string name="podcast_sort_latest_first">Сначала новые</string>
+    <string name="podcast_sort_earliest_first">Сначала старые</string>
     <string name="podcast_menu_refresh">Обновить подкаст</string>
     <string name="podcast_menu_multi_select">Мультивыбор</string>
     <string name="podcast_filter_all">Все %1$d</string>
@@ -260,7 +260,6 @@
     <string name="podcast_filter_in_progress">В процессе %1$d</string>
     <string name="podcast_filter_completed">Прослушанные %1$d</string>
     <string name="podcast_month_header">%2$d.%1$d</string>
-    <string name="podcast_badge_unplayed">Не прослушано</string>
     <string name="podcast_badge_downloading">Загрузка</string>
     <string name="podcast_progress_inline">%1$d%% · %2$s</string>
     <string name="podcast_selection_cancel">Выйти из выбора</string>
