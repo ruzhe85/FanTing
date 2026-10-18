@@ -589,6 +589,8 @@ private fun ExpandedPlayerPanel(
 /** 直播小圆点：5dp 主色圆点 + 3dp 光晕，比原来的实色 pill 更克制 */
 @Composable
 private fun LiveDot() {
+    // 颜色必须在 composable 上下文取好：DrawScope 里的 lambda 不是 @Composable
+    val primary = RadioPrimary
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -596,8 +598,8 @@ private fun LiveDot() {
             .size(11.dp),
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            drawCircle(color = RadioPrimary.copy(alpha = 0.18f), radius = size.minDimension / 2f)
-            drawCircle(color = RadioPrimary, radius = size.minDimension / 2f * 0.55f)
+            drawCircle(color = primary.copy(alpha = 0.18f), radius = size.minDimension / 2f)
+            drawCircle(color = primary, radius = size.minDimension / 2f * 0.55f)
         }
     }
 }
@@ -753,6 +755,9 @@ private fun CompactSeekBar(
     val playedFraction = (positionMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f)
     val shownFraction = if (scrubbing) scrubFraction else playedFraction
     val shownPosition = if (scrubbing) (scrubFraction * totalMs).toLong() else positionMs
+    // DrawScope 的 lambda 不是 @Composable，颜色先取出来
+    val primary = RadioPrimary
+    val outline = RadioOutline
 
     Box(
         modifier = Modifier
@@ -786,7 +791,7 @@ private fun CompactSeekBar(
             val centerY = size.height / 2f
             val radius = trackHeight / 2f
             drawRoundRect(
-                color = RadioOutline,
+                color = outline,
                 topLeft = Offset(0f, centerY - radius),
                 size = Size(size.width, trackHeight),
                 cornerRadius = CornerRadius(radius, radius),
@@ -794,14 +799,14 @@ private fun CompactSeekBar(
             val activeWidth = size.width * shownFraction
             if (activeWidth > 0f) {
                 drawRoundRect(
-                    color = RadioPrimary,
+                    color = primary,
                     topLeft = Offset(0f, centerY - radius),
                     size = Size(activeWidth, trackHeight),
                     cornerRadius = CornerRadius(radius, radius),
                 )
             }
             drawCircle(
-                color = RadioPrimary,
+                color = primary,
                 radius = 5.dp.toPx(),
                 center = Offset(activeWidth.coerceIn(0f, size.width), centerY),
             )
