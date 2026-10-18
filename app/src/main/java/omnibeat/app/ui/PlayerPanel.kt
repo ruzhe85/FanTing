@@ -136,6 +136,8 @@ fun PlayerPanel(
     onRandomStation: () -> Unit,
     onSeek: (Long) -> Unit = {},
     onSpeedChange: (Float) -> Unit = {},
+    /** 点信息区的动作。null = 保持默认（有曲目文本时复制到剪贴板）；播客单集传「跳到该订阅」 */
+    onContentClick: (() -> Unit)? = null,
 ) {
     var showStreamInfo by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -154,7 +156,10 @@ fun PlayerPanel(
     } else {
         errorText ?: if (showPlayerMetadata) {
             when (trackStatus) {
-                PlaybackTrackStatus.NoMetadata, PlaybackTrackStatus.WaitingMetadata -> null
+                // 停止 / 无元数据 / 等待元数据：副行不留状态占位，只留 LIVE
+                PlaybackTrackStatus.Stopped,
+                PlaybackTrackStatus.NoMetadata,
+                PlaybackTrackStatus.WaitingMetadata -> null
                 null -> trackText.takeIf { it.isNotBlank() }
                 else -> trackStatus?.let { trackStatusText(it) }
             }
@@ -168,18 +173,24 @@ fun PlayerPanel(
     } else {
         null
     }
-    // 折叠态没有展开区那行流参数，码率一律并进副行
-    val collapsedSubtitle: String? = listOfNotNull(subtitle, bitratePart)
-        .joinToString(" · ")
-        .takeIf { it.isNotBlank() }
+    // 折叠态的码率作为独立子项渲染，不拼进元数据串：元数据过长时它会先被截断，
+    // 码率始终留在行内可见（拼成一串的话，长曲目会把「· 128 kbps」整段吃掉）
+    val collapsedSubtitle: String? = subtitle
+    val collapsedBitrate: String? = bitratePart
     // 展开态：直播的中段已经在展示码率，不重复；点播的中段被进度条占用，码率并进副行
-    val expandedSubtitle: String? = if (onDemand) collapsedSubtitle else subtitle
+    val expandedSubtitle: String? = if (onDemand) {
+        listOfNotNull(subtitle, bitratePart).joinToString(" · ").takeIf { it.isNotBlank() }
+    } else {
+        subtitle
+    }
     val paramsText = listOfNotNull(bitratePart, streamInfo.sampleRateText, streamInfo.formatLabel)
         .joinToString(" · ")
     val hasActivePlaybackRequest = isPlaying || loading
 
     val onInfoClick: () -> Unit = {
-        if (trackStatus == null && trackText.isNotBlank()) {
+        if (onContentClick != null) {
+            onContentClick()
+        } else if (trackStatus == null && trackText.isNotBlank()) {
             copyTextToClipboard(context = context, label = trackClipboardLabel, text = trackText)
             android.widget.Toast.makeText(context, trackCopiedText, android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -197,6 +208,7 @@ fun PlayerPanel(
             CollapsedPlayerBar(
                 title = station?.title.orEmpty(),
                 subtitle = collapsedSubtitle,
+                bitrateText = collapsedBitrate,
                 isLive = !onDemand && station != null,
                 loading = loading,
                 hasActivePlaybackRequest = hasActivePlaybackRequest,
@@ -261,6 +273,7 @@ fun PlayerPanel(
 private fun CollapsedPlayerBar(
     title: String,
     subtitle: String?,
+    bitrateText: String?,
     isLive: Boolean,
     loading: Boolean,
     hasActivePlaybackRequest: Boolean,
@@ -323,12 +336,12 @@ private fun CollapsedPlayerBar(
             } else {
                 subtitle
             }
-            if (isLive || sub != null) {
+            if (isLive || sub != null || bitrateText != null) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 1.dp),
+                        .padding(top = 3.dp),
                 ) {
                     if (isLive) {
                         LiveBadge()
@@ -344,7 +357,9 @@ private fun CollapsedPlayerBar(
                             overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
                             softWrap = false,
                             modifier = Modifier
-                                .weight(1f)
+                                // fill = false：短元数据不占满整行，码率紧跟在后面；
+                                // 长元数据仍会在分配到的宽度里截断，不会把码率挤出屏幕
+                                .weight(1f, fill = false)
                                 .then(
                                     if (marquee) {
                                         Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
@@ -352,6 +367,17 @@ private fun CollapsedPlayerBar(
                                         Modifier
                                     },
                                 ),
+                        )
+                    }
+                    if (bitrateText != null) {
+                        Text(
+                            text = bitrateText,
+                            color = RadioTextMuted,
+                            style = TightTextStyle,
+                            fontSize = 10.5.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 6.dp),
                         )
                     }
                 }
@@ -490,7 +516,7 @@ private fun ExpandedPlayerPanel(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 1.dp),
+                            .padding(top = 3.dp),
                     ) {
                         if (isLive) {
                             LiveBadge()

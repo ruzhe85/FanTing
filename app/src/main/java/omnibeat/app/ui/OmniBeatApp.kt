@@ -1725,6 +1725,38 @@ fun OmniBeatApp() {
             onDispose { saveEpisodeProgress(progressScope) }
         }
 
+        /** 把订阅里的一期包成播放描述：面板预显示与实际起播共用同一套字段 */
+        fun stationForEpisode(
+            subscription: PodcastSubscription,
+            episode: PodcastEpisode,
+            streamUrl: String? = null,
+        ): Station = Station(
+            id = episode.guid,
+            title = episode.title,
+            streamUrl = streamUrl ?: episode.audioUrl,
+            tags = emptyList(),
+            imageUrl = subscription.imageUrl,
+            isFavorite = false,
+            dateAdded = "",
+            // 系统播放栏的「歌手」位挂订阅名：通知/锁屏显示「单集标题 / 播客名」
+            artist = subscription.title,
+        )
+
+        /**
+         * 上次播放的是播客单集时，从订阅里把那一期找回来。
+         *
+         * lastPlayedStationId 对电台和单集都会写，两边 id 空间不同：
+         * 先在电台列表里找，找不到才按单集 guid 搜订阅。
+         */
+        fun findResumeEpisode(): Pair<PodcastSubscription, PodcastEpisode>? {
+            val id = lastPlayedStationId ?: return null
+            if (stations.any { it.id == id }) return null
+            return podcastSubscriptions.asSequence()
+                .filter { !it.hidden }
+                .flatMap { subscription -> subscription.episodes.asSequence().map { subscription to it } }
+                .firstOrNull { (_, episode) -> episode.guid == id }
+        }
+
         /**
          * 播放单集：交给 PlaybackService 的独立入口（点播语义、可拖进度、可倍速）。
          * 单集只作为「播放描述」传过去，不写进电台库。
@@ -1756,17 +1788,7 @@ fun OmniBeatApp() {
             expandPlayerPanelForUserPlaybackRequest()
             PlaybackService.playEpisode(
                 context = context,
-                episode = Station(
-                    id = episode.guid,
-                    title = episode.title,
-                    streamUrl = localUri ?: episode.audioUrl,
-                    tags = emptyList(),
-                    imageUrl = subscription.imageUrl,
-                    isFavorite = false,
-                    dateAdded = "",
-                    // 系统播放栏的「歌手」位挂订阅名：通知/锁屏显示「单集标题 / 播客名」
-                    artist = subscription.title,
-                ),
+                episode = stationForEpisode(subscription, episode, streamUrl = localUri),
                 // 听完的期从头播；否则从上次位置继续
                 startPositionMs = if (episode.completed) 0L else episode.positionMs,
                 speed = podcastPlaybackSpeed,
@@ -1785,6 +1807,15 @@ fun OmniBeatApp() {
          */
         fun playAdjacentEpisode(direction: Int): Boolean {
             val (subscription, episode) = currentEpisode() ?: return false
+            return playAdjacentEpisodeOf(subscription, episode, direction)
+        }
+
+        /** 从指定的一期切相邻一期；面板预显示「上次播放的单集」时也用这条 */
+        fun playAdjacentEpisodeOf(
+            subscription: PodcastSubscription,
+            episode: PodcastEpisode,
+            direction: Int,
+        ): Boolean {
             val index = subscription.episodes.indexOfFirst { it.guid == episode.guid }
             if (index == -1) return false
             val step = if (podcastEpisodesOldestFirst) -direction else direction
@@ -2250,6 +2281,14 @@ fun OmniBeatApp() {
 
         fun playOrPause() {
             val hasActivePlaybackRequest = playbackState.isPlaying || playbackState.resolving || playbackState.buffering
+            // 面板上预显示的是「上次播放的单集」：点播放直接续播那一期
+            if (!hasActivePlaybackRequest && playbackState.selectedStation == null) {
+                val resume = findResumeEpisode()
+                if (resume != null) {
+                    playPodcastEpisode(resume.first, resume.second)
+                    return
+                }
+            }
             // 播客页：还没选过具体一期时，点播放就播当前订阅的最新一期（避免"点了没反应"）
             if (selectedPage == MainPage.Podcasts &&
                 !hasActivePlaybackRequest &&
@@ -2461,16 +2500,53 @@ fun OmniBeatApp() {
                     )
                 },
                 bottomBar = {
-                    // 播客 Tab 且未点进订阅、同时没有内容在播时隐藏面板（避免出现"点了没反应"的播放按钮）；
-                    // 若正在播电台或某一期则保留面板，否则无法暂停/停止
+                    // 面板只在「有内容可播」时出现：正在播/暂停中的内容，或上次播过且该电台还在列表里。
+                    // 上次播放的内容（电台或播客单集）直接作为面板内容显示，
+                    // 不显示「未在播放 / 点播放键继续上次的电台」这类占位提示。
+                    val playing = playbackState.selectedStation != null
+                    val resumeEpisode = if (playing) null else findResumeEpisode()
+                    val resumeStation = if (playing) {
+                        null
+                    } else {
+                        lastPlayedStationId?.let { id -> stations.firstOrNull { it.id == id } }
+                    }
+                    val panelStation = playbackState.selectedStation
+                        ?: resumeStation
+                        ?: resumeEpisode?.let { (subscription, episode) ->
+                            stationForEpisode(subscription, episode)
+                        }
+                    // 预显示单集时按点播形态渲染：封面 / 副行 / 进度都取订阅里的那一期
+                    val panelSeekable = if (playing) playbackState.seekable else resumeEpisode != null
+                    val panelDurationMs = if (playing) {
+                        playbackState.durationMs
+                    } else {
+                        resumeEpisode?.second?.durationSec?.times(1000L) ?: 0L
+                    }
+                    val panelPositionMs = if (playing) {
+                        playbackState.positionMs
+                    } else {
+                        resumeEpisode?.second?.positionMs ?: 0L
+                    }
                     val showPlayerPanel =
                         (selectedPage in visibleTabPages || selectedPage == MainPage.SearchOnline) &&
-                            !(selectedPage == MainPage.Podcasts &&
-                                openPodcastUrl == null &&
-                                playbackState.selectedStation == null)
+                            panelStation != null
+                    // 播客单集：点面板信息区直接回到它所属订阅的期数列表；电台保持原来的「复制曲目」
+                    val openEpisodeSubscription: (() -> Unit)? = if (panelSeekable) {
+                        {
+                            val pair = currentEpisode() ?: findResumeEpisode()
+                            if (pair != null) {
+                                if (selectedPage != MainPage.Podcasts) {
+                                    selectMainPage(MainPage.Podcasts)
+                                }
+                                openPodcast(pair.first)
+                            }
+                        }
+                    } else {
+                        null
+                    }
                     if (showPlayerPanel) {
                         PlayerPanel(
-                            station = playbackState.selectedStation,
+                            station = panelStation,
                             trackText = playbackState.trackText,
                             trackStatus = playbackState.trackStatus,
                             errorText = playbackState.errorText,
@@ -2481,9 +2557,9 @@ fun OmniBeatApp() {
                             showPlayerMetadata = showPlayerMetadata,
                             marqueeTrackTitle = marqueeTrackTitle,
                             collapsed = playerPanelCollapsed,
-                            positionMs = playbackState.positionMs,
-                            durationMs = playbackState.durationMs,
-                            seekable = playbackState.seekable,
+                            positionMs = panelPositionMs,
+                            durationMs = panelDurationMs,
+                            seekable = panelSeekable,
                             onCollapsedChange = { collapsed ->
                                 playerPanelCollapsed = collapsed
                                 scope.launch { repository.savePlayerPanelCollapsed(collapsed) }
@@ -2501,10 +2577,26 @@ fun OmniBeatApp() {
                                 saveEpisodeProgress()
                                 PlaybackService.stop(context)
                             },
-                            // 单集时切相邻一期；否则维持原来的电台切台
-                            onPreviousStation = { if (!playAdjacentEpisode(-1)) playAdjacentStation(-1) },
-                            onNextStation = { if (!playAdjacentEpisode(1)) playAdjacentStation(1) },
+                            // 单集时切相邻一期；预显示上次单集时也切它所在订阅的相邻一期；
+                            // 其余情况维持原来的电台切台
+                            onPreviousStation = {
+                                val resume = if (playbackState.selectedStation == null) findResumeEpisode() else null
+                                if (resume != null) {
+                                    playAdjacentEpisodeOf(resume.first, resume.second, -1)
+                                } else if (!playAdjacentEpisode(-1)) {
+                                    playAdjacentStation(-1)
+                                }
+                            },
+                            onNextStation = {
+                                val resume = if (playbackState.selectedStation == null) findResumeEpisode() else null
+                                if (resume != null) {
+                                    playAdjacentEpisodeOf(resume.first, resume.second, 1)
+                                } else if (!playAdjacentEpisode(1)) {
+                                    playAdjacentStation(1)
+                                }
+                            },
                             onRandomStation = { playRandomStation() },
+                            onContentClick = openEpisodeSubscription,
                         )
                     }
                 },
