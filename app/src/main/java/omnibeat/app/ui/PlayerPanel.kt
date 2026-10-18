@@ -57,6 +57,8 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -87,7 +89,13 @@ private val COLLAPSED_HEIGHT = 64.dp
 private val EXPANDED_TOP_PADDING = 12.dp
 private val EXPANDED_BOTTOM_PADDING = 14.dp
 private val EXPANDED_ARTWORK_SIZE = 42.dp
-private val EXPANDED_ROW_HEIGHT = 42.dp
+
+/**
+ * 展开态信息行的高度。
+ * 封面只有 42dp，但两行文字（标题 18sp 行高 + 副行 14sp 行高）加上字体内边距后
+ * 实际要 39–41dp，行高卡在 42 会把副行裁掉半截 —— 所以这一行按文字给到 46dp，封面在行内居中。
+ */
+private val EXPANDED_ROW_HEIGHT = 46.dp
 private val EXPANDED_MID_HEIGHT = 21.dp
 private val CONTROL_ROW_HEIGHT = 44.dp
 private val PLAY_BUTTON_SIZE = 44.dp
@@ -95,6 +103,12 @@ private val SIDE_BUTTON_SIZE = 38.dp
 private val SECONDARY_BUTTON_SIZE = 34.dp
 private val COLLAPSED_CHEVRON_SIZE = 28.dp
 private val EXPANDED_CHEVRON_SIZE = 26.dp
+
+/**
+ * 关掉字体内边距：默认 includeFontPadding 会在每行上下各留 2–3dp，
+ * 两行文本因此永远贴不紧。关掉后 Text 高度严格等于 lineHeight，行间距才是真的 1–2dp。
+ */
+private val TightTextStyle = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false))
 
 @Composable
 fun PlayerPanel(
@@ -133,11 +147,17 @@ fun PlayerPanel(
     val onDemand = seekable
     // 播客单集是 HLS 点播，没有 ICY 元数据层；单集时第二行只在出错时出现。
     // 电台保留「曲目名 / 播放状态」逻辑（那边有 ICY 元数据，有信息量）。
+    // 元数据和码率一样「没有就不占位」：无元数据 / 等待元数据时不再显示占位文案，
+    // 即使设置里开着显示元数据 —— 副行只留 LIVE，不留一行「暂无元数据」。
     val displayTrackText: String? = if (onDemand) {
         errorText?.takeIf { it.isNotBlank() }
     } else {
         errorText ?: if (showPlayerMetadata) {
-            trackStatus?.let { trackStatusText(it) } ?: trackText
+            when (trackStatus) {
+                PlaybackTrackStatus.NoMetadata, PlaybackTrackStatus.WaitingMetadata -> null
+                null -> trackText.takeIf { it.isNotBlank() }
+                else -> trackStatus?.let { trackStatusText(it) }
+            }
         } else {
             null
         }
@@ -148,6 +168,12 @@ fun PlayerPanel(
     } else {
         null
     }
+    // 折叠态没有展开区那行流参数，码率一律并进副行
+    val collapsedSubtitle: String? = listOfNotNull(subtitle, bitratePart)
+        .joinToString(" · ")
+        .takeIf { it.isNotBlank() }
+    // 展开态：直播的中段已经在展示码率，不重复；点播的中段被进度条占用，码率并进副行
+    val expandedSubtitle: String? = if (onDemand) collapsedSubtitle else subtitle
     val paramsText = listOfNotNull(bitratePart, streamInfo.sampleRateText, streamInfo.formatLabel)
         .joinToString(" · ")
     val hasActivePlaybackRequest = isPlaying || loading
@@ -170,7 +196,7 @@ fun PlayerPanel(
         if (collapsed) {
             CollapsedPlayerBar(
                 title = station?.title.orEmpty(),
-                subtitle = subtitle,
+                subtitle = collapsedSubtitle,
                 isLive = !onDemand && station != null,
                 loading = loading,
                 hasActivePlaybackRequest = hasActivePlaybackRequest,
@@ -188,7 +214,7 @@ fun PlayerPanel(
             ExpandedPlayerPanel(
                 imageUrl = station?.imageUrl,
                 title = station?.title.orEmpty(),
-                subtitle = subtitle,
+                subtitle = expandedSubtitle,
                 isLive = !onDemand && station != null,
                 loading = loading,
                 paramsText = paramsText,
@@ -265,7 +291,9 @@ private fun CollapsedPlayerBar(
                 Text(
                     text = title.ifBlank { stringResource(R.string.player_not_playing) },
                     color = if (title.isBlank()) RadioTextMuted else RadioText,
+                    style = TightTextStyle,
                     fontSize = 15.sp,
+                    lineHeight = 19.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
@@ -295,33 +323,37 @@ private fun CollapsedPlayerBar(
             } else {
                 subtitle
             }
-            if (sub != null) {
+            if (isLive || sub != null) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp),
+                        .padding(top = 1.dp),
                 ) {
                     if (isLive) {
-                        LiveDot()
+                        LiveBadge()
                     }
-                    Text(
-                        text = sub,
-                        color = RadioTextMuted,
-                        fontSize = 11.5.sp,
-                        maxLines = 1,
-                        overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
-                        softWrap = false,
-                        modifier = Modifier
-                            .weight(1f)
-                            .then(
-                                if (marquee) {
-                                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                    )
+                    if (sub != null) {
+                        Text(
+                            text = sub,
+                            color = RadioTextMuted,
+                            style = TightTextStyle,
+                            fontSize = 11.5.sp,
+                            lineHeight = 15.sp,
+                            maxLines = 1,
+                            overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+                            softWrap = false,
+                            modifier = Modifier
+                                .weight(1f)
+                                .then(
+                                    if (marquee) {
+                                        Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                        )
+                    }
                 }
             }
         }
@@ -332,11 +364,13 @@ private fun CollapsedPlayerBar(
             enabled = enabled,
             onClick = onPrevious,
         )
+        Spacer(Modifier.width(4.dp))
         PlayButton(
             hasActivePlaybackRequest = hasActivePlaybackRequest,
             onClick = onPlayPause,
             onLongClick = onStop,
         )
+        Spacer(Modifier.width(4.dp))
         PanelIconButton(
             painter = painterResource(R.drawable.ic_skip_next),
             size = SIDE_BUTTON_SIZE,
@@ -344,6 +378,8 @@ private fun CollapsedPlayerBar(
             enabled = enabled,
             onClick = onNext,
         )
+        // 下一台与折叠箭头之间留出隔离带，避免点前进时误触展开
+        Spacer(Modifier.width(8.dp))
         PanelIconButton(
             painter = painterResource(R.drawable.ic_player_collapse),
             size = COLLAPSED_CHEVRON_SIZE,
@@ -417,7 +453,9 @@ private fun ExpandedPlayerPanel(
                     Text(
                         text = title.ifBlank { stringResource(R.string.player_not_playing) },
                         color = if (title.isBlank()) RadioTextMuted else RadioText,
-                        fontSize = 14.5.sp,
+                        style = TightTextStyle,
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
@@ -447,33 +485,37 @@ private fun ExpandedPlayerPanel(
                 } else {
                     subtitle
                 }
-                if (sub != null) {
+                if (isLive || sub != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 2.dp),
+                            .padding(top = 1.dp),
                     ) {
                         if (isLive) {
-                            LiveDot()
+                            LiveBadge()
                         }
-                        Text(
-                            text = sub,
-                            color = RadioTextMuted,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
-                            softWrap = false,
-                            modifier = Modifier
-                                .weight(1f)
-                                .then(
-                                    if (marquee) {
-                                        Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                        )
+                        if (sub != null) {
+                            Text(
+                                text = sub,
+                                color = RadioTextMuted,
+                                style = TightTextStyle,
+                                fontSize = 11.5.sp,
+                                lineHeight = 15.sp,
+                                maxLines = 1,
+                                overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+                                softWrap = false,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .then(
+                                        if (marquee) {
+                                            Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 1_500)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                            )
+                        }
                     }
                 }
             }
@@ -586,21 +628,29 @@ private fun ExpandedPlayerPanel(
     }
 }
 
-/** 直播小圆点：5dp 主色圆点 + 3dp 光晕，比原来的实色 pill 更克制 */
+/** 直播标识：小圆点 + LIVE 文字；比原来的实色 pill 克制，但文字保留，一眼能认出是直播 */
 @Composable
-private fun LiveDot() {
+private fun LiveBadge() {
     // 颜色必须在 composable 上下文取好：DrawScope 里的 lambda 不是 @Composable
     val primary = RadioPrimary
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .padding(end = 5.dp)
-            .size(11.dp),
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(end = 6.dp),
     ) {
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(Modifier.size(9.dp)) {
             drawCircle(color = primary.copy(alpha = 0.18f), radius = size.minDimension / 2f)
-            drawCircle(color = primary, radius = size.minDimension / 2f * 0.55f)
+            drawCircle(color = primary, radius = size.minDimension / 2f * 0.5f)
         }
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = stringResource(R.string.player_live_badge),
+            color = primary,
+            fontSize = 9.5.sp,
+            lineHeight = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.4.sp,
+            maxLines = 1,
+        )
     }
 }
 
