@@ -1,10 +1,17 @@
 package omnibeat.app.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,17 +22,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,6 +49,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -50,11 +62,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -765,11 +782,14 @@ private fun SubscriptionMenu(
 }
 
 /**
- * 期数页：排序、搜索、编辑/退订与多选批量操作全部收在页内，顶栏不再放重复入口。
+ * 期数页（按设计稿）：状态 chips + 按月分组 + 页头 ⋮ 菜单 + 多选批量操作。
  *
- * 多选：长按任意一期进入多选并选中该期；多选状态下单击逐期切换，长按另一期会把
- * 「锚点期 → 该期」整段选上（几百期时不用一一点）；头部 × 或系统返回键退出。
- * 批量动作只作用于**当前可见**的选中项——被搜索过滤掉的不改，避免无感修改。
+ * 交互：
+ * - 单击播放；长按打开「单集操作」底部弹层（收藏 / 下载 / 标记已听 / 复制链接）。
+ * - 左滑任意一期直接进入多选并选中该期；也可以 ⋮ → 多选 进入。
+ * - 多选中单击逐期切换，按住某行上下滑动可把经过的行连续选上。
+ *
+ * 批量动作只作用于**当前可见**的选中项：被 chips / 搜索过滤掉的不改，避免无感修改。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -802,19 +822,24 @@ fun PodcastEpisodesScreen(
         { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
+    // 收听状态筛选（chips）：计数按全部期数算，搜索词只影响列表，不改数字
+    var filter by remember(subscription.feedUrl) { mutableStateOf(EpisodeFilter.All) }
     // 多选状态跟着订阅走：换订阅必须从干净状态开始
     var selecting by remember(subscription.feedUrl) { mutableStateOf(false) }
     var selectedGuids by remember(subscription.feedUrl) {
         mutableStateOf<Set<String>>(emptySet())
     }
-    // 区间选择锚点：多选时长按另一期，把锚点到该期整段选上
-    var rangeAnchor by remember(subscription.feedUrl) { mutableStateOf<Int?>(null) }
     var moreMenuOpen by remember { mutableStateOf(false) }
+    var selectAllMenuOpen by remember { mutableStateOf(false) }
+    // 长按某一期打开的单集操作弹层
+    var sheetEpisode by remember(subscription.feedUrl) { mutableStateOf<PodcastEpisode?>(null) }
+    val context = LocalContext.current
+    val linkCopiedText = stringResource(R.string.podcast_link_copied)
 
     fun exitSelection() {
         selecting = false
         selectedGuids = emptySet()
-        rangeAnchor = null
+        selectAllMenuOpen = false
     }
 
     // 返回键先退多选、再关搜索，最后才交给外层退出这个订阅
@@ -832,17 +857,27 @@ fun PodcastEpisodesScreen(
     } else {
         subscription.episodes
     }
+    val unplayedCount = orderedEpisodes.count { !it.completed && it.positionMs <= 0L }
+    val inProgressCount = orderedEpisodes.count { !it.completed && it.positionMs > 0L }
+    val completedCount = orderedEpisodes.count { it.completed }
+    val filteredByState = when (filter) {
+        EpisodeFilter.All -> orderedEpisodes
+        EpisodeFilter.Unplayed -> orderedEpisodes.filter { !it.completed && it.positionMs <= 0L }
+        EpisodeFilter.InProgress -> orderedEpisodes.filter { !it.completed && it.positionMs > 0L }
+        EpisodeFilter.Completed -> orderedEpisodes.filter { it.completed }
+    }
     // 本地按标题过滤：一千多期时靠滑根本找不到，输入关键词即时缩小范围
     val query = searchQuery.trim()
     val searching = query.isNotEmpty()
     val episodes = if (searching) {
-        orderedEpisodes.filter { it.title.contains(query, ignoreCase = true) }
+        filteredByState.filter { it.title.contains(query, ignoreCase = true) }
     } else {
-        orderedEpisodes
+        filteredByState
     }
-    // 批量操作只认当前可见的选中项：被搜索过滤掉的选中项不该被无感修改
+    // 按月分组：几百期只靠日期后缀很难定位，分组头给出参照
+    val listItems = remember(episodes) { buildEpisodeListItems(episodes) }
+    // 批量操作只认当前可见的选中项：被过滤掉的不该被无感修改
     val selectedEpisodes = episodes.filter { it.guid in selectedGuids }
-    val allSelected = episodes.isNotEmpty() && selectedEpisodes.size == episodes.size
 
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -857,7 +892,7 @@ fun PodcastEpisodesScreen(
                 ),
         ) {
             if (selecting) {
-                // 多选工具条：× 退出，标题让位给已选数量
+                // 多选页头：× 退出、已选数量与总数、全选▾（全部 / 最近 N 期 / 全部未下载）
                 IconButton(
                     onClick = { exitSelection() },
                     modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
@@ -869,55 +904,74 @@ fun PodcastEpisodesScreen(
                         modifier = Modifier.size(RadioSizes.iconCompact),
                     )
                 }
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = RadioSpacing.medium),
-                ) {
-                    Text(
-                        text = stringResource(
-                            R.string.podcast_selection_count,
-                            selectedEpisodes.size,
-                        ),
-                        color = RadioText,
-                        fontSize = RadioTextSizes.stationTitle,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = stringResource(R.string.podcast_selection_hint),
-                        color = RadioTextMuted,
-                        fontSize = RadioTextSizes.caption,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
                 Text(
                     text = stringResource(
-                        if (allSelected) {
-                            R.string.podcast_selection_none
-                        } else {
-                            R.string.podcast_selection_all
-                        },
+                        R.string.podcast_selection_count,
+                        selectedEpisodes.size,
                     ),
-                    color = RadioPrimary,
-                    fontSize = RadioTextSizes.body,
+                    color = RadioText,
+                    fontSize = RadioTextSizes.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(RadioCorners.pill))
-                        .clickable {
-                            if (allSelected) {
-                                exitSelection()
-                            } else {
-                                selectedGuids = episodes.mapTo(mutableSetOf()) { it.guid }
-                            }
-                        }
-                        .padding(
-                            horizontal = RadioSpacing.compact,
-                            vertical = RadioSpacing.extraSmall,
-                        ),
                 )
+                Spacer(Modifier.width(RadioSpacing.extraSmall))
+                Text(
+                    text = stringResource(R.string.podcast_selection_total, episodes.size),
+                    color = RadioTextMuted,
+                    fontSize = RadioTextSizes.badge,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.weight(1f))
+                Box {
+                    Text(
+                        text = stringResource(R.string.podcast_selection_all),
+                        color = RadioPrimary,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(RadioPrimary.copy(alpha = 0.16f))
+                            .clickable { selectAllMenuOpen = true }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
+                    DropdownMenu(
+                        expanded = selectAllMenuOpen,
+                        onDismissRequest = { selectAllMenuOpen = false },
+                        containerColor = RadioSurface,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.podcast_select_all_items)) },
+                            onClick = {
+                                selectAllMenuOpen = false
+                                selectedGuids = episodes.mapTo(mutableSetOf()) { it.guid }
+                            },
+                        )
+                        listOf(10, 25).forEach { recent ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(R.string.podcast_select_recent, recent))
+                                },
+                                onClick = {
+                                    selectAllMenuOpen = false
+                                    selectedGuids = selectedGuids +
+                                        episodes.take(recent).map { it.guid }
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(R.string.podcast_select_undownloaded))
+                            },
+                            onClick = {
+                                selectAllMenuOpen = false
+                                selectedGuids = episodes
+                                    .filter { it.localFileName == null }
+                                    .mapTo(mutableSetOf()) { it.guid }
+                            },
+                        )
+                    }
+                }
             } else {
                 // 轻量返回键：不再用 53dp 的大按钮，把宽度让给标题
                 IconButton(
@@ -931,48 +985,28 @@ fun PodcastEpisodesScreen(
                         modifier = Modifier.size(RadioSizes.iconCompact),
                     )
                 }
-                StationArtwork(imageUrl = subscription.imageUrl)
+                StationArtwork(imageUrl = subscription.imageUrl, size = 52.dp)
                 Column(
                     verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = RadioSpacing.medium),
+                        .padding(start = 10.dp),
                 ) {
                     // 标题必须单行：一旦换行，头部就比封面还高，把下面列表往下顶
                     SubscriptionTitle(
                         title = subscription.title,
                         marqueeTitles = marqueeTitles,
-                        fontSize = RadioTextSizes.stationTitle,
+                        fontSize = RadioTextSizes.body,
                     )
                     Text(
-                        text = stringResource(
-                            R.string.podcast_episode_count,
-                            subscription.episodes.size,
-                        ),
+                        text = subscriptionSubtitle(subscription),
                         color = RadioTextMuted,
-                        fontSize = RadioTextSizes.caption,
+                        fontSize = RadioTextSizes.badge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                // 排序：最新 / 最旧，点一下即切换并持久化（最旧在上时用主色标出来）
-                IconButton(
-                    onClick = { onOldestFirstChange(!oldestFirst) },
-                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_sort),
-                        contentDescription = stringResource(
-                            if (oldestFirst) {
-                                R.string.podcast_episodes_sort_oldest
-                            } else {
-                                R.string.podcast_episodes_sort_latest
-                            },
-                        ),
-                        tint = if (oldestFirst) RadioPrimary else RadioTextMuted,
-                        modifier = Modifier.size(RadioSizes.iconInline),
-                    )
-                }
+                // 搜索独立一个图标，⋮ 收拢排序 / 刷新 / 编辑 / 多选 / 退订
                 IconButton(
                     onClick = { onSearchOpenChange(true) },
                     modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
@@ -992,18 +1026,71 @@ fun PodcastEpisodesScreen(
                         modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_menu),
+                            painter = painterResource(R.drawable.ic_more_vert),
                             contentDescription = stringResource(R.string.podcast_more_actions),
-                            tint = RadioTextMuted,
+                            tint = if (moreMenuOpen) RadioPrimary else RadioTextMuted,
                             modifier = Modifier.size(RadioSizes.iconInline),
                         )
                     }
-                    // 编辑 / 取消订阅；取消订阅沿用外层的确认弹窗，这里只发意图
                     DropdownMenu(
                         expanded = moreMenuOpen,
                         onDismissRequest = { moreMenuOpen = false },
                         containerColor = RadioSurface,
                     ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.podcast_menu_sort_latest)) },
+                            trailingIcon = if (!oldestFirst) {
+                                {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_check),
+                                        contentDescription = null,
+                                        tint = RadioPrimary,
+                                        modifier = Modifier.size(RadioSizes.iconInline),
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onClick = {
+                                moreMenuOpen = false
+                                onOldestFirstChange(false)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.podcast_menu_sort_oldest)) },
+                            trailingIcon = if (oldestFirst) {
+                                {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_check),
+                                        contentDescription = null,
+                                        tint = RadioPrimary,
+                                        modifier = Modifier.size(RadioSizes.iconInline),
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onClick = {
+                                moreMenuOpen = false
+                                onOldestFirstChange(true)
+                            },
+                        )
+                        HorizontalDivider(color = RadioOutline)
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.podcast_menu_refresh)) },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_sync),
+                                    contentDescription = null,
+                                    tint = RadioTextMuted,
+                                    modifier = Modifier.size(RadioSizes.iconInline),
+                                )
+                            },
+                            onClick = {
+                                moreMenuOpen = false
+                                onRefresh()
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.podcast_edit_title)) },
                             leadingIcon = {
@@ -1019,6 +1106,22 @@ fun PodcastEpisodesScreen(
                                 onEdit()
                             },
                         )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.podcast_menu_multi_select)) },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_check),
+                                    contentDescription = null,
+                                    tint = RadioTextMuted,
+                                    modifier = Modifier.size(RadioSizes.iconInline),
+                                )
+                            },
+                            onClick = {
+                                moreMenuOpen = false
+                                selecting = true
+                            },
+                        )
+                        HorizontalDivider(color = RadioOutline)
                         DropdownMenuItem(
                             text = {
                                 Text(
@@ -1044,6 +1147,56 @@ fun PodcastEpisodesScreen(
             }
         }
 
+        // 状态 chips：计数按全部期数，只筛列表不动数据
+        if (!selecting) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+            ) {
+                EpisodeFilterChip(
+                    label = stringResource(R.string.podcast_filter_all, orderedEpisodes.size),
+                    selected = filter == EpisodeFilter.All,
+                    onClick = { filter = EpisodeFilter.All },
+                )
+                EpisodeFilterChip(
+                    label = stringResource(
+                        R.string.podcast_filter_unplayed,
+                        unplayedCount,
+                    ),
+                    selected = filter == EpisodeFilter.Unplayed,
+                    onClick = { filter = EpisodeFilter.Unplayed },
+                )
+                EpisodeFilterChip(
+                    label = stringResource(
+                        R.string.podcast_filter_in_progress,
+                        inProgressCount,
+                    ),
+                    selected = filter == EpisodeFilter.InProgress,
+                    onClick = { filter = EpisodeFilter.InProgress },
+                )
+                EpisodeFilterChip(
+                    label = stringResource(
+                        R.string.podcast_filter_completed,
+                        completedCount,
+                    ),
+                    selected = filter == EpisodeFilter.Completed,
+                    onClick = { filter = EpisodeFilter.Completed },
+                )
+            }
+        } else {
+            // 多选提示：按住上下滑动可连续选择
+            Text(
+                text = stringResource(R.string.podcast_selection_hint),
+                color = RadioTextMuted,
+                fontSize = 11.sp,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 7.dp),
+            )
+        }
+
         if (searchOpen) {
             EpisodeSearchField(
                 query = searchQuery,
@@ -1063,10 +1216,10 @@ fun PodcastEpisodesScreen(
 
         val listState = rememberLazyListState()
         // 太短的列表不需要快速定位，保持原布局
-        val showScrollbar = episodes.size > EPISODE_SCROLLBAR_MIN_COUNT
+        val showScrollbar = listItems.size > EPISODE_SCROLLBAR_MIN_COUNT
         var scrollbarIndex by remember { mutableStateOf<Int?>(null) }
-        // 切换排序或搜索词后回到顶部，否则停在原位置会让人以为列表没变
-        LaunchedEffect(oldestFirst, query) { listState.scrollToItem(0) }
+        // 切换排序 / 筛选 / 搜索词后回到顶部，否则停在原位置会让人以为列表没变
+        LaunchedEffect(oldestFirst, filter, query) { listState.scrollToItem(0) }
 
         // 下拉刷新。空态也放进 LazyColumn：没有可滚动容器时下拉手势收不到。
         // weight(1f)：给多选底部操作栏留出空间，否则 fillMaxSize 会把整列占满。
@@ -1083,14 +1236,44 @@ fun PodcastEpisodesScreen(
                     // 只让出 3dp 视觉空隙；滚动条触摸区会压住行尾少量区域，但按钮中心仍可点
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(end = if (showScrollbar) EPISODE_SCROLLBAR_INSET else 0.dp),
-                    contentPadding = PaddingValues(
-                        horizontal = RadioSpacing.medium,
-                        vertical = RadioSpacing.small,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+                        .padding(end = if (showScrollbar) EPISODE_SCROLLBAR_INSET else 0.dp)
+                        // 多选时按住某行上下滑动：把手指经过的行连续选上（普通滑动仍是滚动）
+                        .pointerInput(selecting, listItems) {
+                            if (!selecting) return@pointerInput
+                            var anchor: Int? = null
+
+                            fun guidAt(index: Int?): String? {
+                                if (index == null) return null
+                                val row = listItems.getOrNull(index) as? EpisodeListItem.Row
+                                return row?.episode?.guid
+                            }
+
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { offset ->
+                                    val index = lazyItemIndexAt(listState, offset.y)
+                                    anchor = index
+                                    guidAt(index)?.let { guid ->
+                                        selectedGuids = selectedGuids + guid
+                                    }
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    val from = anchor
+                                    val to = lazyItemIndexAt(listState, change.position.y)
+                                    if (from != null && to != null) {
+                                        val range = if (from <= to) from..to else to..from
+                                        selectedGuids = selectedGuids + range
+                                            .mapNotNull { guidAt(it) }
+                                            .toSet()
+                                    }
+                                },
+                                onDragEnd = { anchor = null },
+                                onDragCancel = { anchor = null },
+                            )
+                        },
+                    contentPadding = PaddingValues(bottom = RadioSpacing.small),
                 ) {
-                    if (episodes.isEmpty()) {
+                    if (listItems.isEmpty()) {
                         item {
                             Box(
                                 contentAlignment = Alignment.Center,
@@ -1100,7 +1283,13 @@ fun PodcastEpisodesScreen(
                             ) {
                                 Text(
                                     text = when {
-                                        searching -> stringResource(R.string.podcast_episode_search_empty)
+                                        searching -> stringResource(
+                                            R.string.podcast_episode_search_empty,
+                                        )
+
+                                        filter != EpisodeFilter.All ->
+                                            stringResource(R.string.podcast_episodes_empty)
+
                                         loading -> stringResource(R.string.podcast_loading)
                                         else -> stringResource(R.string.podcast_episodes_empty)
                                     },
@@ -1111,57 +1300,62 @@ fun PodcastEpisodesScreen(
                             }
                         }
                     } else {
-                        // itemsIndexed：区间选择要知道「锚点期」的行号
                         itemsIndexed(
-                            items = episodes,
-                            key = { _, episode -> episode.guid },
-                        ) { index, episode ->
-                            PodcastEpisodeRow(
-                                episode = episode,
-                                playing = episode.guid == playingEpisodeId,
-                                onClick = {
-                                    if (selecting) {
-                                        // 多选：单击逐期切换，最后一个取消后自动退出多选
-                                        val next = if (episode.guid in selectedGuids) {
-                                            selectedGuids - episode.guid
+                            items = listItems,
+                            key = { _, item ->
+                                when (item) {
+                                    is EpisodeListItem.Month -> "m:${item.year}-${item.month}"
+                                    is EpisodeListItem.Row -> "e:${item.episode.guid}"
+                                }
+                            },
+                        ) { index, item ->
+                            when (item) {
+                                is EpisodeListItem.Month -> EpisodeMonthHeader(item)
+                                is EpisodeListItem.Row -> {
+                                    val episode = item.episode
+                                    PodcastEpisodeListRow(
+                                        episode = episode,
+                                        playing = episode.guid == playingEpisodeId,
+                                        selected = if (selecting) {
+                                            episode.guid in selectedGuids
                                         } else {
-                                            selectedGuids + episode.guid
-                                        }
-                                        if (next.isEmpty()) {
-                                            exitSelection()
+                                            null
+                                        },
+                                        downloadState = downloadStates[episode.guid],
+                                        // 分组头下方第一行不画分隔线
+                                        showDivider = index > 0 &&
+                                            listItems[index - 1] is EpisodeListItem.Row,
+                                        onClick = {
+                                            if (selecting) {
+                                                val next = if (
+                                                    episode.guid in selectedGuids
+                                                ) {
+                                                    selectedGuids - episode.guid
+                                                } else {
+                                                    selectedGuids + episode.guid
+                                                }
+                                                if (next.isEmpty()) {
+                                                    exitSelection()
+                                                } else {
+                                                    selectedGuids = next
+                                                }
+                                            } else {
+                                                onEpisodeClick(subscription, episode)
+                                            }
+                                        },
+                                        // 多选中长按留给「上下滑动连续选择」，不再弹单集菜单
+                                        onLongClick = if (selecting) {
+                                            null
                                         } else {
-                                            selectedGuids = next
-                                        }
-                                    } else {
-                                        onEpisodeClick(subscription, episode)
-                                    }
-                                },
-                                onLongClick = {
-                                    if (selecting) {
-                                        // 已经是多选：把锚点到期整段选上
-                                        val anchor = rangeAnchor ?: index
-                                        val range = if (anchor <= index) {
-                                            anchor..index
-                                        } else {
-                                            index..anchor
-                                        }
-                                        selectedGuids = selectedGuids + range
-                                            .mapNotNull { episodes.getOrNull(it)?.guid }
-                                            .toSet()
-                                    } else {
-                                        selecting = true
-                                        rangeAnchor = index
-                                        selectedGuids = selectedGuids + episode.guid
-                                    }
-                                },
-                                selected = if (selecting) episode.guid in selectedGuids else null,
-                                onToggleFavorite = { onToggleFavorite(episode) },
-                                downloadState = downloadStates[episode.guid],
-                                onDownload = { onDownload(subscription, episode) },
-                                onCancelDownload = { onCancelDownload(episode) },
-                                onDeleteDownload = { onDeleteDownload(subscription, episode) },
-                                onExportDownload = { onExportDownload(subscription, episode) },
-                            )
+                                            ({ sheetEpisode = episode })
+                                        },
+                                        onSwipeSelect = {
+                                            selecting = true
+                                            selectedGuids = selectedGuids + episode.guid
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1169,7 +1363,7 @@ fun PodcastEpisodesScreen(
                 if (showScrollbar) {
                     OmniLazyScrollbar(
                         listState = listState,
-                        itemCount = episodes.size,
+                        itemCount = listItems.size,
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .fillMaxHeight(),
@@ -1178,7 +1372,7 @@ fun PodcastEpisodesScreen(
                 }
                 scrollbarIndex?.let { index ->
                     Text(
-                        text = "${index + 1} / ${episodes.size}",
+                        text = "${index + 1} / ${listItems.size}",
                         color = RadioText,
                         fontSize = RadioTextSizes.caption,
                         maxLines = 1,
@@ -1195,98 +1389,628 @@ fun PodcastEpisodesScreen(
             }
         }
 
-        // 多选底部操作栏：只放批量动作，Wi-Fi 确认与落库都在外层
+        // 多选底部操作栏：信息行 + 三个批量按钮，Wi-Fi 确认与落库都在外层
         if (selecting) {
             HorizontalDivider(color = RadioOutline)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        horizontal = RadioSpacing.extraSmall,
-                        vertical = RadioSpacing.extraSmall,
-                    ),
+                    .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 14.dp),
             ) {
-                val manyEnabled = selectedEpisodes.isNotEmpty()
-                EpisodeBatchActionButton(
-                    icon = painterResource(R.drawable.ic_download),
-                    label = stringResource(R.string.podcast_batch_download),
-                    enabled = manyEnabled,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        // 先把选中项快照下来：exitSelection 会清空 selectedGuids
-                        val targets = selectedEpisodes
-                        exitSelection()
-                        onDownloadMany(subscription, targets)
-                    },
+                Text(
+                    text = selectionSummary(selectedEpisodes),
+                    color = RadioTextMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
                 )
-                EpisodeBatchActionButton(
-                    icon = painterResource(R.drawable.ic_check),
-                    label = stringResource(R.string.podcast_batch_mark_played),
-                    enabled = manyEnabled,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        val targets = selectedEpisodes
-                        exitSelection()
-                        onMarkManyPlayed(subscription, targets, true)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val manyEnabled = selectedEpisodes.isNotEmpty()
+                    EpisodeBatchBarButton(
+                        text = stringResource(R.string.podcast_batch_mark_played),
+                        primary = false,
+                        enabled = manyEnabled,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            // 先把选中项快照下来：exitSelection 会清空 selectedGuids
+                            val targets = selectedEpisodes
+                            exitSelection()
+                            onMarkManyPlayed(subscription, targets, true)
+                        },
+                    )
+                    EpisodeBatchBarButton(
+                        text = stringResource(R.string.podcast_batch_mark_unplayed),
+                        primary = false,
+                        enabled = manyEnabled,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            val targets = selectedEpisodes
+                            exitSelection()
+                            onMarkManyPlayed(subscription, targets, false)
+                        },
+                    )
+                    EpisodeBatchBarButton(
+                        text = stringResource(R.string.podcast_batch_download),
+                        primary = true,
+                        enabled = manyEnabled,
+                        icon = painterResource(R.drawable.ic_download),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            val targets = selectedEpisodes
+                            exitSelection()
+                            onDownloadMany(subscription, targets)
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    // 长按某一期：单集操作（收藏 / 下载 / 标记已听 / 复制链接）
+    sheetEpisode?.let { episode ->
+        val episodeDownloadState = downloadStates[episode.guid]
+        EpisodeActionsSheet(
+            episodeTitle = episode.title,
+            episode = episode,
+            downloadState = episodeDownloadState,
+            onDismiss = { sheetEpisode = null },
+            onToggleFavorite = {
+                sheetEpisode = null
+                onToggleFavorite(episode)
+            },
+            onDownloadAction = {
+                sheetEpisode = null
+                when {
+                    episodeDownloadState is PodcastDownloadState.Downloading ->
+                        onCancelDownload(episode)
+
+                    episode.localFileName != null -> onDeleteDownload(subscription, episode)
+                    else -> onDownload(subscription, episode)
+                }
+            },
+            onTogglePlayed = {
+                sheetEpisode = null
+                onMarkManyPlayed(subscription, listOf(episode), !episode.completed)
+            },
+            onCopyLink = {
+                sheetEpisode = null
+                val clipboard = context.getSystemService(ClipboardManager::class.java)
+                if (clipboard != null && episode.audioUrl.isNotBlank()) {
+                    clipboard.setPrimaryClip(
+                        ClipData.newPlainText("episode", episode.audioUrl),
+                    )
+                    Toast.makeText(
+                        context,
+                        linkCopiedText,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+        )
+    }
+}
+
+/** 单集操作弹层里的一个选项：图标 + 文案，整行可点 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EpisodeActionsSheet(
+    episodeTitle: String,
+    episode: PodcastEpisode,
+    downloadState: PodcastDownloadState?,
+    onDismiss: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDownloadAction: () -> Unit,
+    onTogglePlayed: () -> Unit,
+    onCopyLink: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = RadioSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 18.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.podcast_episode_actions),
+                color = RadioText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            Text(
+                text = episodeTitle,
+                color = RadioTextMuted,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+            )
+            EpisodeSheetOption(
+                icon = painterResource(
+                    if (episode.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
+                ),
+                label = stringResource(
+                    if (episode.favorite) R.string.podcast_favorite_remove
+                    else R.string.podcast_favorite_add,
+                ),
+                iconTint = if (episode.favorite) RadioPrimary else RadioTextMuted,
+                onClick = onToggleFavorite,
+            )
+            val downloading = downloadState is PodcastDownloadState.Downloading
+            EpisodeSheetOption(
+                icon = painterResource(
+                    when {
+                        downloading -> R.drawable.ic_close
+                        episode.localFileName != null -> R.drawable.ic_delete
+                        else -> R.drawable.ic_download
                     },
-                )
-                EpisodeBatchActionButton(
-                    icon = painterResource(R.drawable.ic_radio_button_unchecked),
-                    label = stringResource(R.string.podcast_batch_mark_unplayed),
-                    enabled = manyEnabled,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        val targets = selectedEpisodes
-                        exitSelection()
-                        onMarkManyPlayed(subscription, targets, false)
+                ),
+                label = stringResource(
+                    when {
+                        downloading -> R.string.podcast_download_cancel
+                        episode.localFileName != null -> R.string.podcast_download_delete
+                        else -> R.string.podcast_batch_download
                     },
+                ),
+                onClick = onDownloadAction,
+            )
+            EpisodeSheetOption(
+                icon = painterResource(
+                    if (episode.completed) {
+                        R.drawable.ic_radio_button_unchecked
+                    } else {
+                        R.drawable.ic_check
+                    },
+                ),
+                label = stringResource(
+                    if (episode.completed) R.string.podcast_mark_unplayed
+                    else R.string.podcast_mark_played,
+                ),
+                onClick = onTogglePlayed,
+            )
+            EpisodeSheetOption(
+                icon = painterResource(R.drawable.ic_link),
+                label = stringResource(R.string.podcast_copy_link),
+                onClick = onCopyLink,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EpisodeSheetOption(
+    icon: Painter,
+    label: String,
+    onClick: () -> Unit,
+    iconTint: Color = RadioTextMuted,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+    ) {
+        Icon(
+            painter = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(RadioSizes.iconInline),
+        )
+        Text(text = label, color = RadioText, fontSize = RadioTextSizes.caption)
+    }
+}
+/** 期数状态筛选（chips）：全部 / 未听 / 在听 / 听完 */
+private enum class EpisodeFilter { All, Unplayed, InProgress, Completed }
+
+/** 期数列表的一行：月份分组头或某一期 */
+private sealed interface EpisodeListItem {
+    data class Month(val year: Int, val month: Int) : EpisodeListItem
+    data class Row(val episode: PodcastEpisode) : EpisodeListItem
+}
+
+/** 按展示顺序插入月份分组头；拿不到发布时间的期不分组 */
+private fun buildEpisodeListItems(episodes: List<PodcastEpisode>): List<EpisodeListItem> {
+    val items = ArrayList<EpisodeListItem>(episodes.size + 8)
+    var lastYear = -1
+    var lastMonth = -1
+    episodes.forEach { episode ->
+        val (year, month) = episodeYearMonth(episode.publishedAtMs)
+        if (year > 0 && (year != lastYear || month != lastMonth)) {
+            items += EpisodeListItem.Month(year, month)
+            lastYear = year
+            lastMonth = month
+        }
+        items += EpisodeListItem.Row(episode)
+    }
+    return items
+}
+
+private fun episodeYearMonth(epochMs: Long): Pair<Int, Int> {
+    if (epochMs <= 0L) return 0 to 0
+    return runCatching {
+        val date = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault())
+        date.year to date.monthValue
+    }.getOrDefault(0 to 0)
+}
+
+/** 手指落点（相对列表顶部）落在第几个 lazy item 上：多选拖拽靠它定位行 */
+private fun lazyItemIndexAt(listState: LazyListState, y: Float): Int? {
+    return listState.layoutInfo.visibleItemsInfo
+        .firstOrNull { y >= it.offset && y < it.offset + it.size }
+        ?.index
+}
+
+/** 月份分组头：2026 年 10 月 + 一条淡分隔线 */
+@Composable
+private fun EpisodeMonthHeader(item: EpisodeListItem.Month) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 7.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.podcast_month_header, item.year, item.month),
+            color = Color(0xFF928CA2),
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.6.sp,
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(8.dp))
+        HorizontalDivider(Modifier.weight(1f), color = RadioOutline.copy(alpha = 0.6f))
+    }
+}
+
+/**
+ * 期数行（设计稿）：标题单行，meta 行内联日期 / 时长 / 进度 / 徽标 / 收藏，底部 2dp 进度条。
+ * 行内不再放收藏与下载按钮——长按弹「单集操作」，左滑进多选。
+ */
+@Composable
+private fun PodcastEpisodeListRow(
+    episode: PodcastEpisode,
+    playing: Boolean,
+    /** null = 不在多选；true / false = 是否选中 */
+    selected: Boolean?,
+    downloadState: PodcastDownloadState?,
+    showDivider: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    onSwipeSelect: () -> Unit,
+) {
+    val primary = RadioPrimary
+    val totalSec = episode.durationSec
+    val listenedSec = (episode.positionMs / 1000L).toInt().coerceAtLeast(0)
+    val inProgress = episode.positionMs > 0L && !episode.completed
+    val percent = if (totalSec > 0 && episode.positionMs > 0L) {
+        ((episode.positionMs * 100) / (totalSec * 1000L)).toInt().coerceIn(0, 100)
+    } else {
+        0
+    }
+    val downloaded = episode.localFileName != null
+    val downloading = downloadState is PodcastDownloadState.Downloading
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (showDivider) {
+            HorizontalDivider(color = RadioOutline.copy(alpha = 0.55f), thickness = 1.dp)
+        }
+        Row(
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        if (playing) {
+                            listOf(primary.copy(alpha = 0.11f), Color.Transparent)
+                        } else {
+                            listOf(Color.Transparent, Color.Transparent)
+                        },
+                    ),
                 )
+                .background(
+                    if (selected == true) primary.copy(alpha = 0.07f) else Color.Transparent,
+                )
+                .drawBehind {
+                    if (playing) {
+                        val top = 9.dp.toPx()
+                        drawRoundRect(
+                            color = primary,
+                            topLeft = Offset(0f, top),
+                            size = Size(2.dp.toPx(), size.height - top * 2),
+                            cornerRadius = CornerRadius(1.dp.toPx()),
+                        )
+                    }
+                }
+                // 左滑进多选（自动选中这一期）；纵向滑动仍是列表滚动
+                .pointerInput(selected == null) {
+                    if (selected != null) return@pointerInput
+                    var dragged = 0f
+                    var fired = false
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragged = 0f
+                            fired = false
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            dragged += dragAmount
+                            if (!fired && dragged < -56.dp.toPx()) {
+                                fired = true
+                                change.consume()
+                                onSwipeSelect()
+                            }
+                        },
+                        onDragEnd = { dragged = 0f },
+                        onDragCancel = { dragged = 0f },
+                    )
+                }
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        ) {
+            if (selected != null) {
+                EpisodeSelectBox(
+                    checked = selected,
+                    modifier = Modifier.padding(end = 9.dp, top = 2.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = episode.title,
+                    color = if (playing) primary else RadioText,
+                    fontSize = 15.sp,
+                    fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 3.dp),
+                ) {
+                    val date = formatEpisodeDateShort(episode.publishedAtMs)
+                    if (date.isNotEmpty()) {
+                        Text(
+                            text = date,
+                            color = Color(0xFF9A94AA),
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                        )
+                        EpisodeMetaDot()
+                    }
+                    val duration = formatDuration(totalSec)
+                    if (duration.isNotEmpty()) {
+                        Text(
+                            text = duration,
+                            color = RadioTextMuted,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                        )
+                        EpisodeMetaDot()
+                    }
+                    when {
+                        inProgress && percent > 0 -> Text(
+                            text = stringResource(
+                                R.string.podcast_progress_inline,
+                                percent,
+                                formatDuration(listenedSec),
+                            ),
+                            color = primary,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                        )
+
+                        episode.completed -> Text(
+                            text = stringResource(R.string.podcast_listened_progress_full),
+                            color = RadioTextMuted,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                        )
+
+                        else -> EpisodeBadge(
+                            text = stringResource(R.string.podcast_badge_unplayed),
+                            color = primary,
+                        )
+                    }
+                    when {
+                        downloading -> EpisodeBadge(
+                            text = stringResource(R.string.podcast_badge_downloading),
+                            color = RadioTextMuted,
+                        )
+
+                        downloaded -> EpisodeBadge(
+                            text = stringResource(R.string.podcast_download_downloaded),
+                            color = RadioTextMuted,
+                        )
+                    }
+                    if (episode.completed) {
+                        EpisodeBadge(
+                            text = stringResource(R.string.podcast_completed),
+                            color = Color(0xFF8FD99B),
+                        )
+                    }
+                    if (episode.favorite) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_favorite),
+                            contentDescription = null,
+                            tint = primary,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                }
+                if (inProgress) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 5.dp)
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(Color(0xFF2B2B34)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(percent.coerceIn(0, 100) / 100f)
+                                .fillMaxHeight()
+                                .background(primary),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/**
- * 多选底部操作栏里的单个动作：图标在上、文案在下，整块可点。
- * 没有选中项时整体弱化（理论上进多选至少有一项，防御性处理）。
- */
 @Composable
-private fun EpisodeBatchActionButton(
-    icon: Painter,
-    label: String,
+private fun EpisodeMetaDot() {
+    Box(
+        modifier = Modifier
+            .size(2.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF6D677B)),
+    )
+}
+
+/** 多选行首的方形勾选框（19dp，圆角 6dp） */
+@Composable
+private fun EpisodeSelectBox(checked: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(19.dp)
+            .clip(shape)
+            .background(if (checked) RadioPrimary else Color.Transparent)
+            .border(
+                width = 1.6.dp,
+                color = if (checked) RadioPrimary else Color(0xFF5C5668),
+                shape = shape,
+            ),
+    ) {
+        if (checked) {
+            Icon(
+                painter = painterResource(R.drawable.ic_check),
+                contentDescription = null,
+                tint = RadioOnPrimary,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+    }
+}
+
+/** meta 行的小徽标：已下载 / 已听完 / 未听 */
+@Composable
+private fun EpisodeBadge(text: String, color: Color) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(color.copy(alpha = 0.1f))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
+/** 状态 chips：全部 / 未听 / 在听 / 听完，带数量 */
+@Composable
+private fun EpisodeFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text = label,
+        color = if (selected) RadioOnPrimary else RadioTextMuted,
+        fontSize = 12.5.sp,
+        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(11.dp))
+            .background(if (selected) RadioPrimary else RadioSurface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 7.dp),
+    )
+}
+
+/** 多选底部按钮：已听 / 未听是次按钮，下载是主按钮 */
+@Composable
+private fun EpisodeBatchBarButton(
+    text: String,
+    primary: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: Painter? = null,
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(RadioSpacing.extraSmall),
+    val contentColor = when {
+        !enabled -> RadioTextMuted
+        primary -> RadioOnPrimary
+        else -> RadioText
+    }
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .clip(RoundedCornerShape(RadioCorners.medium))
+            .heightIn(min = 42.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(if (primary && enabled) RadioPrimary else RadioSurface)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = RadioSpacing.small),
+            .padding(horizontal = 12.dp),
     ) {
-        Icon(
-            painter = icon,
-            contentDescription = null,
-            tint = if (enabled) RadioText else RadioTextMuted,
-            modifier = Modifier.size(RadioSizes.iconInline),
-        )
+        if (icon != null) {
+            Icon(
+                painter = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+        }
         Text(
-            text = label,
-            color = if (enabled) RadioText else RadioTextMuted,
-            fontSize = RadioTextSizes.caption,
+            text = text,
+            color = contentColor,
+            fontSize = 13.5.sp,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** 多选信息行：已选数量 + 总时长（拿不到时长时只报数量） */
+@Composable
+private fun selectionSummary(episodes: List<PodcastEpisode>): String {
+    val totalSec = episodes.sumOf { it.durationSec }
+    if (totalSec <= 0) {
+        return stringResource(R.string.podcast_selection_count, episodes.size)
+    }
+    val duration = if (totalSec >= 3600) {
+        stringResource(
+            R.string.podcast_duration_hours,
+            String.format(Locale.US, "%.1f", totalSec / 3600f),
+        )
+    } else {
+        stringResource(R.string.podcast_duration_minutes, totalSec / 60)
+    }
+    return stringResource(R.string.podcast_selection_summary, episodes.size, duration)
+}
+
+private val EPISODE_DATE_INLINE_FORMAT = DateTimeFormatter.ofPattern("MM-dd", Locale.ENGLISH)
+
+/** meta 行的行内日期（MM-dd）：比完整日期省宽度 */
+private fun formatEpisodeDateShort(epochMs: Long): String {
+    if (epochMs <= 0L) return ""
+    return runCatching {
+        EPISODE_DATE_INLINE_FORMAT.withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(epochMs))
+    }.getOrDefault("")
 }
 
 /** 期数超过这个数量才显示可拖动滚动条：太短的列表反而被它占掉右侧空间 */
 private const val EPISODE_SCROLLBAR_MIN_COUNT = 20
 
-/** 期数页头部的轻量图标按钮（返回 / 排序 / 搜索 / 更多）：40dp，比 53dp 的顶栏按钮小一档，少挤标题宽度 */
+/** 期数页头部的轻量图标按钮（返回 / 搜索 / ⋮）：40dp，比 53dp 的顶栏按钮小一档，少挤标题宽度 */
 private val HEADER_ICON_BUTTON_SIZE = 40.dp
 
 /** 期数页的本地搜索框：输入即过滤，× 清空并关闭 */
@@ -1566,10 +2290,6 @@ private fun PodcastEpisodeRow(
     metaPrefix: String? = null,
     /** meta 行过长时跑马灯滚动（仍只一行）；false 维持省略号 */
     marqueeMeta: Boolean = false,
-    /** 多选状态：null = 不在多选；true / false = 是否被选中（多选时行尾换成勾选圈） */
-    selected: Boolean? = null,
-    /** 长按：期数页用来进入多选 / 选区间锚点 */
-    onLongClick: (() -> Unit)? = null,
 ) {
     // 进度标记：有续播位置就显示听到哪；听完且位置已归零则显示已听完。
     // 有总长时显示「百分比 + 当前/总长」——一眼看出听到哪儿；总长拿不到
@@ -1616,14 +2336,10 @@ private fun PodcastEpisodeRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                color = when {
-                    selected == true -> RadioPrimary.copy(alpha = 0.18f)
-                    playing -> RadioSurfaceHigh
-                    else -> RadioSurface
-                },
+                color = if (playing) RadioSurfaceHigh else RadioSurface,
                 shape = RoundedCornerShape(RadioCorners.medium),
             )
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = RadioSpacing.medium, vertical = RadioSpacing.rowVertical),
     ) {
         Column(
@@ -1658,50 +2374,30 @@ private fun PodcastEpisodeRow(
                 )
             }
         }
-        // 多选：行尾换成勾选圈，收藏 / 下载按钮先收起，避免误触
-        if (selected != null) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(EPISODE_ROW_AUX_BUTTON_SIZE)
-                    .clip(CircleShape)
-                    .background(if (selected) RadioPrimary else RadioSurfaceHigh),
-            ) {
-                if (selected) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_check),
-                        contentDescription = stringResource(R.string.podcast_selection_selected),
-                        tint = RadioOnPrimary,
-                        modifier = Modifier.size(RadioSizes.iconInline),
-                    )
-                }
-            }
-        } else {
-            // 收藏与下载两个辅助按钮：38dp 小圆钮（比 53dp 正牌按钮小一档），
-            // 并排也不抢标题宽度；按钮自己吃掉点击，不会冒泡到整行的播放。
-            if (onToggleFavorite != null) {
-                EpisodeRowAuxButton(
-                    icon = painterResource(
-                        if (episode.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
-                    ),
-                    onClick = onToggleFavorite,
-                    tint = if (episode.favorite) RadioPrimary else RadioTextMuted,
-                    contentDescription = stringResource(
-                        if (episode.favorite) R.string.podcast_favorite_remove
-                        else R.string.podcast_favorite_add,
-                    ),
-                )
-            }
-            if (onDownload != null) {
-                EpisodeDownloadButton(
-                    episode = episode,
-                    downloadState = downloadState,
-                    onDownload = onDownload,
-                    onCancelDownload = onCancelDownload ?: {},
-                    onDeleteDownload = onDeleteDownload ?: {},
-                    onExportDownload = onExportDownload ?: {},
-                )
-            }
+        // 收藏与下载两个辅助按钮：38dp 小圆钮（比 53dp 正牌按钮小一档），
+        // 并排也不抢标题宽度；按钮自己吃掉点击，不会冒泡到整行的播放。
+        if (onToggleFavorite != null) {
+            EpisodeRowAuxButton(
+                icon = painterResource(
+                    if (episode.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
+                ),
+                onClick = onToggleFavorite,
+                tint = if (episode.favorite) RadioPrimary else RadioTextMuted,
+                contentDescription = stringResource(
+                    if (episode.favorite) R.string.podcast_favorite_remove
+                    else R.string.podcast_favorite_add,
+                ),
+            )
+        }
+        if (onDownload != null) {
+            EpisodeDownloadButton(
+                episode = episode,
+                downloadState = downloadState,
+                onDownload = onDownload,
+                onCancelDownload = onCancelDownload ?: {},
+                onDeleteDownload = onDeleteDownload ?: {},
+                onExportDownload = onExportDownload ?: {},
+            )
         }
     }
 }
