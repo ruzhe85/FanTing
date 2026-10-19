@@ -79,7 +79,11 @@ fun AboutPage(modifier: Modifier = Modifier, updates: AppUpdateActions? = null) 
             AboutInfoRow(label = stringResource(R.string.about_build), value = versionCode.toString())
             AboutInfoRow(
                 label = stringResource(R.string.about_formats),
-                value = "Direct stream, PLS, M3U, HLS, XSPF, ASX/WAX/WMX, DASH",
+                value = "MP3 · AAC · FLAC · OGG · Opus · WAV",
+            )
+            AboutInfoRow(
+                label = stringResource(R.string.about_playlist_protocol),
+                value = "PLS · M3U · XSPF · ASX · HLS · DASH",
             )
             AboutDivider()
 
@@ -92,7 +96,7 @@ fun AboutPage(modifier: Modifier = Modifier, updates: AppUpdateActions? = null) 
             AboutLinkRow(
                 label = stringResource(R.string.about_license),
                 value = "GNU AGPL 3.0",
-                url = "https://github.com/Vikindor/omnibeat/blob/master/LICENSE",
+                url = "https://github.com/ruzhe85/FanTing/blob/master/LICENSE",
             )
             AboutLinkRow(
                 label = stringResource(R.string.about_radio_browser_value),
@@ -103,25 +107,15 @@ fun AboutPage(modifier: Modifier = Modifier, updates: AppUpdateActions? = null) 
 
             AboutSectionHeader(stringResource(R.string.about_section_author))
             AboutLinkRow(
-                label = "Vikindor",
-                value = "vikindor.github.io",
-                url = "https://vikindor.github.io",
-            )
-
-            Text(
-                text = stringResource(R.string.about_support),
-                color = RadioTextMuted,
-                fontSize = RadioTextSizes.bodySmall,
-                lineHeight = RadioTextSizes.bodyLineHeight,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = RadioSpacing.compact, bottom = RadioSpacing.small),
+                label = stringResource(R.string.about_author_name),
+                value = "github.com/ruzhe85",
+                url = "https://github.com/ruzhe85",
             )
 
             AboutLinkRow(
                 label = stringResource(R.string.about_contact_support),
-                value = "vikindor.github.io/support/",
-                url = "https://vikindor.github.io/support/",
+                value = "github.com/ruzhe85/FanTing/issues",
+                url = "https://github.com/ruzhe85/FanTing/issues",
             )
 
             Text(

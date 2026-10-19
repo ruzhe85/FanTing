@@ -371,13 +371,15 @@
     <string name="onboarding_stream_hold_suffix">, чтобы открыть подробную информацию о стриме.</string>
     <string name="onboarding_screenshot_placeholder">Здесь будет скриншот</string>
 
-    <string name="about_tagline">Интернет-радио без заморочек</string>
-    <string name="about_description">Плеер, поддерживающий все современные онлайн-станции</string>
+    <string name="about_tagline">Интернет-радио и подкасты без заморочек</string>
+    <string name="about_description">Плеер для современных онлайн-станций и подкастов</string>
     <string name="about_section_app">Приложение</string>
     <string name="about_version">Версия</string>
     <string name="about_build">Сборка</string>
     <string name="about_check_updates">Проверить обновления</string>
     <string name="about_formats">Форматы</string>
+    <string name="about_playlist_protocol">Плейлисты и протоколы</string>
+    <string name="about_author_name">Ruzhe</string>
     <string name="about_section_project">Проект</string>
     <string name="about_source_code">Исходный код</string>
     <string name="about_source_code_value">Открытый репозиторий</string>
@@ -385,7 +387,6 @@
     <string name="about_radio_browser_value">Источник данных для онлайн-поиска</string>
     <string name="about_section_author">Автор</string>
     <string name="about_contact_support">Поддержка</string>
-    <string name="about_support">Проблемы, предложения, или хотите помочь с переводом? Свяжитесь со мной!</string>
     <string name="about_section_translators">Переводчики</string>
     <string name="toast_link_copied">Ссылка скопирована</string>
 

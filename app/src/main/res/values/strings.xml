@@ -281,13 +281,15 @@
     <string name="onboarding_stream_hold_suffix">\u0020to open detailed stream information.</string>
     <string name="onboarding_screenshot_placeholder">Screenshot placeholder</string>
 
-    <string name="about_tagline">Internet radio, made simple</string>
-    <string name="about_description">Built to support all modern online stations</string>
+    <string name="about_tagline">Internet radio &amp; podcasts, made simple</string>
+    <string name="about_description">Built for modern online stations and podcasts</string>
     <string name="about_section_app">App</string>
     <string name="about_version">Version</string>
     <string name="about_build">Build</string>
     <string name="about_check_updates">Check for updates</string>
     <string name="about_formats">Formats</string>
+    <string name="about_playlist_protocol">Playlists &amp; protocols</string>
+    <string name="about_author_name">Ruzhe</string>
     <string name="about_section_project">Project</string>
     <string name="about_source_code">Source Code</string>
     <string name="about_source_code_value">Open-source repository</string>
@@ -295,7 +297,6 @@
     <string name="about_radio_browser_value">Online search data source</string>
     <string name="about_section_author">Author</string>
     <string name="about_contact_support">Support</string>
-    <string name="about_support">Problems, suggestions, or want to help with translation? Get in touch!</string>
     <string name="about_section_translators">Translators</string>
     <string name="toast_link_copied">Link copied</string>
 
