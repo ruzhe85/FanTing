@@ -46,8 +46,7 @@
     <string name="settings_accent_title">主题配色</string>
     <string name="accent_palette_violet">紫罗兰</string>
     <string name="accent_palette_ocean">海蓝</string>
-    <string name="accent_palette_teal">青碧</string>
-    <string name="accent_palette_forest">森绿</string>
+    <string name="accent_palette_navy">藏青</string>
     <string name="accent_palette_amber">琥珀</string>
     <string name="accent_palette_rose">玫瑰</string>
     <string name="accent_palette_taiji">太极</string>
@@ -88,7 +87,7 @@
     <string name="settings_podcast_refresh_interval_10m">10 分钟</string>
     <string name="settings_podcast_refresh_interval_1h">1 小时</string>
     <string name="settings_podcast_refresh_interval_6h">6 小时</string>
-    <string name="settings_podcast_refresh_interval_1d">每天</string>
+    <string name="settings_podcast_refresh_interval_1d">24 小时</string>
     <string name="settings_podcast_search_region_title">搜索地区</string>
     <string name="settings_podcast_search_region_subtitle">搜索播客时使用的地区</string>
     <string name="settings_podcast_search_region_us">美国</string>
@@ -278,7 +277,12 @@
     <string name="onboarding_controls_tap_again_suffix">将暂停播放，并保留媒体控件。</string>
     <string name="onboarding_controls_hold_suffix">将完全停止播放。</string>
     <string name="onboarding_stream_actions_title">音频流操作</string>
-    <string name="onboarding_stream_tap_suffix">音频流信息支持复制当前曲目名称。</string>
+    <string name="onboarding_podcast_subscribe_title">订阅播客</string>
+    <string name="onboarding_podcast_subscribe_text">用 RSS 地址手动添加，或在线搜索、浏览热门榜单。</string>
+    <string name="onboarding_podcast_episodes_title">收听单集</string>
+    <string name="onboarding_podcast_episodes_text">单集支持断点续播、倍速播放与后台下载，进度会自动记录。</string>
+    <string name="action_start_using">开始使用</string>
+    <string name="onboarding_stream_tap_suffix">电台的信息区可以复制当前曲目名称。</string>
     <string name="onboarding_stream_hold_suffix">可查看详细的音频流信息。</string>
     <string name="onboarding_screenshot_placeholder">截图占位</string>
 
@@ -297,7 +301,7 @@
     <string name="about_license">许可证</string>
     <string name="about_radio_browser_value">在线搜索数据来源</string>
     <string name="about_section_author">作者</string>
-    <string name="about_contact_support">支持</string>
+    <string name="about_contact_support">建议反馈</string>
     <string name="about_section_translators">翻译</string>
     <string name="toast_link_copied">链接已复制</string>
 

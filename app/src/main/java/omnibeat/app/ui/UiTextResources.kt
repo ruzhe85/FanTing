@@ -23,10 +23,9 @@ fun MainPage.titleRes(): Int {
 @StringRes
 fun AccentPalette.labelRes(): Int {
     return when (this) {
-        AccentPalette.Violet -> R.string.accent_palette_violet
         AccentPalette.Ocean -> R.string.accent_palette_ocean
-        AccentPalette.Teal -> R.string.accent_palette_teal
-        AccentPalette.Forest -> R.string.accent_palette_forest
+        AccentPalette.Navy -> R.string.accent_palette_navy
+        AccentPalette.Violet -> R.string.accent_palette_violet
         AccentPalette.Amber -> R.string.accent_palette_amber
         AccentPalette.Rose -> R.string.accent_palette_rose
         AccentPalette.Taiji -> R.string.accent_palette_taiji

@@ -3,7 +3,11 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- 导入：箭头向下落入托盘 -->
     <path
-        android:fillColor="#FF000000"
-        android:pathData="M4,2H20V4.35294H4V2ZM20,14.9412H15.4286V22H8.57143V14.9412H4L12,6.70588L20,14.9412Z" />
+        android:pathData="M12,5V19M6.5,13.5L12,19L17.5,13.5M4,20H20"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

@@ -17,17 +17,21 @@ enum class AccentPalette(
      */
     val achromatic: Boolean = false,
 ) {
-    Violet(0xFF7650E8, 0xFF8F5CFF),
+    /** 默认配色：与图标同一色系的亮蓝 */
     Ocean(0xFF3C6BDE, 0xFF9DB9FF),
-    Teal(0xFF0E8C82, 0xFF6FD9CD),
-    Forest(0xFF2F7F45, 0xFF8FD99B),
+    /**
+     * 取自应用图标的深海军蓝：浅色主题用图标机身的藏青，
+     * 深色主题用图标声波的浅蓝，比 Ocean 更沉、更暗。
+     */
+    Navy(0xFF2B4F8C, 0xFF8FAEFF),
+    Violet(0xFF7650E8, 0xFF8F5CFF),
     Amber(0xFF8A5A12, 0xFFFFC46B),
     Rose(0xFFC03B67, 0xFFFF90AE),
     Taiji(0xFF141414, 0xFFF2F2F2, achromatic = true),
     ;
 
     companion object {
-        val Default: AccentPalette = Violet
+        val Default: AccentPalette = Ocean
 
         fun fromName(name: String?): AccentPalette =
             entries.firstOrNull { it.name == name } ?: Default

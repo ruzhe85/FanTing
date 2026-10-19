@@ -45,8 +45,7 @@
     <string name="settings_accent_title">Accent color</string>
     <string name="accent_palette_violet">Violet</string>
     <string name="accent_palette_ocean">Ocean</string>
-    <string name="accent_palette_teal">Teal</string>
-    <string name="accent_palette_forest">Forest</string>
+    <string name="accent_palette_navy">Navy</string>
     <string name="accent_palette_amber">Amber</string>
     <string name="accent_palette_rose">Rose</string>
     <string name="accent_palette_taiji">Taiji</string>
@@ -87,7 +86,7 @@
     <string name="settings_podcast_refresh_interval_10m">10 minutes</string>
     <string name="settings_podcast_refresh_interval_1h">1 hour</string>
     <string name="settings_podcast_refresh_interval_6h">6 hours</string>
-    <string name="settings_podcast_refresh_interval_1d">1 day</string>
+    <string name="settings_podcast_refresh_interval_1d">24 hours</string>
     <string name="settings_podcast_search_region_title">Search region</string>
     <string name="settings_podcast_search_region_subtitle">Region used to search podcasts</string>
     <string name="settings_podcast_search_region_us">United States</string>
@@ -277,7 +276,12 @@
     <string name="onboarding_controls_tap_again_suffix">\u0020to Pause playback and keep media controls available.</string>
     <string name="onboarding_controls_hold_suffix">\u0020to Stop playback completely.</string>
     <string name="onboarding_stream_actions_title">Use stream actions</string>
-    <string name="onboarding_stream_tap_suffix">\u0020stream info to copy the current track name.</string>
+    <string name="onboarding_podcast_subscribe_title">Subscribe to podcasts</string>
+    <string name="onboarding_podcast_subscribe_text">Add a feed by RSS, search online, or browse the charts.</string>
+    <string name="onboarding_podcast_episodes_title">Listen to episodes</string>
+    <string name="onboarding_podcast_episodes_text">Episodes resume where you left off, with speed control and background downloads.</string>
+    <string name="action_start_using">Start using</string>
+    <string name="onboarding_stream_tap_suffix">\u0020a station\'s stream info to copy the current track name.</string>
     <string name="onboarding_stream_hold_suffix">\u0020to open detailed stream information.</string>
     <string name="onboarding_screenshot_placeholder">Screenshot placeholder</string>
 
@@ -296,7 +300,7 @@
     <string name="about_license">License</string>
     <string name="about_radio_browser_value">Online search data source</string>
     <string name="about_section_author">Author</string>
-    <string name="about_contact_support">Support</string>
+    <string name="about_contact_support">Feedback</string>
     <string name="about_section_translators">Translators</string>
     <string name="toast_link_copied">Link copied</string>
 

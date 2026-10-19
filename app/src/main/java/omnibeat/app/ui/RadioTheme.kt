@@ -41,7 +41,7 @@ private val PrimaryDarkContent = Color(0xFF15121C)
 /** 白色前景至少要有这个对比度才可用，否则改用深色前景 */
 private const val MIN_PRIMARY_CONTRAST = 3f
 
-// 默认配色（紫罗兰）：沿用改动前的 16 个色值，保证升级后外观零变化
+// 兜底色板：仅在主题外读取 LocalRadioColors 时使用（预览/单测），运行时不走这里
 private val DarkRadioColors = RadioColors(
     background = Color(0xFF0D0D10),
     surface = Color(0xFF18181D),
@@ -148,14 +148,11 @@ fun shouldUseDarkTheme(themeMode: ThemeMode): Boolean {
 
 /**
  * 配色 × 明暗 → 完整色阶。派生结果只在第一次用到时计算，之后命中缓存
- * （枚举值固定，总共 7 × 2 种组合）。
+ * （枚举值固定，总共 6 × 2 种组合）。
  */
 private val derivedAccentColors = ConcurrentHashMap<Pair<AccentPalette, Boolean>, RadioColors>()
 
 private fun accentColors(palette: AccentPalette, useDarkTheme: Boolean): RadioColors {
-    if (palette == AccentPalette.Default) {
-        return if (useDarkTheme) DarkRadioColors else LightRadioColors
-    }
     return derivedAccentColors.getOrPut(palette to useDarkTheme) {
         deriveAccentColors(palette, useDarkTheme)
     }

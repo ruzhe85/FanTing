@@ -43,8 +43,7 @@
     <string name="settings_accent_title">Цвет акцента</string>
     <string name="accent_palette_violet">Фиолетовый</string>
     <string name="accent_palette_ocean">Океан</string>
-    <string name="accent_palette_teal">Бирюзовый</string>
-    <string name="accent_palette_forest">Лесной</string>
+    <string name="accent_palette_navy">Тёмно-синий</string>
     <string name="accent_palette_amber">Янтарный</string>
     <string name="accent_palette_rose">Розовый</string>
     <string name="accent_palette_taiji">Тайцзи</string>
@@ -313,7 +312,7 @@
     <string name="settings_podcast_refresh_interval_10m">10 минут</string>
     <string name="settings_podcast_refresh_interval_1h">1 час</string>
     <string name="settings_podcast_refresh_interval_6h">6 часов</string>
-    <string name="settings_podcast_refresh_interval_1d">1 день</string>
+    <string name="settings_podcast_refresh_interval_1d">24 часа</string>
     <string name="settings_podcast_search_region_title">Регион поиска</string>
     <string name="settings_podcast_search_region_subtitle">Регион для поиска подкастов</string>
     <string name="settings_podcast_search_region_us">США</string>
@@ -367,7 +366,12 @@
     <string name="onboarding_controls_tap_again_suffix">, чтобы поставить воспроизведение на паузу и оставить медиа-контролы доступными.</string>
     <string name="onboarding_controls_hold_suffix">, чтобы полностью остановить воспроизведение.</string>
     <string name="onboarding_stream_actions_title">Действия со стримом</string>
-    <string name="onboarding_stream_tap_suffix">\u0020на информацию о стриме, чтобы скопировать название текущего трека.</string>
+    <string name="onboarding_podcast_subscribe_title">Подписка на подкасты</string>
+    <string name="onboarding_podcast_subscribe_text">Добавьте ленту по RSS, найдите подкаст онлайн или откройте чарты.</string>
+    <string name="onboarding_podcast_episodes_title">Слушайте выпуски</string>
+    <string name="onboarding_podcast_episodes_text">Выпуски продолжаются с места остановки, с выбором скорости и загрузкой в фоне.</string>
+    <string name="action_start_using">Начать</string>
+    <string name="onboarding_stream_tap_suffix">\u0020на информацию о стриме радиостанции, чтобы скопировать название текущего трека.</string>
     <string name="onboarding_stream_hold_suffix">, чтобы открыть подробную информацию о стриме.</string>
     <string name="onboarding_screenshot_placeholder">Здесь будет скриншот</string>
 
@@ -386,7 +390,7 @@
     <string name="about_license">Лицензия</string>
     <string name="about_radio_browser_value">Источник данных для онлайн-поиска</string>
     <string name="about_section_author">Автор</string>
-    <string name="about_contact_support">Поддержка</string>
+    <string name="about_contact_support">Обратная связь</string>
     <string name="about_section_translators">Переводчики</string>
     <string name="toast_link_copied">Ссылка скопирована</string>
 

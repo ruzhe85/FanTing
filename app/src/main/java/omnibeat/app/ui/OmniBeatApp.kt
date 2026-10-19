@@ -286,7 +286,7 @@ fun OmniBeatApp() {
         var showBitrateInControlPanel by remember { mutableStateOf(true) }
         var showPlayerMetadata by remember { mutableStateOf(true) }
         var marqueeTrackTitle by remember { mutableStateOf(true) }
-        var autoExpandPlayerPanelOnPlayback by remember { mutableStateOf(true) }
+        var autoExpandPlayerPanelOnPlayback by remember { mutableStateOf(false) }
         var collapsePlayerPanelInSearch by remember { mutableStateOf(true) }
         var addRadioBrowserTags by remember { mutableStateOf(true) }
         var removeTrackingParametersFromUrls by remember { mutableStateOf(true) }

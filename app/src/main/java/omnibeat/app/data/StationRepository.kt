@@ -116,7 +116,7 @@ class StationRepository(private val context: Context) {
                 ?: ThemeMode.System
         }
 
-    /** 非法/缺失的值一律回落到默认配色（紫罗兰） */
+    /** 非法/缺失的值一律回落到默认配色（海蓝） */
     val accentPalette: Flow<AccentPalette> = context.stationDataStore.data
         .map { preferences -> AccentPalette.fromName(preferences[accentPaletteKey]) }
 
@@ -158,7 +158,7 @@ class StationRepository(private val context: Context) {
         .map { preferences -> preferences[showPlayerMetadataKey] ?: true }
 
     val autoExpandPlayerPanelOnPlayback: Flow<Boolean> = context.stationDataStore.data
-        .map { preferences -> preferences[autoExpandPlayerPanelOnPlaybackKey] ?: true }
+        .map { preferences -> preferences[autoExpandPlayerPanelOnPlaybackKey] ?: false }
 
     val collapsePlayerPanelInSearch: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[collapsePlayerPanelInSearchKey] ?: true }
