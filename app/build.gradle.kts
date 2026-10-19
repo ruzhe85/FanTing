@@ -23,7 +23,7 @@ android {
     defaultConfig {
         // 与上游官方版（omnibeat.app）不同的 applicationId，以便与官方版共存安装。
         // namespace 保持 omnibeat.app 不变，源码包名与上游一致，便于持续同步上游。
-        applicationId = "app.ruzhe.omnibeatp"
+        applicationId = "app.ruzhe.fanting"
         minSdk = 34
         targetSdk = 37
         versionCode = providers.gradleProperty("app.versionCode").get().toInt()
