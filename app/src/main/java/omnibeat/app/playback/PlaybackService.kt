@@ -169,6 +169,9 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         repository = StationRepository(applicationContext)
         player = buildPlayer()
+        // 应用内音量已移除：播放器固定满增益输出，音量完全交给系统媒体音量（STREAM_MUSIC）。
+        // 显式写一次，避免任何默认值或旧链路残留把增益压在 1.0 以下。
+        player.volume = 1f
         sessionPlayer = OmniBeatSessionPlayer()
         player.addListener(playerListener)
         player.addAnalyticsListener(analyticsListener)
