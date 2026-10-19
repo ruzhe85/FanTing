@@ -100,7 +100,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 val id = withContext(Dispatchers.IO) {
                     val request = DownloadManager.Request(Uri.parse(release.apkUrl))
-                        .setTitle("OmniBeat ${release.version}")
+                        .setTitle("FanTing ${release.version}")
                         .setMimeType("application/vnd.android.package-archive")
                         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, release.apkName)
