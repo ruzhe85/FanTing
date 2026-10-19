@@ -36,7 +36,7 @@ data class ITunesPodcast(
 )
 
 object ITunesPodcastClient {
-    private const val USER_AGENT = "OmniBeatP Android"
+    private const val USER_AGENT = "FanTing Android"
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 15_000
     private const val SEARCH_URL = "https://itunes.apple.com/search"

@@ -34,7 +34,7 @@ import java.util.Locale
  *                     Range，Media3 建不出 seek map → 拖不动，所以只在没有 hls 时用。
  */
 object RssParser {
-    private const val USER_AGENT = "OmniBeatP Android"
+    private const val USER_AGENT = "FanTing Android"
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 20_000
     private const val ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"

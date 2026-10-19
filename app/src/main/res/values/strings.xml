@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">OmniBeatP</string>
+    <string name="app_name">FanTing</string>
 
     <string name="action_add_manually">Add manually</string>
     <string name="action_search_online">Search online</string>
@@ -62,7 +62,7 @@
     <string name="settings_keep_media_card_title">Keep media controls after service stops</string>
     <string name="settings_keep_media_card_on">Android will keep media controls in Quick Settings</string>
     <string name="settings_keep_media_card_off">Android will clear media controls in Quick Settings</string>
-    <string name="settings_keep_media_card_note">Resume playback directly from Quick Settings by tapping Play, even when OmniBeatP isn’t running.\nTurn this off if you don’t want your last played station shown there.\n\nChanges may not take effect immediately. You may need to restart your device.</string>
+    <string name="settings_keep_media_card_note">Resume playback directly from Quick Settings by tapping Play, even when FanTing isn’t running.\nTurn this off if you don’t want your last played station shown there.\n\nChanges may not take effect immediately. You may need to restart your device.</string>
     <string name="settings_station_covers_title">Covers for stations</string>
     <string name="settings_station_covers_on">Station lists will show covers</string>
     <string name="settings_station_covers_off">Station lists will hide covers</string>
@@ -300,7 +300,7 @@
     <string name="toast_link_copied">Link copied</string>
 
     <string name="update_available_title">Update available</string>
-    <string name="update_available_text">OmniBeatP %1$s is available. Download the new version?</string>
+    <string name="update_available_text">FanTing %1$s is available. Download the new version?</string>
     <string name="update_downloaded_title">Update downloaded</string>
     <string name="update_downloaded_text">The APK has been saved to Downloads. Open it to install the update?</string>
     <string name="update_checking">Checking for updates...</string>
@@ -308,7 +308,7 @@
     <string name="update_downloading">Downloading update to Downloads</string>
     <string name="update_downloading_title">Downloading update</string>
     <string name="update_download_progress">%1$d%%</string>
-    <string name="update_failed">Unable to update OmniBeatP\n%1$s</string>
+    <string name="update_failed">Unable to update FanTing\n%1$s</string>
 
     <string name="page_translation">Translation</string>
     <string name="translation_enabled">Translation menu enabled</string>

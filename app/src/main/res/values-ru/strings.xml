@@ -1,4 +1,5 @@
 <resources>
+    <string name="app_name">FanTing</string>
     <string name="action_add_manually">Добавить вручную</string>
     <string name="action_search_online">Искать онлайн</string>
     <string name="action_cancel">Отмена</string>
@@ -59,7 +60,7 @@
     <string name="settings_keep_media_card_title">Сохранять плеер после остановки сервиса</string>
     <string name="settings_keep_media_card_on">Android будет сохранять плеер в панели быстрых настроек</string>
     <string name="settings_keep_media_card_off">Android не будет сохранять плеер в панели быстрых настроек</string>
-    <string name="settings_keep_media_card_note">Возобновляйте воспроизведение прямо из панели быстрых настроек, нажав Play, даже когда OmniBeatP не запущен.\nВыключите эту настройку, если не хотите видеть там последнюю прослушанную станцию.\n\nИзменения могут вступить в силу не сразу. Может потребоваться перезагрузка устройства.</string>
+    <string name="settings_keep_media_card_note">Возобновляйте воспроизведение прямо из панели быстрых настроек, нажав Play, даже когда FanTing не запущен.\nВыключите эту настройку, если не хотите видеть там последнюю прослушанную станцию.\n\nИзменения могут вступить в силу не сразу. Может потребоваться перезагрузка устройства.</string>
     <string name="settings_station_covers_title">Обложки станций</string>
     <string name="settings_station_covers_on">В списке станций будут отображаться обложки</string>
     <string name="settings_station_covers_off">В списке станций обложки отображаться не будут</string>
@@ -389,7 +390,7 @@
     <string name="toast_link_copied">Ссылка скопирована</string>
 
     <string name="update_available_title">Доступно обновление</string>
-    <string name="update_available_text">Доступна версия OmniBeatP %1$s. Скачать новую версию?</string>
+    <string name="update_available_text">Доступна версия FanTing %1$s. Скачать новую версию?</string>
     <string name="update_downloaded_title">Обновление скачано</string>
     <string name="update_downloaded_text">APK сохранён в Downloads. Открыть его для установки обновления?</string>
     <string name="update_checking">Проверка обновлений...</string>
@@ -397,7 +398,7 @@
     <string name="update_downloading">Обновление скачивается в Downloads</string>
     <string name="update_downloading_title">Скачивание обновления</string>
     <string name="update_download_progress">%1$d%%</string>
-    <string name="update_failed">Не удалось обновить OmniBeatP\n%1$s</string>
+    <string name="update_failed">Не удалось обновить FanTing\n%1$s</string>
 
     <string name="page_translation">Перевод</string>
     <string name="translation_enabled">Раздел перевода включён</string>

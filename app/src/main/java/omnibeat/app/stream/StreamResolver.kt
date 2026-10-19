@@ -273,7 +273,7 @@ object StreamResolver {
             this !in StreamResolverContract.ContentType.PLAYLIST_AUDIO_TYPES
     }
 
-    private const val USER_AGENT = "OmniBeat"
+    private const val USER_AGENT = "FanTing"
 }
 
 object IcyMetadataParser {

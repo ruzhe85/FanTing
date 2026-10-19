@@ -284,7 +284,7 @@ class PodcastChartClient(context: Context) {
 
     private companion object {
         const val CHART_URL = "https://rss.marketingtools.apple.com/api/v2"
-        const val USER_AGENT = "OmniBeatP Android"
+        const val USER_AGENT = "FanTing Android"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 20_000
         const val RETRY_DELAY_MS = 600L

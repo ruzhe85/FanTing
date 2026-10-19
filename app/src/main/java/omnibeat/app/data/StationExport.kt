@@ -15,7 +15,7 @@ import java.util.UUID
 
 private const val EXPORT_SCHEMA_VERSION = 2
 private const val EXPORT_SCHEMA_VERSION_V1 = 1
-private const val EXPORT_APP_NAME = "OmniBeat"
+private const val EXPORT_APP_NAME = "FanTing"
 
 /**
  * 一份完整备份：电台 + 排序 + 播客订阅（含每期进度/收藏）+ 播放历史。

@@ -59,7 +59,7 @@ object PodcastDownloadManager {
     private const val SEGMENTS_DIR_SUFFIX = ".segments"
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 20_000
-    private const val USER_AGENT = "OmniBeatP Android"
+    private const val USER_AGENT = "FanTing Android"
     private const val BUFFER_SIZE = 64 * 1024
     /** 进度上报节流：至少隔这么久推一次状态，别每 64KB 都重组 UI */
     private const val PROGRESS_INTERVAL_MS = 250L

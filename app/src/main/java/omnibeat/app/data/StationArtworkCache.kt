@@ -70,7 +70,7 @@ object StationArtworkCache {
     private const val READ_TIMEOUT_MS = 20_000
     private const val MAX_PARALLEL_DOWNLOADS = 4
     private const val MEDIA_SIZE = 256
-    private const val USER_AGENT = "OmniBeat/1.0 (Android)"
+    private const val USER_AGENT = "FanTing/1.0 (Android)"
 
     private fun Metadata.failed(now: Long): Metadata = copy(
         failedAt = now,

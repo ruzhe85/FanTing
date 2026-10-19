@@ -60,7 +60,7 @@ import java.util.concurrent.CancellationException
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-private const val PLAYER_USER_AGENT = "OmniBeat Android"
+private const val PLAYER_USER_AGENT = "FanTing Android"
 
 enum class PlaybackTrackStatus {
     Stopped,

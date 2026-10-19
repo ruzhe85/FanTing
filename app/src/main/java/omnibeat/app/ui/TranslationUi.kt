@@ -105,7 +105,7 @@ fun TranslationPage(repository: StationRepository, modifier: Modifier = Modifier
                 onClick = {
                     val tag = TranslationLanguage.activeTranslation(resources)?.languageTag
                         ?: resources.configuration.locales[0].toLanguageTag()
-                    exportLauncher.launch("omnibeat-strings-$tag.txt")
+                    exportLauncher.launch("fanting-strings-$tag.txt")
                 },
             )
             ExportImportActionRow(

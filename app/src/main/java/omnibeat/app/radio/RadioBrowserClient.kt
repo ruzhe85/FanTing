@@ -421,7 +421,7 @@ class RadioBrowserClient(context: Context) {
         connection.readTimeout = readTimeout
         connection.requestMethod = "GET"
         connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty("User-Agent", "OmniBeat Android")
+        connection.setRequestProperty("User-Agent", "FanTing Android")
 
         try {
             val responseCode = connection.responseCode

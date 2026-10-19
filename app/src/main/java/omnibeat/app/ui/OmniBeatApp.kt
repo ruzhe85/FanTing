@@ -774,20 +774,20 @@ fun OmniBeatApp() {
                 ),
             )
             val exportDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy_MM_dd"))
-            jsonExportLauncher.launch("omnibeat_backup_$exportDate.json")
+            jsonExportLauncher.launch("fanting_backup_$exportDate.json")
         }
 
         fun exportSimpleText() {
             if (stations.isEmpty()) {
                 pendingExportContent = resources
-                    .openRawResource(R.raw.omnibeat_export_example)
+                    .openRawResource(R.raw.fanting_export_example)
                     .bufferedReader()
                     .use { it.readText() }
-                textExportLauncher.launch("omnibeat_export_example.txt")
+                textExportLauncher.launch("fanting_export_example.txt")
             } else {
                 pendingExportContent = SimpleStationTextCodec.encode(stations)
                 val exportDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy_MM_dd"))
-                textExportLauncher.launch("omnibeat_stations_$exportDate.txt")
+                textExportLauncher.launch("fanting_stations_$exportDate.txt")
             }
         }
 

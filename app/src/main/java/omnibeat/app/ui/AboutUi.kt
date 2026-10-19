@@ -86,8 +86,8 @@ fun AboutPage(modifier: Modifier = Modifier, updates: AppUpdateActions? = null) 
             AboutSectionHeader(stringResource(R.string.about_section_project))
             AboutLinkRow(
                 label = stringResource(R.string.about_source_code),
-                value = "github.com/vikindor/omnibeat",
-                url = "https://github.com/Vikindor/omnibeat",
+                value = "github.com/ruzhe85/FanTing",
+                url = "https://github.com/ruzhe85/FanTing",
             )
             AboutLinkRow(
                 label = stringResource(R.string.about_license),
