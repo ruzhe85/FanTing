@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "OmniBeat"
+rootProject.name = "FanTing"
 include(":app")

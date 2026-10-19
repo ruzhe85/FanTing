@@ -1,4 +1,4 @@
-name: Build OmniBeatP APK
+name: Build FanTing APK
 
 "on":
   push:
@@ -120,7 +120,7 @@ jobs:
       - name: Upload APK (artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: omnibeatp-apk
+          name: fanting-apk
           path: app/build/outputs/apk/github/release/*.apk
           retention-days: 30
 
@@ -138,7 +138,7 @@ jobs:
 
           cd "$APK_DIR"
           for apk in *.apk; do
-            mv "$apk" "OmniBeatP-ci.apk"
+            mv "$apk" "FanTing-ci.apk"
           done
           ls -la
 
@@ -149,10 +149,10 @@ jobs:
 
           gh release create ci \
             --repo "$GITHUB_REPOSITORY" \
-            --title "OmniBeatP CI Build" \
+            --title "FanTing CI Build" \
             --prerelease \
             --notes "CI build (${VERSION_NAME}) from commit \`${SHA}\` — 测试版，非正式发布。" \
-            "${APK_DIR}/OmniBeatP-ci.apk"
+            "${APK_DIR}/FanTing-ci.apk"
 
           echo "Published CI release (tag ci)"
 
@@ -170,7 +170,7 @@ jobs:
 
           cd "$APK_DIR"
           for apk in *.apk; do
-            mv "$apk" "OmniBeatP-${VERSION_NAME}.apk"
+            mv "$apk" "FanTing-${VERSION_NAME}.apk"
           done
           ls -la
 
@@ -181,8 +181,8 @@ jobs:
 
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "OmniBeatP ${VERSION_NAME}" \
+            --title "FanTing ${VERSION_NAME}" \
             --generate-notes \
-            "${APK_DIR}/OmniBeatP-${VERSION_NAME}.apk"
+            "${APK_DIR}/FanTing-${VERSION_NAME}.apk"
 
           echo "Published release $TAG"
