@@ -730,7 +730,7 @@ private fun PodcastCoverTile(
     }
 }
 
-/** 长按菜单：编辑 / 删除。标准与紧凑两种行共用 */
+/** 长按菜单：编辑 / 取消订阅。标准与紧凑两种行共用 */
 @Composable
 private fun SubscriptionMenu(
     expanded: Boolean,
@@ -767,14 +767,14 @@ private fun SubscriptionMenu(
         DropdownMenuItem(
             text = {
                 Text(
-                    text = stringResource(R.string.action_delete),
+                    text = stringResource(R.string.podcast_unsubscribe),
                     color = RadioDanger,
                     fontSize = RadioTextSizes.body,
                 )
             },
             leadingIcon = {
                 Icon(
-                    painter = painterResource(R.drawable.ic_delete),
+                    painter = painterResource(R.drawable.ic_close),
                     contentDescription = null,
                     tint = RadioDanger,
                     modifier = Modifier.size(RadioSizes.iconInline),
