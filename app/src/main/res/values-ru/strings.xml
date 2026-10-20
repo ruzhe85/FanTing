@@ -378,8 +378,8 @@
     <string name="onboarding_stream_hold_suffix">, чтобы открыть подробную информацию о стриме.</string>
     <string name="onboarding_screenshot_placeholder">Здесь будет скриншот</string>
 
-    <string name="about_tagline">Интернет-радио и подкасты без заморочек</string>
-    <string name="about_description">Плеер для современных онлайн-станций и подкастов</string>
+    <string name="about_tagline">Просто откройте и слушайте</string>
+    <string name="about_description">Создано для радио и подкастов</string>
     <string name="about_section_app">Приложение</string>
     <string name="about_version">Версия</string>
     <string name="about_build">Сборка</string>

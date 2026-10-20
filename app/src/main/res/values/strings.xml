@@ -296,8 +296,8 @@
     <string name="onboarding_stream_hold_suffix">\u0020to open detailed stream information.</string>
     <string name="onboarding_screenshot_placeholder">Screenshot placeholder</string>
 
-    <string name="about_tagline">Internet radio &amp; podcasts, made simple</string>
-    <string name="about_description">Built for modern online stations and podcasts</string>
+    <string name="about_tagline">Just open and listen</string>
+    <string name="about_description">Born for radio and podcasts</string>
     <string name="about_section_app">App</string>
     <string name="about_version">Version</string>
     <string name="about_build">Build</string>

@@ -289,8 +289,8 @@
     <string name="onboarding_stream_hold_suffix">可檢視詳細的音訊流資訊。</string>
     <string name="onboarding_screenshot_placeholder">截圖佔位</string>
 
-    <string name="about_tagline">讓網路電台與播客更簡單</string>
-    <string name="about_description">專為現代網路電台與播客打造</string>
+    <string name="about_tagline">打開聽，隨便聽</string>
+    <string name="about_description">為電台與播客而生</string>
     <string name="about_section_app">應用程式</string>
     <string name="about_version">版本</string>
     <string name="about_build">構建</string>
