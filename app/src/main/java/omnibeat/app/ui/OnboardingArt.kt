@@ -190,7 +190,7 @@ private class ArtPen(
                 val angle = Math.PI / 5.0 * index - Math.PI / 2
                 val r = if (index % 2 == 0) radius else radius * 0.45f
                 val px = x(centerX) + (Math.cos(angle) * r * sx).toFloat()
-                val py = y(centerY) + (Math.sin(angle) * r * sy).toFloat()
+                val py = y(centerY) + (Math.sin(angle) * r * sx).toFloat()
                 if (index == 0) moveTo(px, py) else lineTo(px, py)
             }
             close()
