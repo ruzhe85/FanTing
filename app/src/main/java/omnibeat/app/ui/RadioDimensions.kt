@@ -55,7 +55,9 @@ object RadioSizes {
     val screenshotHeight = 330.dp
     val screenshotPlaceholderHeight = 242.dp
     val onboardingTopGap = 29.dp
-    val onboardingTitleGap = 37.dp
+
+    /** 图底到标题：30dp + 标题行高 29，标题基线落在图底下方约 54dp */
+    val onboardingTitleGap = 30.dp
     val selectedPageDot = 11.dp
     val pageDot = 9.dp
 }
@@ -81,9 +83,11 @@ object RadioTextSizes {
     val appName = 29.sp
     val compactLineHeight = 20.sp
     val bodyLineHeight = 22.sp
-    val onboardingTitle = 31.sp
-    val onboardingLineHeight = 37.sp
-    val onboardingBodyLineHeight = 25.sp
+    val onboardingTitle = 24.sp
+    val onboardingLineHeight = 29.sp
+    /** 引导页正文：比全局 bodyLarge(18sp) 小两号，配合两端阅读宽度 */
+    val onboardingBody = 16.sp
+    val onboardingBodyLineHeight = 26.sp
 }
 
 private val BaseTypography = Typography()

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -105,7 +104,14 @@ private val OnboardingPages = listOf(
 )
 
 /** 示意图宽高比：320 × 340（界面只露上半屏） */
-private const val ART_RATIO = 320f / 340f
+private const val ART_RATIO = 320f / 500f
+
+/**
+ * 横屏左右分栏比例：左右各占一半，各自在自己的半屏里居中。
+ * 图在左半边居中、文案在右半边居中，视觉上就是「两个等分屏」。
+ */
+private const val LANDSCAPE_ART_WEIGHT = 0.5f
+private const val LANDSCAPE_TEXT_WEIGHT = 0.5f
 
 @Composable
 fun OnboardingFlow(
@@ -228,16 +234,25 @@ private fun OnboardingLandscape(
                     .fillMaxSize()
                     .onboardingPagerFade(pagerState, page),
             ) {
-                // 横屏高度有限，图按行高铺满再反推宽度
-                OnboardingArtFrame(
-                    art = item.art,
+                // 左栏固定 45%：图在这个区域内按「区域宽 / 行高」更紧的一侧等比缩放并居中，
+                // 这样右边文案区始终拿到固定的 55%，不会被宽图挤窄
+                BoxWithConstraints(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .aspectRatio(ART_RATIO),
-                )
+                        .weight(LANDSCAPE_ART_WEIGHT)
+                        .fillMaxHeight(),
+                ) {
+                    val artHeight = minOf(maxHeight, maxWidth / ART_RATIO)
+                    OnboardingArtFrame(
+                        art = item.art,
+                        modifier = Modifier
+                            .height(artHeight)
+                            .width(artHeight * ART_RATIO),
+                    )
+                }
                 OnboardingLandscapeText(
                     page = item,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(LANDSCAPE_TEXT_WEIGHT),
                 )
             }
         }
@@ -327,7 +342,7 @@ private fun OnboardingPageContent(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         // 图占一半略多的高度，剩下的给标题与正文；
         // 宽高都受约束，矮屏缩图、宽屏不会把正文挤没
-        val artHeight = minOf(maxHeight * 0.62f, maxWidth / ART_RATIO)
+        val artHeight = minOf(maxWidth / ART_RATIO, maxHeight * 0.76f)
         val bodyScrollState = rememberScrollState()
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -359,7 +374,7 @@ private fun OnboardingPageContent(
                 Text(
                     text = text,
                     color = RadioTextMuted,
-                    fontSize = RadioTextSizes.bodyLarge,
+                    fontSize = RadioTextSizes.onboardingBody,
                     textAlign = TextAlign.Start,
                     lineHeight = RadioTextSizes.onboardingBodyLineHeight,
                     modifier = Modifier
@@ -444,7 +459,7 @@ private fun OnboardingArtFrame(
     }
 }
 
-/** 横屏右栏：标题 + 正文，正文可滚动 */
+/** 横屏右栏：标题 + 正文，整块在栏内垂直居中，正文可滚动 */
 @Composable
 private fun OnboardingLandscapeText(
     page: OnboardingPage,
@@ -452,20 +467,27 @@ private fun OnboardingLandscapeText(
 ) {
     val text = onboardingText(page.textType)
     val bodyScrollState = rememberScrollState()
-    Column(modifier = modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier.fillMaxHeight(),
+    ) {
         Text(
             text = stringResource(page.titleRes),
             color = RadioText,
             fontSize = RadioTextSizes.onboardingTitle,
             fontWeight = FontWeight.SemiBold,
             lineHeight = RadioTextSizes.onboardingLineHeight,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
         )
         Spacer(modifier = Modifier.height(RadioSpacing.medium))
         Text(
             text = text,
             color = RadioTextMuted,
-            fontSize = RadioTextSizes.bodyLarge,
+            fontSize = RadioTextSizes.onboardingBody,
             lineHeight = RadioTextSizes.onboardingBodyLineHeight,
+            textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(bodyScrollState),
