@@ -428,7 +428,6 @@ private fun onboardingText(textType: OnboardingTextType): AnnotatedString {
             onboardingText {
                 appendBold(tap)
                 append(tapSuffix)
-                append("\n\n")
                 appendBold(pressAndHold)
                 append(holdSuffix)
             }

@@ -298,6 +298,7 @@
     <string name="about_formats">支持格式</string>
     <string name="about_playlist_protocol">播放列表与协议</string>
     <string name="about_author_name">汝者</string>
+    <string name="about_copyright">%1$s © 2026 %2$s</string>
     <string name="about_section_project">项目</string>
     <string name="about_source_code">源代码</string>
     <string name="about_source_code_value">开源仓库</string>

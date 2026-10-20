@@ -90,31 +90,31 @@ fun AboutPage(modifier: Modifier = Modifier, updates: AppUpdateActions? = null) 
             AboutSectionHeader(stringResource(R.string.about_section_project))
             AboutLinkRow(
                 label = stringResource(R.string.about_source_code),
+                value = "github.com/ruzhe85/FanTing",
                 url = "https://github.com/ruzhe85/FanTing",
             )
             AboutLinkRow(
                 label = stringResource(R.string.about_license),
+                value = "GNU AGPL 3.0",
                 url = "https://github.com/ruzhe85/FanTing/blob/master/LICENSE",
             )
             AboutLinkRow(
                 label = stringResource(R.string.about_radio_browser_value),
+                value = "Radio Browser",
                 url = "https://www.radio-browser.info",
             )
-            AboutDivider()
-
-            AboutSectionHeader(stringResource(R.string.about_section_author))
-            AboutLinkRow(
-                label = stringResource(R.string.about_author_name),
-                url = "https://github.com/ruzhe85",
-            )
-
             AboutLinkRow(
                 label = stringResource(R.string.about_contact_support),
+                value = "github.com/ruzhe85/FanTing/issues",
                 url = "https://github.com/ruzhe85/FanTing/issues",
             )
 
             Text(
-                text = "© 2026",
+                text = stringResource(
+                    R.string.about_copyright,
+                    stringResource(R.string.app_name),
+                    stringResource(R.string.about_author_name),
+                ),
                 color = RadioTextMuted,
                 fontSize = RadioTextSizes.caption,
                 textAlign = TextAlign.Center,
@@ -195,6 +195,7 @@ private fun AboutDivider(modifier: Modifier = Modifier) {
 @Composable
 private fun AboutLinkRow(
     label: String,
+    value: String? = null,
     modifier: Modifier = Modifier,
     url: String? = null,
 ) {
@@ -220,12 +221,25 @@ private fun AboutLinkRow(
             )
             .padding(vertical = RadioSpacing.fieldGap),
     ) {
-        Text(
-            text = label,
-            color = if (enabled) RadioText else RadioTextMuted,
-            fontSize = RadioTextSizes.bodyLarge,
+        Column(
+            verticalArrangement = Arrangement.spacedBy(3.dp),
             modifier = Modifier.weight(1f),
-        )
+        ) {
+            Text(
+                text = label,
+                color = if (enabled) RadioText else RadioTextMuted,
+                fontSize = RadioTextSizes.bodyLarge,
+            )
+            if (!value.isNullOrBlank()) {
+                Text(
+                    text = value,
+                    color = RadioTextMuted,
+                    fontSize = RadioTextSizes.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         if (enabled) {
             Icon(
                 painter = painterResource(R.drawable.ic_open_in_new),

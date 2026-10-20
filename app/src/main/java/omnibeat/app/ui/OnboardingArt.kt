@@ -81,6 +81,9 @@ private data class OnboardingArtLabels(
     val download: String = "",
     val markPlayed: String = "",
     val copyLink: String = "",
+
+    /** 期数行的进度示例，用真实格式串生成，避免只剩一条空白横线 */
+    val episodeProgress: String = "",
 )
 
 @Composable
@@ -120,6 +123,12 @@ fun OnboardingArt(kind: OnboardingArtKind, modifier: Modifier = Modifier) {
         download = stringResource(R.string.podcast_batch_download),
         markPlayed = stringResource(R.string.podcast_mark_played),
         copyLink = stringResource(R.string.podcast_copy_link),
+        episodeProgress = stringResource(
+            R.string.podcast_progress_ratio,
+            42,
+            "27:31",
+            "1:05:38",
+        ),
     )
     Canvas(modifier = modifier) {
         // 等比缩放 + 居中：画布比例与控件不一致时只多留白，图形不会变形
@@ -246,18 +255,35 @@ private class ArtPen(
         ).size.width.toFloat()
     }
 
+    /**
+     * 以「垂直中心」定位写一行字。
+     * 图标用中心坐标画，文字若也用顶部坐标就会差半个字高，看起来不在同一行。
+     */
+    fun textCentered(left: Float, centerY: Float, value: String, size: Float, color: Color) {
+        if (value.isBlank()) return
+        val layout = textMeasurer.measure(
+            text = AnnotatedString(value),
+            style = TextStyle(fontSize = size.sp, color = color),
+            maxLines = 1,
+            density = Density(1f),
+        )
+        val top = centerY - layout.size.height / 2f
+        scope.drawText(textLayoutResult = layout, topLeft = Offset(left, top))
+    }
+
     // ---- 通用部件 ----
 
-    /** 顶栏：☰ + 四个文字标签 + 排序键 + 添加键 */
+    /**
+     * 顶栏：☰ + 两个文字标签 + 排序键 + 添加键。
+     * 实际顶栏只有「电台 / 播客」两个 tab（收藏页在没有收藏时整页隐藏）。
+     */
     private fun drawTopBar(activeTab: Int) {
         repeat(3) { index ->
             line(16f, 24f + index * 6f, 32f, 24f + index * 6f, colors.muted, 1.6f)
         }
         val tabs = listOf(
             46f to labels.tabStations,
-            86f to labels.tabFavorites,
-            126f to labels.tabSearch,
-            166f to labels.tabPodcasts,
+            96f to labels.tabPodcasts,
         )
         tabs.forEachIndexed { index, (left, label) ->
             if (label.isNotBlank()) {
@@ -312,14 +338,27 @@ private class ArtPen(
         bar(98f, top + 40f, 132f, 7f, colors.muted.copy(alpha = 0.45f * alpha))
     }
 
-    /** 期数行：标题条 + 状态条 + 可选进度 */
-    private fun drawEpisodeRow(top: Float, height: Float, alpha: Float, progress: Float?) {
+    /**
+     * 期数行：标题条 + 状态文字 + 可选进度条。
+     * 状态写成真实文案，否则一条空白横线看不出这是播客单集。
+     */
+    private fun drawEpisodeRow(
+        top: Float,
+        height: Float,
+        alpha: Float,
+        progress: Float?,
+        status: String? = null,
+    ) {
         box(12f, top, 296f, height, 10f, colors.surfaceHigh.copy(alpha = 0.55f * alpha))
         bar(24f, top + 14f, 150f, 9f, colors.text.copy(alpha = 0.78f * alpha))
-        bar(24f, top + 34f, 96f, 6f, colors.muted.copy(alpha = 0.45f * alpha))
+        if (status != null) {
+            text(24f, top + 34f, status, 10f, colors.muted.copy(alpha = 0.75f * alpha))
+        } else {
+            bar(24f, top + 34f, 96f, 6f, colors.muted.copy(alpha = 0.45f * alpha))
+        }
         if (progress != null) {
-            box(24f, top + 52f, 180f, 3f, 1.5f, colors.outline.copy(alpha = 0.8f))
-            box(24f, top + 52f, 180f * progress, 3f, 1.5f, colors.primary.copy(alpha = alpha))
+            box(24f, top + 54f, 180f, 3f, 1.5f, colors.outline.copy(alpha = 0.8f))
+            box(24f, top + 54f, 180f * progress, 3f, 1.5f, colors.primary.copy(alpha = alpha))
         }
     }
 
@@ -370,8 +409,16 @@ private class ArtPen(
         bar(48f, 282f, 56f, 9f, colors.text.copy(alpha = 0.45f))
 
         text(42f, 350f, labels.delete, 13f, colors.danger)
+        // 按钮内文字按实测宽度居中，而不是写死一个 x
         box(212f, 344f, 80f, 30f, 15f, colors.primary)
-        text(234f, 351f, labels.save, 12f, colors.surface)
+        val saveTextWidth = textWidth(labels.save, 12f)
+        text(
+            left = 212f + (80f - saveTextWidth) / 2f,
+            top = 351f,
+            value = labels.save,
+            size = 12f,
+            color = colors.surface,
+        )
 
         // 长按指引
         line(160f, 58f, 160f, 70f, colors.primary, 1.5f)
@@ -381,7 +428,7 @@ private class ArtPen(
     // ---- 3 订阅播客 ----
 
     fun drawSubscribePodcast() {
-        drawTopBar(activeTab = 3)
+        drawTopBar(activeTab = 1)
         drawSubscriptionCard(58f, 1f)
         drawSubscriptionCard(150f, 1f)
         drawSubscriptionCard(242f, 0.85f)
@@ -403,7 +450,7 @@ private class ArtPen(
     // ---- 4 管理播客 ----
 
     fun drawManagePodcast() {
-        drawTopBar(activeTab = 3)
+        drawTopBar(activeTab = 1)
 
         // 长按中的卡片：主色描边
         box(12f, 58f, 296f, 86f, 12f, colors.surfaceHigh.copy(alpha = 0.85f))
@@ -443,7 +490,7 @@ private class ArtPen(
         box(248f, 18f, 26f, 26f, 7f, colors.primary.copy(alpha = 0.14f))
         listOf(26f, 31f, 36f).forEach { circle(261f, it, 1.9f, colors.primary) }
 
-        drawEpisodeRow(56f, 80f, 1f, 0.42f)
+        drawEpisodeRow(56f, 80f, 1f, 0.42f, status = labels.episodeProgress)
         drawEpisodeRow(144f, 76f, 0.88f, null)
         drawEpisodeRow(228f, 76f, 0.7f, null)
 
@@ -470,40 +517,43 @@ private class ArtPen(
         listOf(26f, 31f, 36f).forEach { circle(261f, it, 1.9f, colors.muted) }
 
         // 只留被长按的那一期：原来这里有两行，去掉下面那行（从中间缩）
-        drawEpisodeRow(54f, 78f, 1f, 0.42f)
+        drawEpisodeRow(54f, 78f, 1f, 0.42f, status = labels.episodeProgress)
 
         // 底部弹层
         box(0f, 140f, 320f, 244f, 16f, colors.surfaceHigh)
         boxOutline(0f, 140f, 320f, 244f, 16f, colors.outline, 0.8f)
         bar(140f, 152f, 40f, 4f, colors.outline)
-        text(20f, 176f, labels.episodeActions, 15f, colors.text)
-        bar(20f, 186f, 150f, 8f, colors.muted.copy(alpha = 0.45f))
+        // 标题按块顶放：15sp 字块高约 20，底边落在 188
+        text(20f, 168f, labels.episodeActions, 15f, colors.text)
+        // 单集标题占位：真实弹层里这里是一行长标题，横条要够长，且不与标题相压
+        bar(20f, 194f, 250f, 7f, colors.muted.copy(alpha = 0.35f))
 
-        // 收藏
-        drawStar(28f, 222f)
-        text(50f, 216f, labels.favorite, 12f, colors.text)
-        line(20f, 240f, 300f, 240f, colors.outline.copy(alpha = 0.6f), 0.8f)
+        // 四项统一用「中心线」对齐：图标中心与文字中心同 y
+        val favoriteY = 228f
+        drawStar(28f, favoriteY)
+        textCentered(50f, favoriteY, labels.favorite, 12f, colors.text)
+        line(20f, 250f, 300f, 250f, colors.outline.copy(alpha = 0.6f), 0.8f)
 
-        // 下载
-        line(28f, 258f, 28f, 272f, colors.muted, 1.6f)
-        line(23f, 266f, 28f, 272f, colors.muted, 1.6f)
-        line(33f, 266f, 28f, 272f, colors.muted, 1.6f)
-        line(21f, 278f, 35f, 278f, colors.muted, 1.6f)
-        text(50f, 262f, labels.download, 12f, colors.text)
-        line(20f, 288f, 300f, 288f, colors.outline.copy(alpha = 0.6f), 0.8f)
+        val downloadY = 272f
+        line(28f, downloadY - 7f, 28f, downloadY + 5f, colors.muted, 1.6f)
+        line(23f, downloadY - 1f, 28f, downloadY + 5f, colors.muted, 1.6f)
+        line(33f, downloadY - 1f, 28f, downloadY + 5f, colors.muted, 1.6f)
+        line(21f, downloadY + 11f, 35f, downloadY + 11f, colors.muted, 1.6f)
+        textCentered(50f, downloadY, labels.download, 12f, colors.text)
+        line(20f, 294f, 300f, 294f, colors.outline.copy(alpha = 0.6f), 0.8f)
 
-        // 标记为已听
-        ring(28f, 316f, 7f, colors.muted, 1.5f)
-        line(24f, 316f, 27f, 319f, colors.muted, 1.5f)
-        line(27f, 319f, 32f, 313f, colors.muted, 1.5f)
-        text(50f, 310f, labels.markPlayed, 12f, colors.text)
-        line(20f, 336f, 300f, 336f, colors.outline.copy(alpha = 0.6f), 0.8f)
+        val playedY = 316f
+        ring(28f, playedY, 7f, colors.muted, 1.5f)
+        line(24f, playedY, 27f, playedY + 3f, colors.muted, 1.5f)
+        line(27f, playedY + 3f, 32f, playedY - 3f, colors.muted, 1.5f)
+        textCentered(50f, playedY, labels.markPlayed, 12f, colors.text)
+        line(20f, 338f, 300f, 338f, colors.outline.copy(alpha = 0.6f), 0.8f)
 
-        // 复制链接
-        line(22f, 362f, 22f, 370f, colors.muted, 1.6f)
-        line(22f, 362f, 29f, 362f, colors.muted, 1.6f)
-        ring(33f, 368f, 4f, colors.muted, 1.5f)
-        text(50f, 358f, labels.copyLink, 12f, colors.text)
+        val copyY = 360f
+        line(22f, copyY - 3f, 22f, copyY + 5f, colors.muted, 1.6f)
+        line(22f, copyY - 3f, 29f, copyY - 3f, colors.muted, 1.6f)
+        ring(33f, copyY + 3f, 4f, colors.muted, 1.5f)
+        textCentered(50f, copyY, labels.copyLink, 12f, colors.text)
     }
 
     /** 五角星（收藏图标），以 (cx, cy) 为中心 */

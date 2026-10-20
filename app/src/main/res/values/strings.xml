@@ -305,6 +305,7 @@
     <string name="about_formats">Formats</string>
     <string name="about_playlist_protocol">Playlists &amp; protocols</string>
     <string name="about_author_name">Ruzhe</string>
+    <string name="about_copyright">%1$s © 2026 %2$s</string>
     <string name="about_section_project">Project</string>
     <string name="about_source_code">Source Code</string>
     <string name="about_source_code_value">Open-source repository</string>
