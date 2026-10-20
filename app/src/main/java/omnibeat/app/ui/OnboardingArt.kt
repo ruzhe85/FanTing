@@ -288,7 +288,15 @@ private class ArtPen(
     private fun drawSubscriptionCard(top: Float, alpha: Float) {
         box(12f, top, 296f, 88f, 12f, colors.surfaceHigh.copy(alpha = 0.6f * alpha))
         box(24f, top + 12f, 64f, 64f, 10f, colors.primary.copy(alpha = 0.22f * alpha))
+        // 播放角标：主色圆底 + 三角，缺了三角就只是个蓝点
         circle(76f, top + 64f, 10f, colors.primary.copy(alpha = alpha))
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(73f, top + 58.5f)
+            lineTo(73f, top + 69.5f)
+            lineTo(81f, top + 64f)
+            close()
+        }
+        scope.drawPath(path, colors.surface.copy(alpha = alpha))
         bar(102f, top + 22f, 104f, 9f, colors.text.copy(alpha = 0.78f * alpha))
         bar(102f, top + 44f, 132f, 7f, colors.muted.copy(alpha = 0.45f * alpha))
     }

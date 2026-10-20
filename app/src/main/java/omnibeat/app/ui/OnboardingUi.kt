@@ -327,7 +327,7 @@ private fun OnboardingPageContent(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         // 图占一半略多的高度，剩下的给标题与正文；
         // 宽高都受约束，矮屏缩图、宽屏不会把正文挤没
-        val artHeight = minOf(maxHeight * 0.52f, maxWidth / ART_RATIO)
+        val artHeight = minOf(maxHeight * 0.62f, maxWidth / ART_RATIO)
         val bodyScrollState = rememberScrollState()
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
