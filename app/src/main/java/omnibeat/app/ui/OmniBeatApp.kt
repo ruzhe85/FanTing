@@ -310,9 +310,20 @@ fun OmniBeatApp() {
             podcastSortState,
             podcastCustomOrder,
             podcastReorderDraft,
+            podcastOrderSnapshot,
         ) {
-            podcastReorderDraft
-                ?: sortedPodcasts(podcastVisibleSubscriptions, podcastSortState, podcastCustomOrder)
+            val snapshot = podcastOrderSnapshot
+            when {
+                podcastReorderDraft != null -> podcastReorderDraft
+                // 刷新中：按快照顺序摆放，新订阅接在末尾
+                snapshot != null -> {
+                    val byUrl = podcastVisibleSubscriptions.associateBy { it.feedUrl }
+                    val ordered = snapshot.mapNotNull(byUrl::get)
+                    val known = ordered.mapTo(mutableSetOf()) { it.feedUrl }
+                    ordered + podcastVisibleSubscriptions.filter { it.feedUrl !in known }
+                }
+                else -> sortedPodcasts(podcastVisibleSubscriptions, podcastSortState, podcastCustomOrder)
+            }
         }
         var scrollToSelectedRequest by remember { mutableIntStateOf(0) }
         var scrollToStationId by remember { mutableStateOf<String?>(null) }
@@ -346,6 +357,9 @@ fun OmniBeatApp() {
         // 请求代号：取消后重开弹窗会发新请求，旧请求的收尾不能清掉新请求的状态
         var podcastSubmitRequest by remember { mutableIntStateOf(0) }
         // 一键刷新全部的进度：总数 > 0 表示正在刷新，已完成数驱动 FAB 的「n/N」
+        // 一键刷新期间冻结列表顺序：每刷完一个订阅 lastFetchedAtMs 都会变，
+        // 若不冻结，列表会跟着「最近更新」排序连续跳动，看起来像抽风
+        var podcastOrderSnapshot by remember { mutableStateOf<List<String>?>(null) }
         var podcastRefreshAllTotal by remember { mutableIntStateOf(0) }
         var podcastRefreshAllDone by remember { mutableIntStateOf(0) }
         var podcastError by remember { mutableStateOf<String?>(null) }
@@ -1479,6 +1493,8 @@ fun OmniBeatApp() {
                 return
             }
             podcastLoading = true
+            // 冻结当前顺序：刷新过程中每项 lastFetchedAtMs 都会变，不冻结会连续重排
+            podcastOrderSnapshot = podcastList.map { it.feedUrl }
             podcastRefreshAllTotal = pending.size
             podcastRefreshAllDone = 0
             scope.launch {
@@ -1517,6 +1533,8 @@ fun OmniBeatApp() {
                     podcastLoading = false
                     podcastRefreshAllTotal = 0
                     podcastRefreshAllDone = 0
+                    // 顺序解冻：这时才按新的 lastFetchedAtMs 重新排一次
+                    podcastOrderSnapshot = null
                 }
                 when {
                     // 自动刷新不打扰：只在有失败时提示
