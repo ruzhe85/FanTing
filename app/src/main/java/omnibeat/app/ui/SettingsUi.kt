@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import omnibeat.app.ui.appStringResource as stringResource
 import androidx.compose.ui.unit.dp
@@ -57,12 +58,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import omnibeat.app.R
+import omnibeat.app.data.AppLanguageOption
+import omnibeat.app.data.AppLanguagePrefs
 import omnibeat.app.data.STOP_SERVICE_AFTER_PAUSE_NEVER
 import omnibeat.app.model.AccentPalette
-import omnibeat.app.model.AppLanguage
 import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
 import omnibeat.app.model.PODCAST_SEARCH_REGIONS
-import omnibeat.app.data.TranslationLanguage
 import omnibeat.app.model.ThemeMode
 
 @Composable
@@ -130,16 +131,6 @@ private fun themeModeIcon(themeMode: ThemeMode): Int {
 }
 
 @Composable
-private fun appLanguageLabel(appLanguage: AppLanguage): String {
-    return when (appLanguage) {
-        AppLanguage.System -> stringResource(R.string.language_system)
-        else -> if (appLanguage.languageTag == TranslationLanguage.imported?.languageTag) {
-            stringResource(R.string.language_imported, appLanguage.displayName.orEmpty())
-        } else appLanguage.displayName.orEmpty()
-    }
-}
-
-@Composable
 private fun pauseTimeoutLabel(minutes: Int): String {
     return if (minutes == STOP_SERVICE_AFTER_PAUSE_NEVER) {
         stringResource(R.string.settings_stop_service_after_pause_never)
@@ -152,7 +143,7 @@ private fun pauseTimeoutLabel(minutes: Int): String {
 fun SettingsPage(
     themeMode: ThemeMode,
     accentPalette: AccentPalette,
-    appLanguage: AppLanguage,
+    appLanguageTag: String?,
     autoPlayNextEpisode: Boolean,
     stopServiceAfterPauseMinutes: Int,
     keepMediaCard: Boolean,
@@ -178,7 +169,7 @@ fun SettingsPage(
     episodeCount: Int,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAccentPaletteChange: (AccentPalette) -> Unit,
-    onAppLanguageChange: (AppLanguage) -> Unit,
+    onAppLanguageChange: (String?) -> Unit,
     onAutoPlayNextEpisodeChange: (Boolean) -> Unit,
     onStopServiceAfterPauseMinutesChange: (Int) -> Unit,
     onKeepMediaCardChange: (Boolean) -> Unit,
@@ -207,6 +198,8 @@ fun SettingsPage(
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    val languageOptions = remember(context) { AppLanguagePrefs.options(context) }
     var confirmClearLibrary by remember { mutableStateOf(false) }
     var showKeepMediaCardInfo by remember { mutableStateOf(false) }
 
@@ -238,12 +231,14 @@ fun SettingsPage(
             )
             SettingsLanguageRow(
                 title = stringResource(R.string.settings_language_title),
-                subtitle = when (appLanguage) {
-                    AppLanguage.System -> stringResource(R.string.settings_language_system)
-                    else -> stringResource(R.string.settings_language_selected)
+                subtitle = if (appLanguageTag == null) {
+                    stringResource(R.string.settings_language_system)
+                } else {
+                    stringResource(R.string.settings_language_selected)
                 },
-                appLanguage = appLanguage,
-                onAppLanguageChange = onAppLanguageChange,
+                options = languageOptions,
+                selectedTag = appLanguageTag,
+                onLanguageSelect = onAppLanguageChange,
             )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_show_empty_favorites_title),
@@ -522,11 +517,17 @@ fun SettingsPage(
 private fun SettingsLanguageRow(
     title: String,
     subtitle: String,
-    appLanguage: AppLanguage,
-    onAppLanguageChange: (AppLanguage) -> Unit,
+    options: List<AppLanguageOption>,
+    selectedTag: String?,
+    onLanguageSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val selectedLabel = options.firstOrNull { it.tag == selectedTag }
+        ?.let { option ->
+            if (option.tag == null) stringResource(R.string.settings_language_system) else option.displayName
+        }
+        ?: selectedTag.orEmpty()
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -553,7 +554,7 @@ private fun SettingsLanguageRow(
         Box {
             TextButton(onClick = { expanded = true }) {
                 Text(
-                    text = appLanguageLabel(appLanguage),
+                    text = selectedLabel,
                     color = RadioPrimary,
                 )
             }
@@ -563,19 +564,21 @@ private fun SettingsLanguageRow(
                 containerColor = RadioSurface,
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(RadioCorners.medium),
             ) {
-                TranslationLanguage.languages.forEach { option ->
+                options.forEach { option ->
                     DropdownMenuItem(
                         modifier = Modifier.heightIn(min = RadioSizes.menuItemMinHeight),
                         contentPadding = PaddingValues(horizontal = RadioSpacing.large),
                         text = {
                             Text(
-                                text = appLanguageLabel(option),
+                                text = if (option.tag == null) {
+                                    stringResource(R.string.settings_language_system)
+                                } else option.displayName,
                                 color = RadioText,
                             )
                         },
                         onClick = {
                             expanded = false
-                            onAppLanguageChange(option)
+                            onLanguageSelect(option.tag)
                         },
                     )
                 }

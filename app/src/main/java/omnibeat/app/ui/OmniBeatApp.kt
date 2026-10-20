@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import omnibeat.app.data.DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
+import omnibeat.app.data.AppLanguagePrefs
 import omnibeat.app.data.PodcastDownloadManager
 import omnibeat.app.data.PodcastRepository
 import omnibeat.app.data.buildDownloadExportName
@@ -69,7 +70,6 @@ import omnibeat.app.data.StationExportCodec
 import omnibeat.app.data.StationImportMode
 import omnibeat.app.data.StationRepository
 import omnibeat.app.data.StationArtworkCache
-import omnibeat.app.data.TranslationLanguage
 import omnibeat.app.data.appString
 import omnibeat.app.data.removeTrackingParameters
 import omnibeat.app.data.normalizeStreamUrl
@@ -208,15 +208,10 @@ fun OmniBeatApp() {
         }
         active + downloadedEpisodes
     }
-    val translationEnabled by repository.translationEnabled.collectAsState(initial = false)
-    var translationLoaded by remember(repository) { mutableStateOf(false) }
-    LaunchedEffect(repository) {
-        TranslationLanguage.load(repository)
-        translationLoaded = true
-    }
     val themeMode by repository.themeMode.collectAsState(initial = ThemeMode.System)
     val accentPalette by repository.accentPalette.collectAsState(initial = AccentPalette.Default)
-    val appLanguage = context.applicationContext.currentAppLanguage()
+    // 应用内语言：attachBaseContext 已按该值包装 Context，这里只供设置页展示当前选择
+    val appLanguageTag = remember { AppLanguagePrefs.get(context) }
     val useDarkTheme = shouldUseDarkTheme(themeMode)
 
     OmniBeatTheme(themeMode = themeMode, accentPalette = accentPalette) {
@@ -246,7 +241,7 @@ fun OmniBeatApp() {
         val progressScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
         val onboardingCompleted by repository.onboardingCompleted.collectAsState(initial = null)
 
-        if (onboardingCompleted == null || !translationLoaded) {
+        if (onboardingCompleted == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -2344,19 +2339,6 @@ fun OmniBeatApp() {
                 // 表现为「抽屉点了没反应」。跳到非 tab 页（设置 / 关于）不受影响。
                 DrawerContent(
                     selectedPage = selectedPage,
-                    isOpen = drawerState.isOpen,
-                    translationEnabled = translationEnabled,
-                    onToggleTranslation = {
-                        scope.launch {
-                            val enabled = repository.toggleTranslation()
-                            val message = if (enabled) R.string.translation_enabled else R.string.translation_disabled
-                            Toast.makeText(context, resources.appString(message), Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onTranslationClick = {
-                        selectedPage = MainPage.Translation
-                        scope.launch { drawerState.close() }
-                    },
                     onStationsClick = {
                         // lastMainPage 可能是播客页（它不属于电台区）：那就回到电台首页。
                         // 必须走 selectMainPage：它同步更新 lastMainPage 与持久化值，
@@ -2815,8 +2797,6 @@ fun OmniBeatApp() {
                             )
                         }
 
-                        MainPage.Translation -> TranslationPage(repository = repository)
-
                         MainPage.SearchOnline -> {
                             OnlineStationSearchPage(
                                 searchState = onlineSearchState,
@@ -2845,7 +2825,7 @@ fun OmniBeatApp() {
                             SettingsPage(
                                 themeMode = themeMode,
                                 accentPalette = accentPalette,
-                                appLanguage = appLanguage,
+                                appLanguageTag = appLanguageTag,
                                 autoPlayNextEpisode = autoPlayNextEpisode,
                                 stopServiceAfterPauseMinutes = stopServiceAfterPauseMinutes,
                                 keepMediaCard = keepMediaCard,
@@ -2875,8 +2855,11 @@ fun OmniBeatApp() {
                                 onAccentPaletteChange = { nextAccentPalette ->
                                     scope.launch { repository.saveAccentPalette(nextAccentPalette) }
                                 },
-                                onAppLanguageChange = { nextAppLanguage ->
-                                    context.applicationContext.applyAppLanguage(nextAppLanguage)
+                                onAppLanguageChange = { tag ->
+                                    if (tag != appLanguageTag) {
+                                        AppLanguagePrefs.set(context, tag)
+                                        context.findActivity()?.recreate()
+                                    }
                                 },
                                 onAutoPlayNextEpisodeChange = { autoPlay ->
                                     autoPlayNextEpisode = autoPlay

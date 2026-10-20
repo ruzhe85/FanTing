@@ -2,9 +2,9 @@ package omnibeat.app.ui
 
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalResources
-import omnibeat.app.data.TranslationLanguage
+import androidx.compose.ui.res.stringResource
 
+/** Composable 场景取文案：直接走系统资源，语言跟随系统。 */
 @Composable
 fun appStringResource(@StringRes id: Int, vararg formatArgs: Any): String =
-    TranslationLanguage.get(LocalResources.current, id, *formatArgs)
+    stringResource(id, *formatArgs)

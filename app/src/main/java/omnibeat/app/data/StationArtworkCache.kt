@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
+import android.os.Build
 import android.util.AtomicFile
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
@@ -353,6 +354,10 @@ object StationArtworkCache {
 
     private fun decodeOrNull(file: File, width: Int, height: Int): Artwork? {
         if (!file.isFile || file.length() == 0L) return null
+        // ImageDecoder 是 API 28 引入的，Android 8.0/8.1 上直接走 BitmapFactory
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return decodeWithBitmapFactory(file, width, height)
+        }
         return try {
             decode(file, width, height)
         } catch (_: Exception) {

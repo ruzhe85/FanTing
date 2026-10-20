@@ -35,9 +35,6 @@
     <string name="drawer_subtitle">在线音频播放器</string>
     <string name="drawer_close_app">退出应用</string>
 
-    <string name="language_system">跟随系统</string>
-    <string name="language_imported">%1$s（导入）</string>
-
     <string name="settings_section_appearance">外观</string>
     <string name="settings_theme_title">主题</string>
     <string name="settings_theme_system">跟随系统主题</string>
@@ -321,24 +318,6 @@
     <string name="update_downloading_title">正在下载更新</string>
     <string name="update_download_progress">%1$d%%</string>
     <string name="update_failed">无法更新 饭听\n%1$s</string>
-
-    <string name="page_translation">翻译</string>
-    <string name="translation_enabled">已开启翻译菜单</string>
-    <string name="translation_disabled">已关闭翻译菜单</string>
-    <string name="translation_description">导出当前语言的文案，翻译全部内容并修改文件注释中的语言代码；重新导入该文件即可切换到该语言。</string>
-    <string name="translation_export">导出文案</string>
-    <string name="translation_export_description">将当前语言文案保存为 TXT</string>
-    <string name="translation_import">导入翻译</string>
-    <string name="translation_import_description">载入编辑过的 TXT 文件</string>
-    <string name="translation_reset">重置翻译</string>
-    <string name="translation_open_onboarding">重看新手引导</string>
-    <string name="translation_open_onboarding_description">以当前应用语言重新播放新手引导</string>
-    <string name="translation_active">已应用导入的语言。重置将移除该语言并恢复设置中所选语言。</string>
-    <string name="translation_inactive">当前未启用导入的翻译</string>
-    <string name="translation_exported">文案已导出</string>
-    <string name="translation_imported">翻译已应用</string>
-    <string name="translation_reset_done">翻译已重置</string>
-    <string name="translation_failed">翻译操作失败：%1$s</string>
 
     <string name="podcast_add_title">添加播客</string>
     <string name="podcast_search_hint">播客名称或作者</string>

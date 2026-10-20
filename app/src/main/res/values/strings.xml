@@ -34,9 +34,6 @@
     <string name="drawer_subtitle">Streaming audio player</string>
     <string name="drawer_close_app">Close app</string>
 
-    <string name="language_system">System</string>
-    <string name="language_imported">%1$s (imported)</string>
-
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_theme_title">Theme</string>
     <string name="settings_theme_system">Follow system theme</string>
@@ -320,24 +317,6 @@
     <string name="update_downloading_title">Downloading update</string>
     <string name="update_download_progress">%1$d%%</string>
     <string name="update_failed">Unable to update FanTing\n%1$s</string>
-
-    <string name="page_translation">Translation</string>
-    <string name="translation_enabled">Translation menu enabled</string>
-    <string name="translation_disabled">Translation menu disabled</string>
-    <string name="translation_description">Export the current language, translate all strings and change the language code in the file comment. Import the file to switch the app to that language.</string>
-    <string name="translation_export">Export strings</string>
-    <string name="translation_export_description">Save the current language as TXT</string>
-    <string name="translation_import">Import translation</string>
-    <string name="translation_import_description">Load an edited TXT file</string>
-    <string name="translation_reset">Reset translation</string>
-    <string name="translation_open_onboarding">Open onboarding</string>
-    <string name="translation_open_onboarding_description">Repeat onboarding in the current app language</string>
-    <string name="translation_active">An imported language is installed. Reset removes it and restores the language from settings.</string>
-    <string name="translation_inactive">No imported translation is active</string>
-    <string name="translation_exported">Strings exported</string>
-    <string name="translation_imported">Translation applied</string>
-    <string name="translation_reset_done">Translation reset</string>
-    <string name="translation_failed">Translation operation failed: %1$s</string>
 
     <string name="podcast_add_title">Add podcast</string>
     <string name="podcast_search_hint">Podcast name or author</string>

@@ -1,5 +1,6 @@
 package omnibeat.app.playback
 
+import omnibeat.app.data.AppLanguagePrefs
 import omnibeat.app.data.appString
 import omnibeat.app.R
 
@@ -115,6 +116,11 @@ data class PlaybackStreamInfo(
 
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaLibraryService() {
+    // 通知栏 / 媒体会话文案跟随应用内选择的语言。
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguagePrefs.wrapContext(newBase))
+    }
+
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(serviceJob + Dispatchers.Main.immediate)
     private lateinit var repository: StationRepository

@@ -2,10 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
 }
-val translationAssets = tasks.register<Sync>("prepareTranslationAssets") {
-    from("src/main/res") { include("values*/strings.xml") }
-    into(layout.buildDirectory.dir("generated/translationAssets/translations"))
-}
 
 // 签名：keystore 不入库。CI 用 Secrets 解码出仓库根下的 keystore/omnibeatp.jks 并注入这几个环境变量；
 // 本地没有 keystore 时自动跳过签名，不影响编译与 debug 构建。
@@ -24,7 +20,7 @@ android {
         // 与上游官方版（omnibeat.app）不同的 applicationId，以便与官方版共存安装。
         // namespace 保持 omnibeat.app 不变，源码包名与上游一致，便于持续同步上游。
         applicationId = "app.ruzhe.fanting"
-        minSdk = 34
+        minSdk = 26
         targetSdk = 37
         versionCode = providers.gradleProperty("app.versionCode").get().toInt()
         versionName = providers.gradleProperty("app.versionName").get()
@@ -71,15 +67,7 @@ android {
     buildFeatures {
         compose = true
     }
-    androidResources {
-        generateLocaleConfig = true
-    }
-    sourceSets.getByName("main").assets.directories.add(
-        layout.buildDirectory.dir("generated/translationAssets").get().asFile.absolutePath,
-    )
 }
-
-tasks.named("preBuild").configure { dependsOn(translationAssets) }
 
 dependencies {
     implementation(libs.androidx.core.ktx)

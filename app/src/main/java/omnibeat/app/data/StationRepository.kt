@@ -14,13 +14,9 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import omnibeat.app.model.AccentPalette
 import omnibeat.app.model.FavoritesSection
-import omnibeat.app.model.ImportedTranslation
 import omnibeat.app.model.Station
 import omnibeat.app.model.StationSortMode
 import omnibeat.app.model.StationSortState
@@ -58,8 +54,6 @@ private val stationSortKey = stringPreferencesKey("station_sort")
 private val customStationOrderKey = stringPreferencesKey("custom_station_order")
 private val customFavoriteOrderKey = stringPreferencesKey("custom_favorite_order")
 private val stationsJsonKey = stringPreferencesKey("stations_json")
-private val translationEnabledKey = booleanPreferencesKey("translation_enabled")
-private val importedTranslationKey = stringPreferencesKey("imported_translation")
 
 class StationRepository(private val context: Context) {
     @OptIn(UnstableApi::class)
@@ -68,46 +62,6 @@ class StationRepository(private val context: Context) {
         context.packageManager.getComponentEnabledSetting(mediaButtonReceiver) !=
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
     )
-
-    val translationEnabled: Flow<Boolean> = context.stationDataStore.data
-        .map { it[translationEnabledKey] ?: false }
-
-    suspend fun loadImportedTranslation(): ImportedTranslation? = withContext(Dispatchers.IO) {
-        context.stationDataStore.data.first()[importedTranslationKey]?.let { saved ->
-            // 翻译包按导出时的字符串表校验：升级后新增/删除了字符串，旧包会校验不通过。
-            // 这种情况只当作「没有导入包」处理，不能让 App 启动就崩掉。
-            runCatching {
-                val json = JSONObject(saved)
-                TranslationCodec.decode(json.getString("source"), context.resources)
-                    .copy(previousLocaleTags = json.getString("previousLocaleTags"))
-            }.getOrNull()
-        }
-    }
-
-    suspend fun toggleTranslation(): Boolean {
-        val preferences = context.stationDataStore.edit {
-            it[translationEnabledKey] = !(it[translationEnabledKey] ?: false)
-        }
-        return preferences[translationEnabledKey] == true
-    }
-
-    suspend fun importTranslation(translation: ImportedTranslation, previousLocaleTags: String): ImportedTranslation {
-        var installed = translation
-        context.stationDataStore.edit {
-            val previous = it[importedTranslationKey]?.let { saved -> JSONObject(saved).getString("previousLocaleTags") }
-                ?: previousLocaleTags
-            installed = translation.copy(previousLocaleTags = previous)
-            it[importedTranslationKey] = JSONObject()
-                .put("source", translation.source)
-                .put("previousLocaleTags", previous)
-                .toString()
-        }
-        return installed
-    }
-
-    suspend fun clearImportedTranslation() {
-        context.stationDataStore.edit { it.remove(importedTranslationKey) }
-    }
 
     val themeMode: Flow<ThemeMode> = context.stationDataStore.data
         .map { preferences ->
