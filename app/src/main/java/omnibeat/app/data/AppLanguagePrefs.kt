@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.os.LocaleList
+import omnibeat.app.R
 import java.util.Locale
 
 /**
@@ -26,12 +27,17 @@ object AppLanguagePrefs {
         }.apply()
     }
 
-    /** 可选语言：「跟随系统」+ APK 内实际存在的资源语言（新增 values-xx 后自动出现在列表里）。 */
+    /**
+     * 可选语言：「跟随系统」+ 显式声明的内置语言。
+     *
+     * 不能用 AssetManager.getLocales() 枚举：它返回合并后的资源表语言，
+     * 会把 androidx 各库自带的多语言翻译全列进来。新增一门语言 =
+     * 加 values-xx/strings.xml + 在 app_supported_languages 数组里加一行 tag。
+     */
     fun options(context: Context): List<AppLanguageOption> {
-        val tags = context.assets.locales
-            .mapNotNull { normalize(it) }
+        val tags = context.resources.getStringArray(R.array.app_supported_languages)
+            .filter { it.isNotBlank() }
             .distinct()
-            .sorted()
         return listOf(AppLanguageOption.SYSTEM) + tags.map { AppLanguageOption(it, displayName(it)) }
     }
 
@@ -50,19 +56,8 @@ object AppLanguagePrefs {
     private fun prefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    /** AssetManager 的原始 locale 归一化为 BCP-47："" → 默认语言，"b+zh+Hans" / "zh-rCN" → 连字符形式。 */
-    private fun normalize(raw: String): String? = when {
-        raw.isBlank() -> DEFAULT_LANGUAGE_TAG
-        raw.startsWith("b+") -> raw.removePrefix("b+").replace('+', '-')
-        raw.contains("-r") -> raw.replace("-r", "-")
-        else -> raw
-    }
-
     private fun displayName(tag: String): String =
         Locale.forLanguageTag(tag).let { it.getDisplayName(it) }
-
-    /** 默认 values/（无限定符）即源码语言：英语。 */
-    private const val DEFAULT_LANGUAGE_TAG = "en"
 }
 
 /** tag 为 null 表示跟随系统。 */

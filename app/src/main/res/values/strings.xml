@@ -49,6 +49,12 @@
     <string name="settings_language_title">Language</string>
     <string name="settings_language_system">Follow system language</string>
     <string name="settings_language_selected">Use selected language</string>
+    <!-- 应用内语言设置的可选语言（BCP-47 tag，顺序即列表顺序）；新增 values-xx 翻译时在这里加一行 -->
+    <string-array name="app_supported_languages" translatable="false">
+        <item>en</item>
+        <item>zh</item>
+        <item>ru</item>
+    </string-array>
     <string name="settings_section_playback">Playback</string>
     <string name="settings_stop_service_after_pause_title">Stop service after pause</string>
     <string name="settings_stop_service_after_pause_subtitle">Notification will stay for %1$d min after pause</string>
