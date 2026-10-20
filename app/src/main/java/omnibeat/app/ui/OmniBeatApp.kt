@@ -13,7 +13,6 @@ import omnibeat.app.radio.RadioBrowserSearchParams
 import android.content.Context
 import android.content.res.Resources
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,7 +60,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import omnibeat.app.data.DEFAULT_STOP_SERVICE_AFTER_PAUSE_MINUTES
-import omnibeat.app.data.AppLanguagePrefs
 import omnibeat.app.data.PodcastDownloadManager
 import omnibeat.app.data.PodcastRepository
 import omnibeat.app.data.buildDownloadExportName
@@ -143,9 +141,11 @@ private fun PodcastChartEntry.asITunesPodcast(): ITunesPodcast = ITunesPodcast(
 @Composable
 fun OmniBeatApp() {
     val context = LocalContext.current
-    val repository = remember(context) { StationRepository(context.applicationContext) }
+    // 用 applicationContext 做 key：切语言时 LocalContext 会换成包装后的上下文，
+    // 若以 context 为 key，Repository 会被连带重建、丢失内存状态。
+    val repository = remember(context.applicationContext) { StationRepository(context.applicationContext) }
     // 播客订阅存在独立的 DataStore 里，与电台库互不干扰
-    val podcastRepository = remember(context) { PodcastRepository(context.applicationContext) }
+    val podcastRepository = remember(context.applicationContext) { PodcastRepository(context.applicationContext) }
     val podcastSubscriptions by podcastRepository.subscriptions.collectAsState(initial = emptyList())
     // 订阅列表 / 刷新 / 统计只看未隐藏的；下载、收藏、播放仍用包含 hidden 的全量列表
     val podcastVisibleSubscriptions by podcastRepository.visibleSubscriptions
@@ -210,8 +210,8 @@ fun OmniBeatApp() {
     }
     val themeMode by repository.themeMode.collectAsState(initial = ThemeMode.System)
     val accentPalette by repository.accentPalette.collectAsState(initial = AccentPalette.Default)
-    // 应用内语言：attachBaseContext 已按该值包装 Context，这里只供设置页展示当前选择
-    val appLanguageTag = remember { AppLanguagePrefs.get(context) }
+    // 应用内语言：状态与本地化 Context 由 AppLanguageProvider 在根部持有，切换只重组不重建
+    val appLanguage = LocalAppLanguage.current
     val useDarkTheme = shouldUseDarkTheme(themeMode)
 
     OmniBeatTheme(themeMode = themeMode, accentPalette = accentPalette) {
@@ -219,7 +219,7 @@ fun OmniBeatApp() {
         val statusBarColor = RadioBackground
         val navigationBarColor = RadioBackground
         SideEffect {
-            val activity = context.findActivity() as? ComponentActivity ?: return@SideEffect
+            val activity = appLanguage.hostActivity ?: return@SideEffect
             val statusBarArgb = statusBarColor.toArgb()
             val navigationBarArgb = navigationBarColor.toArgb()
             activity.enableEdgeToEdge(
@@ -2363,7 +2363,7 @@ fun OmniBeatApp() {
                     },
                     onExitClick = {
                         PlaybackService.stop(context)
-                        context.findActivity()?.finishAffinity()
+                        appLanguage.hostActivity?.finishAffinity()
                     },
                 )
             },
@@ -2825,7 +2825,7 @@ fun OmniBeatApp() {
                             SettingsPage(
                                 themeMode = themeMode,
                                 accentPalette = accentPalette,
-                                appLanguageTag = appLanguageTag,
+                                appLanguageTag = appLanguage.tag,
                                 autoPlayNextEpisode = autoPlayNextEpisode,
                                 stopServiceAfterPauseMinutes = stopServiceAfterPauseMinutes,
                                 keepMediaCard = keepMediaCard,
@@ -2856,10 +2856,7 @@ fun OmniBeatApp() {
                                     scope.launch { repository.saveAccentPalette(nextAccentPalette) }
                                 },
                                 onAppLanguageChange = { tag ->
-                                    if (tag != appLanguageTag) {
-                                        AppLanguagePrefs.set(context, tag)
-                                        context.findActivity()?.recreate()
-                                    }
+                                    if (tag != appLanguage.tag) appLanguage.select(tag)
                                 },
                                 onAutoPlayNextEpisodeChange = { autoPlay ->
                                     autoPlayNextEpisode = autoPlay

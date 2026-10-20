@@ -10,9 +10,9 @@ import java.util.Locale
 /**
  * 应用内语言切换（minSdk 26，不依赖 API 33 的 LocaleManager，也不引入 appcompat）。
  *
- * 存储在 SharedPreferences 而非 DataStore：attachBaseContext 需要同步读取，
- * DataStore 的异步读取在这里用不了。null 表示跟随系统（安卓 13+ 的系统级
- * 「应用语言」设置由框架直接生效，无需本类参与）。
+ * 存储在 SharedPreferences 而非 DataStore：读取方（AppLanguageProvider 组合时、
+ * PlaybackService.attachBaseContext）都是同步路径，DataStore 的异步读取用不了。
+ * null 表示跟随系统（安卓 13+ 的系统级「应用语言」设置由框架直接生效，无需本类参与）。
  */
 object AppLanguagePrefs {
     private const val PREFS_NAME = "app_language"
@@ -41,11 +41,14 @@ object AppLanguagePrefs {
         return listOf(AppLanguageOption.SYSTEM) + tags.map { AppLanguageOption(it, displayName(it)) }
     }
 
-    /** 在 attachBaseContext 里同步调用：按持久化的语言包装 Context，未设置时原样返回。 */
-    fun wrapContext(context: Context): Context {
-        val tag = get(context) ?: return context
+    /**
+     * 按指定语言包装 Context；tag 为空（跟随系统）时原样返回。
+     *
+     * 注意不要设置 Locale.setDefault：跟随系统时应保持系统默认 locale 不被污染。
+     */
+    fun wrapContext(context: Context, tag: String? = get(context)): Context {
+        if (tag.isNullOrBlank()) return context
         val locale = Locale.forLanguageTag(tag)
-        Locale.setDefault(locale)
         val configuration = Configuration(context.resources.configuration).apply {
             setLocales(LocaleList(locale))
             setLayoutDirection(locale)
