@@ -278,6 +278,8 @@
     <string name="podcast_mark_played">Отметить прослушанным</string>
     <string name="podcast_mark_unplayed">Отметить непрослушанным</string>
     <string name="podcast_copy_link">Копировать ссылку</string>
+    <string name="podcast_share">Поделиться</string>
+    <string name="podcast_share_text">Только что дослушал(а) %1$s в FanTing — рекомендую\n%2$s</string>
     <string name="podcast_link_copied">Ссылка скопирована</string>
     <string name="podcast_batch_download">Скачать</string>
     <string name="podcast_batch_mark_played">Отметить прослушанным</string>

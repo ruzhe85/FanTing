@@ -386,6 +386,8 @@
     <string name="podcast_mark_played">Mark as played</string>
     <string name="podcast_mark_unplayed">Mark as unplayed</string>
     <string name="podcast_copy_link">Copy link</string>
+    <string name="podcast_share">Share</string>
+    <string name="podcast_share_text">Just finished %1$s on FanTing — recommending it to you\n%2$s</string>
     <string name="podcast_link_copied">Link copied</string>
     <string name="podcast_batch_download">Download</string>
     <string name="podcast_batch_mark_played">Mark played</string>

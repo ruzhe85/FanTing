@@ -379,6 +379,8 @@
     <string name="podcast_mark_played">標記為已聽</string>
     <string name="podcast_mark_unplayed">標記為未聽</string>
     <string name="podcast_copy_link">複製連結</string>
+    <string name="podcast_share">分享</string>
+    <string name="podcast_share_text">剛在飯聽完《%1$s》，推薦給你\n%2$s</string>
     <string name="podcast_link_copied">連結已複製</string>
     <string name="podcast_batch_download">下載</string>
     <string name="podcast_batch_mark_played">標記已聽</string>

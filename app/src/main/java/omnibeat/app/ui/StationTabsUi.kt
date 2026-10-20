@@ -46,7 +46,6 @@ fun StationTabsPager(
     showArtwork: Boolean,
     listEnabled: Boolean,
     onMove: (Int, Int) -> Unit,
-    onFavoriteClick: (Station) -> Unit,
     onEditStation: (StationEditorState) -> Unit,
     onStationClick: (Station) -> Unit,
     favoritesSection: FavoritesSection = FavoritesSection.Stations,
@@ -94,7 +93,6 @@ fun StationTabsPager(
                         enabled = listEnabled,
                         reordering = reorderDraft != null,
                         onMove = onMove,
-                        onFavoriteClick = onFavoriteClick,
                         onEditStation = { station ->
                             createEditorState(stations, station)?.let(onEditStation)
                         },
@@ -133,7 +131,6 @@ fun StationTabsPager(
                                 enabled = listEnabled,
                                 reordering = reorderDraft != null,
                                 onMove = onMove,
-                                onFavoriteClick = onFavoriteClick,
                                 onEditStation = { station ->
                                     createEditorState(stations, station)?.let(onEditStation)
                                 },
@@ -165,7 +162,6 @@ private fun StationPageList(
     enabled: Boolean,
     reordering: Boolean,
     onMove: (Int, Int) -> Unit,
-    onFavoriteClick: (Station) -> Unit,
     onEditStation: (Station) -> Unit,
     onStationClick: (Station) -> Unit,
 ) {
@@ -184,7 +180,6 @@ private fun StationPageList(
         enabled = enabled,
         reordering = reordering,
         onMove = onMove,
-        onFavoriteClick = { _, station -> onFavoriteClick(station) },
         onStationEdit = { _, station -> onEditStation(station) },
         onStationClick = { _, station -> onStationClick(station) },
     )

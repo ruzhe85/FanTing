@@ -2,6 +2,7 @@ package omnibeat.app.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -1482,6 +1483,27 @@ fun PodcastEpisodesScreen(
                     ).show()
                 }
             },
+            // 与「复制链接」分工：复制只拿地址，分享带一句推荐语交给系统面板
+            onShare = {
+                sheetEpisode = null
+                if (episode.audioUrl.isNotBlank()) {
+                    val shareText = context.getString(
+                        R.string.podcast_share_text,
+                        episode.title,
+                        episode.audioUrl,
+                    )
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, shareText)
+                    }
+                    context.startActivity(
+                        Intent.createChooser(
+                            sendIntent,
+                            context.getString(R.string.podcast_share),
+                        ),
+                    )
+                }
+            },
         )
     }
 }
@@ -1498,6 +1520,7 @@ private fun EpisodeActionsSheet(
     onDownloadAction: () -> Unit,
     onTogglePlayed: () -> Unit,
     onCopyLink: () -> Unit,
+    onShare: () -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1570,6 +1593,11 @@ private fun EpisodeActionsSheet(
                 icon = painterResource(R.drawable.ic_link),
                 label = stringResource(R.string.podcast_copy_link),
                 onClick = onCopyLink,
+            )
+            EpisodeSheetOption(
+                icon = painterResource(R.drawable.ic_share),
+                label = stringResource(R.string.podcast_share),
+                onClick = onShare,
             )
         }
     }

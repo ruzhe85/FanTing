@@ -120,7 +120,7 @@ fun StationList(
     enabled: Boolean = true,
     reordering: Boolean = false,
     onMove: (Int, Int) -> Unit = { _, _ -> },
-    onFavoriteClick: (Int, Station) -> Unit,
+    /** 收藏已移到播放面板，列表行不再提供入口 */
     onStationEdit: (Int, Station) -> Unit,
     onStationClick: (Int, Station) -> Unit,
 ) {
@@ -184,7 +184,6 @@ fun StationList(
                         } else {
                             Modifier
                         },
-                        onFavoriteClick = { onFavoriteClick(index, station) },
                         onClick = { onStationClick(index, station) },
                         onLongClick = { onStationEdit(index, station) },
                     )
@@ -389,7 +388,6 @@ private fun StationRow(
     dragging: Boolean,
     modifier: Modifier = Modifier,
     dragHandleModifier: Modifier,
-    onFavoriteClick: () -> Unit,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -437,14 +435,7 @@ private fun StationRow(
                         StationPlayingIndicator()
                     }
                 }
-                OmniIconButton(
-                    painter = painterResource(
-                        if (station.isFavorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
-                    ),
-                    enabled = enabled && !reordering,
-                    onClick = onFavoriteClick,
-                    tint = if (station.isFavorite) RadioPrimary else RadioText,
-                )
+                // 爱心已移到播放面板：列表行尾部只留播放指示，行宽更干净
             }
         },
         modifier = modifier,

@@ -36,6 +36,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -134,6 +135,9 @@ fun PlayerPanel(
     onPreviousStation: () -> Unit,
     onNextStation: () -> Unit,
     onRandomStation: () -> Unit,
+    /** 当前电台是否已喜欢（爱心按钮实心/空心）；播客单集不用 */
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
     onSeek: (Long) -> Unit = {},
     onSpeedChange: (Float) -> Unit = {},
     /** 点信息区的动作。null = 保持默认（有曲目文本时复制到剪贴板）；播客单集传「跳到该订阅」 */
@@ -245,6 +249,8 @@ fun PlayerPanel(
                 onStop = onStop,
                 onNext = onNextStation,
                 onRandom = onRandomStation,
+                isFavorite = isFavorite,
+                onToggleFavorite = onToggleFavorite,
                 onSeek = onSeek,
                 onSpeedChange = onSpeedChange,
             )
@@ -444,6 +450,8 @@ private fun ExpandedPlayerPanel(
     onStop: () -> Unit,
     onNext: () -> Unit,
     onRandom: () -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onSeek: (Long) -> Unit,
     onSpeedChange: (Float) -> Unit,
 ) {
@@ -556,7 +564,8 @@ private fun ExpandedPlayerPanel(
 
         Spacer(Modifier.height(8.dp))
 
-        // 中段固定 21dp：直播放流参数，点播放可拖动的进度 + 时间，两态因此等高
+        // 中段固定 21dp：播客是进度条，电台是「参数 + 一条线」。
+        // 参数没有时线也照样画满，这一行不会留白。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -568,15 +577,27 @@ private fun ExpandedPlayerPanel(
                     durationMs = durationMs,
                     onSeek = onSeek,
                 )
-            } else if (paramsText.isNotBlank()) {
-                Text(
-                    text = paramsText,
-                    color = RadioTextMuted,
-                    fontSize = 10.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.align(Alignment.CenterStart),
-                )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (paramsText.isNotBlank()) {
+                        Text(
+                            text = paramsText,
+                            color = RadioTextMuted,
+                            fontSize = 10.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 200.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.weight(1f),
+                        color = RadioOutline.copy(alpha = 0.55f),
+                    )
+                }
             }
         }
 
@@ -584,11 +605,8 @@ private fun ExpandedPlayerPanel(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (onDemand) {
-                Arrangement.SpaceBetween
-            } else {
-                Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally)
-            },
+            // 两种模式都铺满：电台 5 个（含爱心），播客 6 个（含倍速）
+            horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(CONTROL_ROW_HEIGHT),
@@ -648,6 +666,17 @@ private fun ExpandedPlayerPanel(
                     iconSize = 20.dp,
                     enabled = enabled,
                     onClick = onNext,
+                )
+                // 爱心放最右：列表行里那颗星已经取消，喜欢只在面板里改
+                PanelIconButton(
+                    painter = painterResource(
+                        if (isFavorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
+                    ),
+                    size = SECONDARY_BUTTON_SIZE,
+                    iconSize = 20.dp,
+                    enabled = enabled,
+                    tint = if (isFavorite) RadioPrimary else RadioTextMuted,
+                    onClick = onToggleFavorite,
                 )
             }
         }

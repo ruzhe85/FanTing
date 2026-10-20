@@ -2578,6 +2578,11 @@ fun OmniBeatApp() {
                                 }
                             },
                             onRandomStation = { playRandomStation() },
+                            isFavorite = !panelSeekable && panelStation?.isFavorite == true,
+                            onToggleFavorite = {
+                                val target = panelStation
+                                if (target != null && !panelSeekable) toggleFavorite(target)
+                            },
                             onContentClick = openEpisodeSubscription,
                         )
                     }
@@ -2607,7 +2612,7 @@ fun OmniBeatApp() {
                                 showArtwork = showStationArtwork,
                                 listEnabled = drawerState.isClosed && reorderDraft == null,
                                 onMove = ::moveReorderDraft,
-                                onFavoriteClick = ::toggleFavorite,
+
                                 onEditStation = { editorState = it },
                                 onStationClick = ::playStation,
                                 favoritesSection = favoritesSection,
