@@ -19,16 +19,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import omnibeat.app.ui.appStringResource as stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -49,10 +48,10 @@ import omnibeat.app.model.ThemeMode
 import kotlin.math.absoluteValue
 
 /**
- * 首次启动引导。
+ * 首次启动引导，六页。
  *
- * 竖屏：一页一张竖版示意图，左滑翻页。
- * 横屏：高度不够放竖图，改成两列清单，七条内容一屏看完，底部一个「开始使用」。
+ * 竖屏：一页一张半屏示意图（只露界面上半部分），下面标题与说明。
+ * 横屏：高度不够放竖图，改成左图右文，图按可用高度铺满。
  *
  * 示意图全部由 [OnboardingArt] 用 Canvas 绘制，不依赖任何位图资源。
  */
@@ -63,52 +62,49 @@ private data class OnboardingPage(
 )
 
 private enum class OnboardingTextType {
-    Build,
-    Organize,
-    Manage,
-    Controls,
-    StreamActions,
-    PodcastSubscribe,
-    PodcastEpisodes,
+    AddStation,
+    ManageStation,
+    SubscribePodcast,
+    ManagePodcast,
+    PodcastList,
+    EpisodeActions,
 }
 
 private val OnboardingPages = listOf(
     OnboardingPage(
         titleRes = R.string.onboarding_build_title,
-        textType = OnboardingTextType.Build,
-        art = OnboardingArtKind.Library,
-    ),
-    OnboardingPage(
-        titleRes = R.string.onboarding_organize_title,
-        textType = OnboardingTextType.Organize,
-        art = OnboardingArtKind.Organize,
+        textType = OnboardingTextType.AddStation,
+        art = OnboardingArtKind.AddStation,
     ),
     OnboardingPage(
         titleRes = R.string.onboarding_manage_title,
-        textType = OnboardingTextType.Manage,
-        art = OnboardingArtKind.Manage,
-    ),
-    OnboardingPage(
-        titleRes = R.string.onboarding_controls_title,
-        textType = OnboardingTextType.Controls,
-        art = OnboardingArtKind.Player,
-    ),
-    OnboardingPage(
-        titleRes = R.string.onboarding_stream_actions_title,
-        textType = OnboardingTextType.StreamActions,
-        art = OnboardingArtKind.StreamInfo,
+        textType = OnboardingTextType.ManageStation,
+        art = OnboardingArtKind.ManageStation,
     ),
     OnboardingPage(
         titleRes = R.string.onboarding_podcast_subscribe_title,
-        textType = OnboardingTextType.PodcastSubscribe,
-        art = OnboardingArtKind.PodcastSubscriptions,
+        textType = OnboardingTextType.SubscribePodcast,
+        art = OnboardingArtKind.SubscribePodcast,
     ),
     OnboardingPage(
-        titleRes = R.string.onboarding_podcast_episodes_title,
-        textType = OnboardingTextType.PodcastEpisodes,
-        art = OnboardingArtKind.PodcastEpisodes,
+        titleRes = R.string.onboarding_podcast_manage_title,
+        textType = OnboardingTextType.ManagePodcast,
+        art = OnboardingArtKind.ManagePodcast,
+    ),
+    OnboardingPage(
+        titleRes = R.string.onboarding_podcast_list_title,
+        textType = OnboardingTextType.PodcastList,
+        art = OnboardingArtKind.PodcastList,
+    ),
+    OnboardingPage(
+        titleRes = R.string.onboarding_episode_actions_title,
+        textType = OnboardingTextType.EpisodeActions,
+        art = OnboardingArtKind.EpisodeActions,
     ),
 )
+
+/** 示意图宽高比：320 × 340（界面只露上半屏） */
+private const val ART_RATIO = 320f / 340f
 
 @Composable
 fun OnboardingFlow(
@@ -181,37 +177,15 @@ private fun OnboardingPortrait(
         OnboardingDots(pageCount = OnboardingPages.size, selectedIndex = pageIndex)
         Spacer(modifier = Modifier.height(RadioSpacing.section))
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (pageIndex > 0) {
-                OmniSecondaryButton(
-                    text = stringResource(R.string.action_back),
-                    onClick = {
-                        scope.launch { pagerState.animateScrollToPage(pageIndex - 1) }
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-            OmniPrimaryButton(
-                text = if (isLastPage) {
-                    stringResource(R.string.action_finish)
-                } else {
-                    stringResource(R.string.action_next)
-                },
-                onClick = {
-                    if (isLastPage) {
-                        onFinished()
-                    } else {
-                        scope.launch { pagerState.animateScrollToPage(pageIndex + 1) }
-                    }
-                },
-                modifier = Modifier.weight(1f),
-            )
-        }
+        OnboardingButtons(
+            pageIndex = pageIndex,
+            isLastPage = isLastPage,
+            previousText = stringResource(R.string.action_back),
+            lastPageText = stringResource(R.string.action_finish),
+            onPrevious = { scope.launch { pagerState.animateScrollToPage(pageIndex - 1) } },
+            onLast = onFinished,
+            onNext = { scope.launch { pagerState.animateScrollToPage(pageIndex + 1) } },
+        )
     }
 }
 
@@ -253,12 +227,12 @@ private fun OnboardingLandscape(
                     .fillMaxSize()
                     .onboardingPagerFade(pagerState, page),
             ) {
-                // 图跟着行高走：横屏高度有限，按 1:2 反推宽度，图不会被压扁
+                // 横屏高度有限，图按行高铺满再反推宽度
                 OnboardingArtFrame(
                     art = item.art,
                     modifier = Modifier
                         .fillMaxHeight()
-                        .aspectRatio(0.5f),
+                        .aspectRatio(ART_RATIO),
                 )
                 OnboardingLandscapeText(
                     page = item,
@@ -268,65 +242,46 @@ private fun OnboardingLandscape(
         }
         OnboardingDots(pageCount = OnboardingPages.size, selectedIndex = pageIndex)
         Spacer(modifier = Modifier.height(RadioSpacing.medium))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (pageIndex > 0) {
-                OmniSecondaryButton(
-                    text = stringResource(R.string.action_back),
-                    onClick = {
-                        scope.launch { pagerState.animateScrollToPage(pageIndex - 1) }
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-            OmniPrimaryButton(
-                text = if (isLastPage) {
-                    stringResource(R.string.action_start_using)
-                } else {
-                    stringResource(R.string.action_next)
-                },
-                onClick = {
-                    if (isLastPage) {
-                        onFinished()
-                    } else {
-                        scope.launch { pagerState.animateScrollToPage(pageIndex + 1) }
-                    }
-                },
-                modifier = Modifier.weight(1f),
-            )
-        }
+
+        OnboardingButtons(
+            pageIndex = pageIndex,
+            isLastPage = isLastPage,
+            previousText = stringResource(R.string.action_back),
+            lastPageText = stringResource(R.string.action_start_using),
+            onPrevious = { scope.launch { pagerState.animateScrollToPage(pageIndex - 1) } },
+            onLast = onFinished,
+            onNext = { scope.launch { pagerState.animateScrollToPage(pageIndex + 1) } },
+        )
     }
 }
 
-/** 横屏右栏：标题 + 正文，正文可滚动 */
 @Composable
-private fun OnboardingLandscapeText(
-    page: OnboardingPage,
-    modifier: Modifier = Modifier,
+private fun OnboardingButtons(
+    pageIndex: Int,
+    isLastPage: Boolean,
+    previousText: String,
+    lastPageText: String,
+    onPrevious: () -> Unit,
+    onLast: () -> Unit,
+    onNext: () -> Unit,
 ) {
-    val text = onboardingText(page.textType)
-    val bodyScrollState = rememberScrollState()
-    Column(modifier = modifier) {
-        Text(
-            text = stringResource(page.titleRes),
-            color = RadioText,
-            fontSize = RadioTextSizes.onboardingTitle,
-            fontWeight = FontWeight.SemiBold,
-            lineHeight = RadioTextSizes.onboardingLineHeight,
-        )
-        Spacer(modifier = Modifier.height(RadioSpacing.medium))
-        Text(
-            text = text,
-            color = RadioTextMuted,
-            fontSize = RadioTextSizes.bodyLarge,
-            lineHeight = RadioTextSizes.onboardingBodyLineHeight,
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(bodyScrollState),
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (pageIndex > 0) {
+            OmniSecondaryButton(
+                text = previousText,
+                onClick = onPrevious,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+        OmniPrimaryButton(
+            text = if (isLastPage) lastPageText else stringResource(R.string.action_next),
+            onClick = { if (isLastPage) onLast() else onNext() },
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -362,10 +317,6 @@ private fun AnnotatedString.Builder.appendBold(text: String) {
     pop()
 }
 
-private fun AnnotatedString.Builder.appendLineBreak() {
-    append("\n")
-}
-
 @Composable
 private fun OnboardingPageContent(
     page: OnboardingPage,
@@ -373,10 +324,9 @@ private fun OnboardingPageContent(
 ) {
     val text = onboardingText(page.textType)
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        // 高度由「可用高度」和「可用宽度」里更紧的一侧决定：
-        // 矮屏缩图、宽屏也不会把图拉到撑爆文字区，任何 dpi 下结果都一样。
-        // 系数 0.5 是算过正文的：图 50% + 间距 + 标题之后，正文至少还能剩 4 行。
-        val artHeight = minOf(maxWidth * 1.12f, maxHeight * 0.5f)
+        // 图占一半略多的高度，剩下的给标题与正文；
+        // 宽高都受约束，矮屏缩图、宽屏不会把正文挤没
+        val artHeight = minOf(maxHeight * 0.52f, maxWidth / ART_RATIO)
         val bodyScrollState = rememberScrollState()
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -387,7 +337,7 @@ private fun OnboardingPageContent(
                 art = page.art,
                 modifier = Modifier
                     .height(artHeight)
-                    .width(artHeight / 2f),
+                    .width(artHeight * ART_RATIO),
             )
             Spacer(modifier = Modifier.height(RadioSizes.onboardingTitleGap))
 
@@ -430,13 +380,22 @@ private fun OnboardingPageContent(
 @Composable
 private fun onboardingText(textType: OnboardingTextType): AnnotatedString {
     return when (textType) {
-        OnboardingTextType.Build -> AnnotatedString(stringResource(R.string.onboarding_build_text))
-        OnboardingTextType.Organize -> AnnotatedString(stringResource(R.string.onboarding_organize_text))
-        OnboardingTextType.PodcastSubscribe ->
+        OnboardingTextType.AddStation ->
+            AnnotatedString(stringResource(R.string.onboarding_build_text))
+
+        OnboardingTextType.SubscribePodcast ->
             AnnotatedString(stringResource(R.string.onboarding_podcast_subscribe_text))
-        OnboardingTextType.PodcastEpisodes ->
-            AnnotatedString(stringResource(R.string.onboarding_podcast_episodes_text))
-        OnboardingTextType.Manage -> {
+
+        OnboardingTextType.ManagePodcast ->
+            AnnotatedString(stringResource(R.string.onboarding_podcast_manage_text))
+
+        OnboardingTextType.PodcastList ->
+            AnnotatedString(stringResource(R.string.onboarding_podcast_list_text))
+
+        OnboardingTextType.EpisodeActions ->
+            AnnotatedString(stringResource(R.string.onboarding_episode_actions_text))
+
+        OnboardingTextType.ManageStation -> {
             val tap = stringResource(R.string.onboarding_tap)
             val tapSuffix = stringResource(R.string.onboarding_manage_tap_suffix)
             val pressAndHold = stringResource(R.string.onboarding_press_and_hold)
@@ -444,42 +403,7 @@ private fun onboardingText(textType: OnboardingTextType): AnnotatedString {
             onboardingText {
                 appendBold(tap)
                 append(tapSuffix)
-                appendLineBreak()
-                appendLineBreak()
-                appendBold(pressAndHold)
-                append(holdSuffix)
-            }
-        }
-        OnboardingTextType.StreamActions -> {
-            val tap = stringResource(R.string.onboarding_tap)
-            val tapSuffix = stringResource(R.string.onboarding_stream_tap_suffix)
-            val pressAndHold = stringResource(R.string.onboarding_press_and_hold)
-            val holdSuffix = stringResource(R.string.onboarding_stream_hold_suffix)
-            onboardingText {
-                appendBold(tap)
-                append(tapSuffix)
-                appendLineBreak()
-                appendLineBreak()
-                appendBold(pressAndHold)
-                append(holdSuffix)
-            }
-        }
-        OnboardingTextType.Controls -> {
-            val tap = stringResource(R.string.onboarding_tap)
-            val tapSuffix = stringResource(R.string.onboarding_controls_tap_suffix)
-            val tapAgain = stringResource(R.string.onboarding_tap_again)
-            val tapAgainSuffix = stringResource(R.string.onboarding_controls_tap_again_suffix)
-            val pressAndHold = stringResource(R.string.onboarding_press_and_hold)
-            val holdSuffix = stringResource(R.string.onboarding_controls_hold_suffix)
-            onboardingText {
-                appendBold(tap)
-                append(tapSuffix)
-                appendLineBreak()
-                appendLineBreak()
-                appendBold(tapAgain)
-                append(tapAgainSuffix)
-                appendLineBreak()
-                appendLineBreak()
+                append("\n\n")
                 appendBold(pressAndHold)
                 append(holdSuffix)
             }
@@ -489,7 +413,7 @@ private fun onboardingText(textType: OnboardingTextType): AnnotatedString {
 
 @Suppress("FrequentlyChangedStateReadInComposition")
 private fun Modifier.onboardingPagerFade(
-    pagerState: androidx.compose.foundation.pager.PagerState,
+    pagerState: PagerState,
     pageIndex: Int,
 ): Modifier = graphicsLayer {
     val pageOffset = (
@@ -502,7 +426,6 @@ private fun Modifier.onboardingPagerFade(
 
 /**
  * 示意图外框：调用方给尺寸，内部只负责圆角、底色与描边。
- * 竖屏按高度定（高度 / 2），横屏按行高铺满再反推宽度，两种模式都不写死占屏比例。
  */
 @Composable
 private fun OnboardingArtFrame(
@@ -517,6 +440,35 @@ private fun OnboardingArtFrame(
             .border(width = 1.dp, color = RadioOutline, shape = shape),
     ) {
         OnboardingArt(kind = art, modifier = Modifier.fillMaxSize())
+    }
+}
+
+/** 横屏右栏：标题 + 正文，正文可滚动 */
+@Composable
+private fun OnboardingLandscapeText(
+    page: OnboardingPage,
+    modifier: Modifier = Modifier,
+) {
+    val text = onboardingText(page.textType)
+    val bodyScrollState = rememberScrollState()
+    Column(modifier = modifier) {
+        Text(
+            text = stringResource(page.titleRes),
+            color = RadioText,
+            fontSize = RadioTextSizes.onboardingTitle,
+            fontWeight = FontWeight.SemiBold,
+            lineHeight = RadioTextSizes.onboardingLineHeight,
+        )
+        Spacer(modifier = Modifier.height(RadioSpacing.medium))
+        Text(
+            text = text,
+            color = RadioTextMuted,
+            fontSize = RadioTextSizes.bodyLarge,
+            lineHeight = RadioTextSizes.onboardingBodyLineHeight,
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(bodyScrollState),
+        )
     }
 }
 

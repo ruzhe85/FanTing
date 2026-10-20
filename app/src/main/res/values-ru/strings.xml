@@ -351,7 +351,13 @@
     <string name="player_stream_info_copy_sample_rate">Частота дискретизации: %1$s</string>
     <string name="player_stream_info_copy_format">Формат: %1$s</string>
 
-    <string name="onboarding_build_title">Соберите библиотеку</string>
+    <string name="onboarding_build_title">Добавление станций</string>
+    <string name="onboarding_podcast_manage_title">Управление подкастами</string>
+    <string name="onboarding_podcast_manage_text">Удерживайте подписку, чтобы изменить название, обложку или отписаться.</string>
+    <string name="onboarding_podcast_list_title">Выпуски подкаста</string>
+    <string name="onboarding_podcast_list_text">Меню ⋮ меняет сортировку, обновляет, редактирует, включает выбор и отписывает.</string>
+    <string name="onboarding_episode_actions_title">Действия с выпуском</string>
+    <string name="onboarding_episode_actions_text">Удерживайте выпуск, чтобы добавить в избранное, скачать, отметить прослушанным или скопировать ссылку.</string>
     <string name="onboarding_build_text">Добавляйте станции вручную или находите их онлайн.</string>
     <string name="onboarding_organize_title">Организуйте библиотеку</string>
     <string name="onboarding_organize_text">Сортируйте станции и добавляйте любимые в избранное для быстрого доступа.</string>

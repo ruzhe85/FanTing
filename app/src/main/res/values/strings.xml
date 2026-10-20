@@ -261,7 +261,13 @@
     <string name="player_stream_info_copy_sample_rate">Sample rate: %1$s</string>
     <string name="player_stream_info_copy_format">Format: %1$s</string>
 
-    <string name="onboarding_build_title">Build your station list</string>
+    <string name="onboarding_build_title">Add stations</string>
+    <string name="onboarding_podcast_manage_title">Manage podcasts</string>
+    <string name="onboarding_podcast_manage_text">Press and hold a subscription to edit its name or cover, or unsubscribe.</string>
+    <string name="onboarding_podcast_list_title">Podcast episodes</string>
+    <string name="onboarding_podcast_list_text">The ⋮ menu switches sort order, refreshes, edits, enables multi-select, or unsubscribes.</string>
+    <string name="onboarding_episode_actions_title">Episode actions</string>
+    <string name="onboarding_episode_actions_text">Press and hold an episode to favourite it, download it, mark it played, or copy its link.</string>
     <string name="onboarding_build_text">Add stations manually or search online.</string>
     <string name="onboarding_organize_title">Organize your station list</string>
     <string name="onboarding_organize_text">Sort stations and add to favorites for quick access.</string>

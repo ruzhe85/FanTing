@@ -262,7 +262,13 @@
     <string name="player_stream_info_copy_sample_rate">采样率：%1$s</string>
     <string name="player_stream_info_copy_format">格式：%1$s</string>
 
-    <string name="onboarding_build_title">建立电台库</string>
+    <string name="onboarding_build_title">添加电台</string>
+    <string name="onboarding_podcast_manage_title">管理播客</string>
+    <string name="onboarding_podcast_manage_text">长按订阅可以编辑名称、封面，或取消订阅。</string>
+    <string name="onboarding_podcast_list_title">播客列表</string>
+    <string name="onboarding_podcast_list_text">右上角 ⋮ 可切换排序、刷新节目、编辑播客、多选与取消订阅。</string>
+    <string name="onboarding_episode_actions_title">节目操作</string>
+    <string name="onboarding_episode_actions_text">长按节目后弹出菜单，可以收藏、下载、标记已听或复制链接。</string>
     <string name="onboarding_build_text">手动添加电台，或在线搜索。</string>
     <string name="onboarding_organize_title">整理电台库</string>
     <string name="onboarding_organize_text">为电台排序并加入收藏，以便快速打开。</string>
@@ -389,7 +395,7 @@
     <string name="podcast_selection_summary">%1$d 项 · 已选约 %2$s</string>
     <string name="podcast_duration_minutes">%1$d 分钟</string>
     <string name="podcast_duration_hours">%1$s 小时</string>
-    <string name="podcast_episode_actions">单集操作</string>
+    <string name="podcast_episode_actions">节目操作</string>
     <string name="podcast_mark_played">标记为已听</string>
     <string name="podcast_mark_unplayed">标记为未听</string>
     <string name="podcast_copy_link">复制链接</string>
