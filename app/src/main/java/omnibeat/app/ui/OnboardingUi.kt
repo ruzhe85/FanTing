@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import omnibeat.app.model.ThemeMode
+import omnibeat.app.ui.appStringResource as stringResource
 import kotlin.math.absoluteValue
 
 /**
