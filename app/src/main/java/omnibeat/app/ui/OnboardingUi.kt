@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,6 +44,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import omnibeat.app.model.ThemeMode
@@ -237,7 +237,7 @@ private fun OnboardingLandscape(
         )
         Spacer(modifier = Modifier.height(RadioSpacing.medium))
         LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+            columns = GridCells.Fixed(3),
             horizontalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
             verticalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
             modifier = Modifier
@@ -245,29 +245,19 @@ private fun OnboardingLandscape(
                 .weight(1f),
         ) {
             itemsIndexed(OnboardingPages) { index, page ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(RadioSizes.button)
-                            .clip(CircleShape)
-                            .background(RadioPrimary.copy(alpha = 0.16f)),
-                    ) {
-                        Text(
-                            text = (index + 1).toString(),
-                            color = RadioPrimary,
-                            fontSize = RadioTextSizes.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
+                    OnboardingArtFrame(art = page.art, height = 176.dp)
+                    Spacer(modifier = Modifier.height(RadioSpacing.small))
                     Text(
-                        text = stringResource(page.titleRes),
+                        text = "${index + 1}  ${stringResource(page.titleRes)}",
                         color = RadioText,
-                        fontSize = RadioTextSizes.bodyLarge,
+                        fontSize = RadioTextSizes.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }
@@ -323,7 +313,9 @@ private fun OnboardingPageContent(
 ) {
     val text = onboardingText(page.textType)
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        // 图占宽度的一半略多、固定 1:2；剩下的高度优先给文字，不再把图放大到溢出
+        // 高度由「可用高度」和「可用宽度」里更紧的一侧决定：
+        // 矮屏缩图、宽屏也不会把图拉到撑爆文字区，任何 dpi 下结果都一样
+        val artHeight = minOf(maxWidth * 1.12f, maxHeight * 0.54f)
         val bodyScrollState = rememberScrollState()
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -332,7 +324,7 @@ private fun OnboardingPageContent(
             Spacer(modifier = Modifier.height(RadioSizes.onboardingTopGap))
             OnboardingArtFrame(
                 art = page.art,
-                modifier = Modifier.fillMaxWidth(0.56f),
+                height = artHeight,
             )
             Spacer(modifier = Modifier.height(RadioSizes.onboardingTitleGap))
 
@@ -445,16 +437,22 @@ private fun Modifier.onboardingPagerFade(
     alpha = 1f - fadeProgress * (1f - minPageAlpha)
 }
 
-/** 示意图外框：竖版 1:2，圆角 20dp，描边用主题色 */
+/**
+ * 示意图外框：固定 1:2，高度由调用方决定。
+ * 宽度从高度反推（height / 2），不再用「占屏宽百分之几」，
+ * 这样小屏、矮屏、横屏下都不会把图撑大或压到文字。
+ */
 @Composable
 private fun OnboardingArtFrame(
     art: OnboardingArtKind,
+    height: Dp,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(RadioCorners.large)
     Box(
         modifier = modifier
-            .aspectRatio(0.5f)
+            .height(height)
+            .width(height / 2f)
             .clip(shape)
             .background(RadioSurface)
             .border(width = 1.dp, color = RadioOutline, shape = shape),

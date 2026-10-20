@@ -41,7 +41,12 @@ fun OnboardingArt(kind: OnboardingArtKind, modifier: Modifier = Modifier) {
         danger = RadioDanger,
     )
     Canvas(modifier = modifier) {
-        val pen = ArtPen(this, size.width / 320f, size.height / 640f, colors)
+        // 等比缩放：取宽高两个方向里更小的系数，图形永远保持 1:2，
+        // 画布比例变化时只会多出留白，不会把收音机拉扁或把人物拉长
+        val scale = minOf(size.width / 320f, size.height / 640f)
+        val offsetX = (size.width - 320f * scale) / 2f
+        val offsetY = (size.height - 640f * scale) / 2f
+        val pen = ArtPen(this, scale, offsetX, offsetY, colors)
         when (kind) {
             OnboardingArtKind.Library -> pen.drawLibrary()
             OnboardingArtKind.Organize -> pen.drawOrganize()
@@ -71,19 +76,24 @@ private data class ArtColors(
 private class ArtPen(
     private val scope: DrawScope,
     private val sx: Float,
-    private val sy: Float,
+    private val offsetX: Float,
+    private val offsetY: Float,
     private val colors: ArtColors,
 ) {
-    private fun x(value: Float) = value * sx
-    private fun y(value: Float) = value * sy
+    /** 纯长度：只乘缩放系数，不含画布偏移 */
+    private fun len(value: Float) = value * sx
 
-    /** 圆角矩形；横竖分别缩放，视觉比例不会因为画布拉伸而变形 */
+    /** 坐标：缩放后再加居中偏移 */
+    private fun x(value: Float) = offsetX + len(value)
+    private fun y(value: Float) = offsetY + len(value)
+
+    /** 圆角矩形；宽高都用同一个系数，视觉比例不会因为画布比例变化而变形 */
     fun box(left: Float, top: Float, width: Float, height: Float, radius: Float, color: Color) {
         scope.drawRoundRect(
             color = color,
             topLeft = Offset(x(left), y(top)),
-            size = Size(x(width), y(height)),
-            cornerRadius = CornerRadius(x(radius), y(radius)),
+            size = Size(len(width), len(height)),
+            cornerRadius = CornerRadius(len(radius), len(radius)),
         )
     }
 
@@ -99,20 +109,20 @@ private class ArtPen(
         scope.drawRoundRect(
             color = color,
             topLeft = Offset(x(left), y(top)),
-            size = Size(x(width), y(height)),
-            cornerRadius = CornerRadius(x(radius), y(radius)),
+            size = Size(len(width), len(height)),
+            cornerRadius = CornerRadius(len(radius), len(radius)),
             style = Stroke(width = strokeWidth * sx),
         )
     }
 
     fun circle(centerX: Float, centerY: Float, radius: Float, color: Color) {
-        scope.drawCircle(color = color, radius = x(radius), center = Offset(x(centerX), y(centerY)))
+        scope.drawCircle(color = color, radius = len(radius), center = Offset(x(centerX), y(centerY)))
     }
 
     fun ring(centerX: Float, centerY: Float, radius: Float, color: Color, strokeWidth: Float = 1.4f) {
         scope.drawCircle(
             color = color,
-            radius = x(radius),
+            radius = len(radius),
             center = Offset(x(centerX), y(centerY)),
             style = Stroke(width = strokeWidth * sx),
         )
