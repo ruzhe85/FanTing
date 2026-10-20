@@ -27,7 +27,7 @@ import omnibeat.app.ui.appStringResource as stringResource
  *
  * 全部用 Canvas 画，不占任何图片资源：
  * - 颜色只取主题里的主色 / 描边 / 文本 / 危险色，换配色或深浅色都不用重新出图；
- * - 画布固定 320×440（界面上半屏，约占屏幕 55%），按实际尺寸等比缩放、居中；
+ * - 画布固定 320×384（界面上半屏，约占屏幕 48%），按实际尺寸等比缩放、居中；
  * - 菜单项、字段名、按钮这些**固定文案**写成真实文字（跟随系统语言），
  *   台名、曲目、期数这类**示例内容**保持色块 —— 写死某个台名反而误导。
  */
@@ -53,7 +53,7 @@ enum class OnboardingArtKind {
 
 /** 设计画布尺寸：宽固定 320，高 500（1 : 1.5625） */
 private const val CANVAS_WIDTH = 320f
-private const val CANVAS_HEIGHT = 440f
+private const val CANVAS_HEIGHT = 384f
 
 /** 图上需要出现的关键文案，全部来自 strings.xml */
 private data class OnboardingArtLabels(
@@ -329,11 +329,10 @@ private class ArtPen(
         drawTopBar(activeTab = 0)
         drawStationRow(58f, 1f, signal = true)
         drawStationRow(116f, 1f)
-        drawStationRow(174f, 0.95f)
-        drawStationRow(232f, 0.86f)
-        drawStationRow(290f, 0.74f)
-        drawStationRow(348f, 0.6f)
-        drawStationRow(406f, 0.44f)
+        drawStationRow(174f, 0.92f)
+        drawStationRow(232f, 0.8f)
+        drawStationRow(290f, 0.66f)
+        drawStationRow(348f, 0.5f)
 
         // 「＋」展开的菜单
         box(196f, 46f, 118f, 100f, 10f, colors.surfaceHigh)
@@ -351,28 +350,28 @@ private class ArtPen(
     fun drawManageStation() {
         drawStationRow(14f, 1f)
 
-        box(18f, 72f, 284f, 360f, 14f, colors.surfaceHigh)
-        boxOutline(18f, 72f, 284f, 360f, 14f, colors.outline, 1f)
+        box(18f, 72f, 284f, 304f, 14f, colors.surfaceHigh)
+        boxOutline(18f, 72f, 284f, 304f, 14f, colors.outline, 1f)
         text(38f, 86f, labels.editStation, 15f, colors.text)
 
-        text(38f, 120f, labels.nameLabel, 12f, colors.muted.copy(alpha = 0.85f))
-        box(38f, 142f, 244f, 32f, 7f, colors.surface)
-        boxOutline(38f, 142f, 244f, 32f, 7f, colors.outline, 1f)
-        bar(48f, 154f, 72f, 9f, colors.text.copy(alpha = 0.6f))
+        text(38f, 118f, labels.nameLabel, 12f, colors.muted.copy(alpha = 0.85f))
+        box(38f, 138f, 244f, 30f, 7f, colors.surface)
+        boxOutline(38f, 138f, 244f, 30f, 7f, colors.outline, 1f)
+        bar(48f, 150f, 72f, 9f, colors.text.copy(alpha = 0.6f))
 
-        text(38f, 190f, labels.streamLabel, 12f, colors.muted.copy(alpha = 0.85f))
-        box(38f, 212f, 244f, 32f, 7f, colors.surface)
-        boxOutline(38f, 212f, 244f, 32f, 7f, colors.outline, 1f)
-        bar(48f, 224f, 150f, 9f, colors.text.copy(alpha = 0.5f))
+        text(38f, 184f, labels.streamLabel, 12f, colors.muted.copy(alpha = 0.85f))
+        box(38f, 204f, 244f, 30f, 7f, colors.surface)
+        boxOutline(38f, 204f, 244f, 30f, 7f, colors.outline, 1f)
+        bar(48f, 216f, 150f, 9f, colors.text.copy(alpha = 0.5f))
 
-        text(38f, 260f, labels.tagsLabel, 12f, colors.muted.copy(alpha = 0.85f))
-        box(38f, 282f, 244f, 32f, 7f, colors.surface)
-        boxOutline(38f, 282f, 244f, 32f, 7f, colors.outline, 1f)
-        bar(48f, 294f, 56f, 9f, colors.text.copy(alpha = 0.45f))
+        text(38f, 250f, labels.tagsLabel, 12f, colors.muted.copy(alpha = 0.85f))
+        box(38f, 270f, 244f, 30f, 7f, colors.surface)
+        boxOutline(38f, 270f, 244f, 30f, 7f, colors.outline, 1f)
+        bar(48f, 282f, 56f, 9f, colors.text.copy(alpha = 0.45f))
 
-        text(42f, 378f, labels.delete, 13f, colors.danger)
-        box(212f, 372f, 80f, 30f, 15f, colors.primary)
-        text(234f, 379f, labels.save, 12f, colors.surface)
+        text(42f, 350f, labels.delete, 13f, colors.danger)
+        box(212f, 344f, 80f, 30f, 15f, colors.primary)
+        text(234f, 351f, labels.save, 12f, colors.surface)
 
         // 长按指引
         line(160f, 58f, 160f, 70f, colors.primary, 1.5f)
@@ -385,8 +384,7 @@ private class ArtPen(
         drawTopBar(activeTab = 3)
         drawSubscriptionCard(58f, 1f)
         drawSubscriptionCard(150f, 1f)
-        drawSubscriptionCard(242f, 0.88f)
-        drawSubscriptionCard(334f, 0.66f)
+        drawSubscriptionCard(242f, 0.85f)
 
         // 「＋」菜单三项
         box(182f, 46f, 126f, 150f, 10f, colors.surfaceHigh)
@@ -419,9 +417,8 @@ private class ArtPen(
         }
         scope.drawPath(triangle, colors.surface)
 
-        drawSubscriptionCard(150f, 0.85f)
-        drawSubscriptionCard(242f, 0.68f)
-        drawSubscriptionCard(334f, 0.5f)
+        drawSubscriptionCard(150f, 0.82f)
+        drawSubscriptionCard(242f, 0.6f)
 
         // 长按菜单：编辑 / 取消订阅
         box(172f, 62f, 144f, 112f, 10f, colors.surfaceHigh)
@@ -447,9 +444,8 @@ private class ArtPen(
         listOf(26f, 31f, 36f).forEach { circle(261f, it, 1.9f, colors.primary) }
 
         drawEpisodeRow(56f, 80f, 1f, 0.42f)
-        drawEpisodeRow(144f, 76f, 0.9f, null)
-        drawEpisodeRow(228f, 76f, 0.8f, null)
-        drawEpisodeRow(312f, 76f, 0.62f, null)
+        drawEpisodeRow(144f, 76f, 0.88f, null)
+        drawEpisodeRow(228f, 76f, 0.7f, null)
 
         // ⋮ 菜单
         box(164f, 46f, 152f, 200f, 10f, colors.surfaceHigh)
@@ -473,43 +469,41 @@ private class ArtPen(
         line(229f, 34f, 233f, 38f, colors.muted, 1.5f)
         listOf(26f, 31f, 36f).forEach { circle(261f, it, 1.9f, colors.muted) }
 
-        // 被长按的那一期
+        // 只留被长按的那一期：原来这里有两行，去掉下面那行（从中间缩）
         drawEpisodeRow(54f, 78f, 1f, 0.42f)
-        box(12f, 140f, 296f, 62f, 10f, colors.surfaceHigh.copy(alpha = 0.4f))
-        bar(24f, 154f, 128f, 9f, colors.text.copy(alpha = 0.5f))
 
         // 底部弹层
-        box(0f, 196f, 320f, 244f, 16f, colors.surfaceHigh)
-        boxOutline(0f, 196f, 320f, 244f, 16f, colors.outline, 0.8f)
-        bar(140f, 208f, 40f, 4f, colors.outline)
-        text(20f, 230f, labels.episodeActions, 15f, colors.text)
-        bar(20f, 242f, 150f, 8f, colors.muted.copy(alpha = 0.45f))
+        box(0f, 140f, 320f, 244f, 16f, colors.surfaceHigh)
+        boxOutline(0f, 140f, 320f, 244f, 16f, colors.outline, 0.8f)
+        bar(140f, 152f, 40f, 4f, colors.outline)
+        text(20f, 176f, labels.episodeActions, 15f, colors.text)
+        bar(20f, 186f, 150f, 8f, colors.muted.copy(alpha = 0.45f))
 
         // 收藏
-        drawStar(28f, 278f)
-        text(50f, 272f, labels.favorite, 12f, colors.text)
-        line(20f, 296f, 300f, 296f, colors.outline.copy(alpha = 0.6f), 0.8f)
+        drawStar(28f, 222f)
+        text(50f, 216f, labels.favorite, 12f, colors.text)
+        line(20f, 240f, 300f, 240f, colors.outline.copy(alpha = 0.6f), 0.8f)
 
         // 下载
-        line(28f, 314f, 28f, 328f, colors.muted, 1.6f)
-        line(23f, 322f, 28f, 328f, colors.muted, 1.6f)
-        line(33f, 322f, 28f, 328f, colors.muted, 1.6f)
-        line(21f, 334f, 35f, 334f, colors.muted, 1.6f)
-        text(50f, 318f, labels.download, 12f, colors.text)
-        line(20f, 344f, 300f, 344f, colors.outline.copy(alpha = 0.6f), 0.8f)
+        line(28f, 258f, 28f, 272f, colors.muted, 1.6f)
+        line(23f, 266f, 28f, 272f, colors.muted, 1.6f)
+        line(33f, 266f, 28f, 272f, colors.muted, 1.6f)
+        line(21f, 278f, 35f, 278f, colors.muted, 1.6f)
+        text(50f, 262f, labels.download, 12f, colors.text)
+        line(20f, 288f, 300f, 288f, colors.outline.copy(alpha = 0.6f), 0.8f)
 
         // 标记为已听
-        ring(28f, 372f, 7f, colors.muted, 1.5f)
-        line(24f, 372f, 27f, 375f, colors.muted, 1.5f)
-        line(27f, 375f, 32f, 369f, colors.muted, 1.5f)
-        text(50f, 366f, labels.markPlayed, 12f, colors.text)
-        line(20f, 392f, 300f, 392f, colors.outline.copy(alpha = 0.6f), 0.8f)
+        ring(28f, 316f, 7f, colors.muted, 1.5f)
+        line(24f, 316f, 27f, 319f, colors.muted, 1.5f)
+        line(27f, 319f, 32f, 313f, colors.muted, 1.5f)
+        text(50f, 310f, labels.markPlayed, 12f, colors.text)
+        line(20f, 336f, 300f, 336f, colors.outline.copy(alpha = 0.6f), 0.8f)
 
         // 复制链接
-        line(22f, 418f, 22f, 426f, colors.muted, 1.6f)
-        line(22f, 418f, 29f, 418f, colors.muted, 1.6f)
-        ring(33f, 424f, 4f, colors.muted, 1.5f)
-        text(50f, 414f, labels.copyLink, 12f, colors.text)
+        line(22f, 362f, 22f, 370f, colors.muted, 1.6f)
+        line(22f, 362f, 29f, 362f, colors.muted, 1.6f)
+        ring(33f, 368f, 4f, colors.muted, 1.5f)
+        text(50f, 358f, labels.copyLink, 12f, colors.text)
     }
 
     /** 五角星（收藏图标），以 (cx, cy) 为中心 */

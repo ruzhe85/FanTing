@@ -104,7 +104,7 @@ private val OnboardingPages = listOf(
 )
 
 /** 示意图宽高比：320 × 340（界面只露上半屏） */
-private const val ART_RATIO = 320f / 440f
+private const val ART_RATIO = 320f / 384f
 
 /**
  * 横屏左右分栏比例：左右各占一半，各自在自己的半屏里居中。
