@@ -304,6 +304,9 @@ fun OmniBeatApp() {
         LaunchedEffect(podcastRepository) {
             podcastRepository.customOrder.collect { podcastCustomOrder = it }
         }
+        // 一键刷新期间冻结列表顺序：每刷完一个订阅 lastFetchedAtMs 都会变，
+        // 若不冻结，列表会跟着「最近更新」排序连续跳动，看起来像抽风
+        var podcastOrderSnapshot by remember { mutableStateOf<List<String>?>(null) }
         // 拖动中的草稿优先，否则按当前排序偏好展示
         val podcastList = remember(
             podcastVisibleSubscriptions,
@@ -357,9 +360,6 @@ fun OmniBeatApp() {
         // 请求代号：取消后重开弹窗会发新请求，旧请求的收尾不能清掉新请求的状态
         var podcastSubmitRequest by remember { mutableIntStateOf(0) }
         // 一键刷新全部的进度：总数 > 0 表示正在刷新，已完成数驱动 FAB 的「n/N」
-        // 一键刷新期间冻结列表顺序：每刷完一个订阅 lastFetchedAtMs 都会变，
-        // 若不冻结，列表会跟着「最近更新」排序连续跳动，看起来像抽风
-        var podcastOrderSnapshot by remember { mutableStateOf<List<String>?>(null) }
         var podcastRefreshAllTotal by remember { mutableIntStateOf(0) }
         var podcastRefreshAllDone by remember { mutableIntStateOf(0) }
         var podcastError by remember { mutableStateOf<String?>(null) }
