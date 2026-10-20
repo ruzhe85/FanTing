@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,9 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -44,7 +43,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import omnibeat.app.model.ThemeMode
@@ -224,6 +222,11 @@ private fun OnboardingLandscape(
     onThemeModeChange: (ThemeMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val pagerState = rememberPagerState(pageCount = { OnboardingPages.size })
+    val scope = rememberCoroutineScope()
+    val pageIndex = pagerState.currentPage
+    val isLastPage = pageIndex == OnboardingPages.lastIndex
+
     Column(
         modifier = modifier.padding(
             horizontal = RadioSpacing.page,
@@ -236,37 +239,94 @@ private fun OnboardingLandscape(
             onSkip = onFinished,
         )
         Spacer(modifier = Modifier.height(RadioSpacing.medium))
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            horizontalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
-            verticalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-        ) {
-            itemsIndexed(OnboardingPages) { index, page ->
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    OnboardingArtFrame(art = page.art, height = 176.dp)
-                    Spacer(modifier = Modifier.height(RadioSpacing.small))
-                    Text(
-                        text = "${index + 1}  ${stringResource(page.titleRes)}",
-                        color = RadioText,
-                        fontSize = RadioTextSizes.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+        ) { page ->
+            val item = OnboardingPages[page]
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(RadioSpacing.large),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onboardingPagerFade(pagerState, page),
+            ) {
+                // 图跟着行高走：横屏高度有限，按 1:2 反推宽度，图不会被压扁
+                OnboardingArtFrame(
+                    art = item.art,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(0.5f),
+                )
+                OnboardingLandscapeText(
+                    page = item,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
+        OnboardingDots(pageCount = OnboardingPages.size, selectedIndex = pageIndex)
         Spacer(modifier = Modifier.height(RadioSpacing.medium))
-        OmniPrimaryButton(
-            text = stringResource(R.string.action_start_using),
-            onClick = onFinished,
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(RadioSpacing.medium),
             modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (pageIndex > 0) {
+                OmniSecondaryButton(
+                    text = stringResource(R.string.action_back),
+                    onClick = {
+                        scope.launch { pagerState.animateScrollToPage(pageIndex - 1) }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
+            OmniPrimaryButton(
+                text = if (isLastPage) {
+                    stringResource(R.string.action_start_using)
+                } else {
+                    stringResource(R.string.action_next)
+                },
+                onClick = {
+                    if (isLastPage) {
+                        onFinished()
+                    } else {
+                        scope.launch { pagerState.animateScrollToPage(pageIndex + 1) }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/** 横屏右栏：标题 + 正文，正文可滚动 */
+@Composable
+private fun OnboardingLandscapeText(
+    page: OnboardingPage,
+    modifier: Modifier = Modifier,
+) {
+    val text = onboardingText(page.textType)
+    val bodyScrollState = rememberScrollState()
+    Column(modifier = modifier) {
+        Text(
+            text = stringResource(page.titleRes),
+            color = RadioText,
+            fontSize = RadioTextSizes.onboardingTitle,
+            fontWeight = FontWeight.SemiBold,
+            lineHeight = RadioTextSizes.onboardingLineHeight,
+        )
+        Spacer(modifier = Modifier.height(RadioSpacing.medium))
+        Text(
+            text = text,
+            color = RadioTextMuted,
+            fontSize = RadioTextSizes.bodyLarge,
+            lineHeight = RadioTextSizes.onboardingBodyLineHeight,
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(bodyScrollState),
         )
     }
 }
@@ -314,8 +374,9 @@ private fun OnboardingPageContent(
     val text = onboardingText(page.textType)
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         // 高度由「可用高度」和「可用宽度」里更紧的一侧决定：
-        // 矮屏缩图、宽屏也不会把图拉到撑爆文字区，任何 dpi 下结果都一样
-        val artHeight = minOf(maxWidth * 1.12f, maxHeight * 0.54f)
+        // 矮屏缩图、宽屏也不会把图拉到撑爆文字区，任何 dpi 下结果都一样。
+        // 系数 0.5 是算过正文的：图 50% + 间距 + 标题之后，正文至少还能剩 4 行。
+        val artHeight = minOf(maxWidth * 1.12f, maxHeight * 0.5f)
         val bodyScrollState = rememberScrollState()
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -324,7 +385,9 @@ private fun OnboardingPageContent(
             Spacer(modifier = Modifier.height(RadioSizes.onboardingTopGap))
             OnboardingArtFrame(
                 art = page.art,
-                height = artHeight,
+                modifier = Modifier
+                    .height(artHeight)
+                    .width(artHeight / 2f),
             )
             Spacer(modifier = Modifier.height(RadioSizes.onboardingTitleGap))
 
@@ -438,21 +501,17 @@ private fun Modifier.onboardingPagerFade(
 }
 
 /**
- * 示意图外框：固定 1:2，高度由调用方决定。
- * 宽度从高度反推（height / 2），不再用「占屏宽百分之几」，
- * 这样小屏、矮屏、横屏下都不会把图撑大或压到文字。
+ * 示意图外框：调用方给尺寸，内部只负责圆角、底色与描边。
+ * 竖屏按高度定（高度 / 2），横屏按行高铺满再反推宽度，两种模式都不写死占屏比例。
  */
 @Composable
 private fun OnboardingArtFrame(
     art: OnboardingArtKind,
-    height: Dp,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(RadioCorners.large)
     Box(
         modifier = modifier
-            .height(height)
-            .width(height / 2f)
             .clip(shape)
             .background(RadioSurface)
             .border(width = 1.dp, color = RadioOutline, shape = shape),
