@@ -315,9 +315,11 @@ fun OmniBeatApp() {
             podcastReorderDraft,
             podcastOrderSnapshot,
         ) {
+            // 用局部 val 接住：直接引用委托属性时智能转换不生效，返回值会变成可空
+            val draft = podcastReorderDraft
             val snapshot = podcastOrderSnapshot
             when {
-                podcastReorderDraft != null -> podcastReorderDraft
+                draft != null -> draft
                 // 刷新中：按快照顺序摆放，新订阅接在末尾
                 snapshot != null -> {
                     val byUrl = podcastVisibleSubscriptions.associateBy { it.feedUrl }
