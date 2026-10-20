@@ -2,6 +2,7 @@ package omnibeat.app.ui
 
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -63,6 +64,9 @@ fun AppLanguageProvider(content: @Composable () -> Unit) {
         LocalConfiguration provides localizedContext.resources.configuration,
         LocalResources provides localizedContext.resources,
         LocalLayoutDirection provides layoutDirection,
+        // 显式保留 Activity：本地化 context 包在 ContextWrapper(Activity) 内，findActivity 已能解析，
+        // 这里再 re-provide 一次，确保 LocalActivity 不随 Compose 版本对 LocalContext 的派生方式变化而失效。
+        LocalActivity provides hostActivity,
         LocalAppLanguage provides state,
     ) {
         content()

@@ -1,8 +1,10 @@
 package omnibeat.app.data
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.LocaleList
 import omnibeat.app.R
 import java.util.Locale
@@ -44,6 +46,11 @@ object AppLanguagePrefs {
     /**
      * 按指定语言包装 Context；tag 为空（跟随系统）时原样返回。
      *
+     * 关键：用 ContextWrapper 包住「原始 context（Activity/Service）」，只把 resources 换成
+     * 本地化之后的版本。如果直接返回 createConfigurationContext() 的纯 ContextImpl，
+     * 会丢失 Activity 身份，导致 findActivity()/LocalActivity 失效
+     * （github flavor 的 rememberAppUpdates 第一行 checkNotNull(LocalActivity.current) 会崩溃）。
+     *
      * 注意不要设置 Locale.setDefault：跟随系统时应保持系统默认 locale 不被污染。
      */
     fun wrapContext(context: Context, tag: String? = get(context)): Context {
@@ -53,7 +60,10 @@ object AppLanguagePrefs {
             setLocales(LocaleList(locale))
             setLayoutDirection(locale)
         }
-        return context.createConfigurationContext(configuration)
+        val localized = context.createConfigurationContext(configuration)
+        return object : ContextWrapper(context) {
+            override fun getResources(): Resources = localized.resources
+        }
     }
 
     private fun prefs(context: Context): SharedPreferences =
