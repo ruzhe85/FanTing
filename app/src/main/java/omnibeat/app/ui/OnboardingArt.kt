@@ -16,6 +16,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import omnibeat.app.R
 import omnibeat.app.ui.appStringResource as stringResource
@@ -210,13 +211,20 @@ private class ArtPen(
         box(left, top, width, height, height / 2f, color)
     }
 
-    /** 在图上写一行字；top 是文字块顶部 */
+    /**
+     * 在图上写一行字；top 是文字块顶部。
+     *
+     * 关键：测量密度固定为 1，让 1sp = 1 个设计单位。
+     * 画布已经整体缩放过一次，若这里再按屏幕密度测量，
+     * 文字会被放大两遍（真机上表现为标签挤成一团）。
+     */
     fun text(left: Float, top: Float, value: String, size: Float = 9f, color: Color = colors.text) {
         if (value.isBlank()) return
         val layout = textMeasurer.measure(
             text = AnnotatedString(value),
             style = TextStyle(fontSize = size.sp, color = color),
             maxLines = 1,
+            density = Density(1f),
         )
         scope.drawText(textLayoutResult = layout, topLeft = Offset(left, top))
     }
