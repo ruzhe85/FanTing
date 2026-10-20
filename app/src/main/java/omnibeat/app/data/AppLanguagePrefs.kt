@@ -69,8 +69,13 @@ object AppLanguagePrefs {
     private fun prefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private fun displayName(tag: String): String =
-        Locale.forLanguageTag(tag).let { it.getDisplayName(it) }
+    private fun displayName(tag: String): String = when (tag) {
+        // 简体 / 繁体中文用固定的自名，避免 getDisplayName 在不同安卓版本上
+        // 渲染成「中文（繁体中文）」这类不一致的表述。
+        "zh" -> "中文（简体）"
+        "zh-Hant" -> "中文（繁體）"
+        else -> Locale.forLanguageTag(tag).let { it.getDisplayName(it) }
+    }
 }
 
 /** tag 为 null 表示跟随系统。 */
