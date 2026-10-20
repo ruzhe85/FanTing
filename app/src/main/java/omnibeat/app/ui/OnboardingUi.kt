@@ -256,7 +256,16 @@ private fun OnboardingLandscape(
                 )
             }
         }
-        OnboardingDots(pageCount = OnboardingPages.size, selectedIndex = pageIndex)
+        // 横屏圆点跟着文案走：只在右半屏底部居中，不横跨整屏（否则会落到最左端）
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Spacer(modifier = Modifier.weight(LANDSCAPE_ART_WEIGHT))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.weight(LANDSCAPE_TEXT_WEIGHT),
+            ) {
+                OnboardingDots(pageCount = OnboardingPages.size, selectedIndex = pageIndex)
+            }
+        }
         Spacer(modifier = Modifier.height(RadioSpacing.medium))
 
         OnboardingButtons(
