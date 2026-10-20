@@ -207,10 +207,16 @@ private class ArtPen(
     fun drawLibrary() {
         box(0f, 0f, 320f, 640f, 0f, colors.surface.copy(alpha = 0.55f))
         drawTopBar(activeTab = 0)
+        // 铺满整个画布高度：下半段留白会让缩略图看起来"图大内容空"
         drawStationRow(58f, alpha = 1f) { drawSignal(262f, 87f) }
         drawStationRow(122f, alpha = 1f)
-        drawStationRow(186f, alpha = 0.8f)
-        drawStationRow(250f, alpha = 0.45f)
+        drawStationRow(186f, alpha = 0.95f)
+        drawStationRow(250f, alpha = 0.85f)
+        drawStationRow(314f, alpha = 0.75f)
+        drawStationRow(378f, alpha = 0.62f)
+        drawStationRow(442f, alpha = 0.5f)
+        drawStationRow(506f, alpha = 0.38f)
+        drawStationRow(570f, alpha = 0.28f)
         // 「＋」展开的菜单
         box(196f, 48f, 112f, 92f, 10f, colors.surfaceHigh)
         boxOutline(196f, 48f, 112f, 92f, 10f, colors.outline, 1f)
@@ -254,7 +260,16 @@ private class ArtPen(
         bar(86f, 138f, 70f, 8f, colors.text.copy(alpha = 0.7f))
         drawStar(286f, 147f, filled = false)
 
-        box(12f, 182f, 296f, 54f, 10f, colors.surfaceHigh.copy(alpha = 0.35f))
+        // 余下行铺满画布，避免下半段空着
+        listOf(182f, 244f, 306f, 368f, 430f, 492f, 554f).forEachIndexed { index, top ->
+            box(12f, top, 296f, 54f, 10f, colors.surfaceHigh.copy(alpha = 0.5f - index * 0.05f))
+            listOf(top + 18f, top + 25f, top + 32f).forEach { lineY ->
+                line(22f, lineY, 34f, lineY, colors.muted.copy(alpha = 0.7f), 1.8f)
+            }
+            box(44f, top + 11f, 32f, 32f, 6f, colors.primary.copy(alpha = 0.16f))
+            bar(86f, top + 18f, 64f, 8f, colors.text.copy(alpha = 0.6f))
+            drawStar(286f, top + 27f, filled = false)
+        }
     }
 
     // ---- 3 管理电台 ----
@@ -280,6 +295,10 @@ private class ArtPen(
         bar(44f, 498f, 34f, 10f, colors.danger)
         box(216f, 486f, 72f, 32f, 16f, colors.primary)
         bar(236f, 498f, 32f, 9f, colors.surface)
+        // 对话框下方补一行列表，避免画布底部整块留白
+        box(12f, 552f, 296f, 54f, 10f, colors.surfaceHigh.copy(alpha = 0.35f))
+        box(24f, 563f, 32f, 32f, 6f, colors.primary.copy(alpha = 0.14f))
+        bar(66f, 570f, 72f, 8f, colors.text.copy(alpha = 0.45f))
         // 长按指引
         line(158f, 76f, 158f, 96f, colors.primary, 1.6f)
         circle(158f, 88f, 5f, colors.primary.copy(alpha = 0.3f))
@@ -380,8 +399,14 @@ private class ArtPen(
     fun drawPodcastSubscriptions() {
         box(0f, 0f, 320f, 640f, 0f, colors.surface.copy(alpha = 0.55f))
         drawTopBar(activeTab = 3, rightButtons = 1)
-        // 三张订阅卡
-        listOf(58f to 1f, 154f to 1f, 250f to 0.55f).forEach { (top, alpha) ->
+        // 五张订阅卡铺满画布
+        listOf(
+            58f to 1f,
+            154f to 1f,
+            250f to 0.85f,
+            346f to 0.62f,
+            442f to 0.42f,
+        ).forEach { (top, alpha) ->
             box(12f, top, 296f, 88f, 12f, colors.surfaceHigh.copy(alpha = 0.5f * alpha))
             box(24f, top + 12f, 64f, 64f, 10f, colors.primary.copy(alpha = 0.22f * alpha))
             circle(76f, top + 64f, 10f, colors.primary.copy(alpha = alpha))
