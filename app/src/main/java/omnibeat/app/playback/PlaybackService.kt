@@ -1026,7 +1026,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<*> {
             val selected = mediaItems.getOrNull(if (startIndex == C.INDEX_UNSET) 0 else startIndex)
             val incomingId = selected?.mediaId?.let(StationMediaLibrary::stationId)
-            val currentState = state.value
+            val currentState = PlaybackService.state.value
             // 系统媒体控件「继续播放」时会把队列再推一次。若推回来的仍是当前这一期，
             // 只当同步处理：否则下面的 seekable = false 会把面板打回电台形态，
             // 进度条与倍速一起消失。
