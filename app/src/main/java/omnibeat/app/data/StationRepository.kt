@@ -44,6 +44,9 @@ private val autoPlayNextEpisodeKey = booleanPreferencesKey("auto_play_next_episo
 private val collapsePlayerPanelInSearchKey = booleanPreferencesKey("collapse_player_panel_in_search")
 private val addRadioBrowserTagsKey = booleanPreferencesKey("add_radio_browser_tags")
 private val removeTrackingParametersKey = booleanPreferencesKey("remove_tracking_parameters")
+
+/** 被别的应用抢走音频焦点后，对方停止时是否自动续播 */
+private val resumeAfterInterruptionKey = booleanPreferencesKey("resume_after_interruption")
 private val showAndroidAutoArtworkKey = booleanPreferencesKey("show_android_auto_artwork")
 private val playerPanelCollapsedKey = booleanPreferencesKey("player_panel_collapsed")
 private val onboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
@@ -116,6 +119,9 @@ class StationRepository(private val context: Context) {
 
     val collapsePlayerPanelInSearch: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[collapsePlayerPanelInSearchKey] ?: true }
+
+    val resumeAfterInterruption: Flow<Boolean> = context.stationDataStore.data
+        .map { preferences -> preferences[resumeAfterInterruptionKey] ?: true }
 
     val addRadioBrowserTags: Flow<Boolean> = context.stationDataStore.data
         .map { preferences -> preferences[addRadioBrowserTagsKey] ?: true }
@@ -228,6 +234,12 @@ class StationRepository(private val context: Context) {
     suspend fun saveShowPlayerMetadata(show: Boolean) {
         context.stationDataStore.edit { preferences ->
             preferences[showPlayerMetadataKey] = show
+        }
+    }
+
+    suspend fun saveResumeAfterInterruption(resume: Boolean) {
+        context.stationDataStore.edit { preferences ->
+            preferences[resumeAfterInterruptionKey] = resume
         }
     }
 

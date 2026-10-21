@@ -27,6 +27,7 @@ fun RepositoryStateEffects(
     onAddRadioBrowserTagsChange: (Boolean) -> Unit,
     onRemoveTrackingParametersChange: (Boolean) -> Unit,
     onShowAndroidAutoArtworkChange: (Boolean) -> Unit,
+    onResumeAfterInterruptionChange: (Boolean) -> Unit,
     onPlayerPanelCollapsedChange: (Boolean) -> Unit,
     onLastMainPageChange: (MainPage) -> Unit,
     onSelectedPageRestore: (MainPage) -> Unit,
@@ -122,6 +123,10 @@ fun RepositoryStateEffects(
 
     LaunchedEffect(repository) {
         repository.showAndroidAutoArtwork.collect(onShowAndroidAutoArtworkChange)
+    }
+
+    LaunchedEffect(repository) {
+        repository.resumeAfterInterruption.collect(onResumeAfterInterruptionChange)
     }
 
     LaunchedEffect(repository) {

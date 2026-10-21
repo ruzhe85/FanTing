@@ -286,6 +286,7 @@ fun OmniBeatApp() {
         var addRadioBrowserTags by remember { mutableStateOf(true) }
         var removeTrackingParametersFromUrls by remember { mutableStateOf(true) }
         var showAndroidAutoArtwork by remember { mutableStateOf(true) }
+        var resumeAfterInterruption by remember { mutableStateOf(true) }
         var playerPanelCollapsed by remember { mutableStateOf(false) }
         var editorState by remember { mutableStateOf<StationEditorState?>(null) }
         var selectedPage by remember { mutableStateOf(MainPage.Stations) }
@@ -465,6 +466,7 @@ fun OmniBeatApp() {
             onAddRadioBrowserTagsChange = { addRadioBrowserTags = it },
             onRemoveTrackingParametersChange = { removeTrackingParametersFromUrls = it },
             onShowAndroidAutoArtworkChange = { showAndroidAutoArtwork = it },
+            onResumeAfterInterruptionChange = { resumeAfterInterruption = it },
             onPlayerPanelCollapsedChange = { playerPanelCollapsed = it },
             onLastMainPageChange = { lastMainPage = it },
             onSelectedPageRestore = { selectedPage = it },
@@ -2869,6 +2871,7 @@ fun OmniBeatApp() {
                                 addRadioBrowserTags = addRadioBrowserTags,
                                 removeTrackingParameters = removeTrackingParametersFromUrls,
                                 showAndroidAutoArtwork = showAndroidAutoArtwork,
+                                resumeAfterInterruption = resumeAfterInterruption,
                                 podcastAutoRefreshOnStart = podcastAutoRefreshOnStart,
                                 podcastAutoRefreshOnEnterList = podcastAutoRefreshOnEnterList,
                                 podcastRefreshIntervalMinutes = podcastRefreshIntervalMinutes,
@@ -2918,6 +2921,10 @@ fun OmniBeatApp() {
                                 onShowPlayerMetadataChange = { show ->
                                     showPlayerMetadata = show
                                     scope.launch { repository.saveShowPlayerMetadata(show) }
+                                },
+                                onResumeAfterInterruptionChange = { resume ->
+                                    resumeAfterInterruption = resume
+                                    scope.launch { repository.saveResumeAfterInterruption(resume) }
                                 },
                                 onMarqueeTrackTitleChange = { marquee ->
                                     marqueeTrackTitle = marquee

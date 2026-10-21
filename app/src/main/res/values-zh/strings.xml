@@ -56,6 +56,9 @@
     <string name="settings_stop_service_after_pause_never_subtitle">通知栏将一直保留，直到应用停止运行</string>
     <string name="settings_stop_service_after_pause_never">永不</string>
     <string name="settings_stop_service_after_pause_minutes">%1$d 分钟</string>
+    <string name="settings_resume_after_interruption_title">播放打断后自动恢复</string>
+    <string name="settings_resume_after_interruption_on">打断应用停止播放后自动续播</string>
+    <string name="settings_resume_after_interruption_off">手动点击恢复播放</string>
     <string name="settings_keep_media_card_title">服务停止后保留媒体控件</string>
     <string name="settings_keep_media_card_on">系统将在快捷设置中保留媒体控件</string>
     <string name="settings_keep_media_card_off">系统将清除快捷设置中的媒体控件</string>
@@ -241,7 +244,7 @@
     <string name="player_bitrate_format">%1$d kbps</string>
     <string name="player_live_badge">直播</string>
     <string name="player_not_playing">未在播放</string>
-    <string name="player_not_playing_hint">点播放键继续上次的电台</string>
+    <string name="player_not_playing_hint">点播放键恢复最后一次播放</string>
     <string name="player_clipboard_track_label">曲目</string>
     <string name="player_track_copied">已复制曲目名称</string>
     <string name="player_clipboard_stream_info_label">音频流信息</string>

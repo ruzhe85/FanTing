@@ -67,6 +67,16 @@ private const val PLAYER_USER_AGENT = "FanTing Android"
 /** 临时诊断日志：定位「系统媒体恢复后单集变电台」，确认后删除 */
 private const val PLAY_TRACE = "OBPlay"
 
+/**
+ * 音频焦点被别的 App 永久抢走后，ExoPlayer 不会再自己去请求焦点，
+ * 只有瞬态丢失（来电、语音消息）才会在 GAIN 后自动续播。这里按固定间隔重试：
+ * 对方仍占着焦点时请求会被拒绝（不打断对方），对方一放手下一次重试就能接着播。
+ */
+private const val FOCUS_RESUME_RETRY_INTERVAL_MS = 5_000L
+
+/** 重试窗口上限：超过就放弃自动恢复，避免长期每 5 秒唤醒一次 */
+private const val FOCUS_RESUME_MAX_MS = 30 * 60_000L
+
 enum class PlaybackTrackStatus {
     Stopped,
     Paused,
@@ -163,6 +173,12 @@ class PlaybackService : MediaLibraryService() {
     private var showAndroidAutoArtwork = false
     private var navigationQueueIds: List<String> = emptyList()
     private var stopAfterPauseJob: Job? = null
+
+    /** 焦点被抢后的自动恢复重试（见 [scheduleFocusResumeRetry]） */
+    private var focusResumeJob: Job? = null
+
+    /** 设置项：被其他应用抢走焦点后，对方停止时是否自动续播 */
+    private var resumeAfterInterruption = true
 
     /** 点播单集的进度轮询（每秒把播放位置同步给 UI）；直播不启用 */
     private var positionJob: Job? = null
@@ -267,6 +283,13 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         scope.launch {
+            repository.resumeAfterInterruption.collect { resume ->
+                resumeAfterInterruption = resume
+                // 开关关掉后立刻停掉正在进行的重试，不必等下一个 tick
+                if (!resume) focusResumeJob?.cancel()
+            }
+        }
+        scope.launch {
             repository.showAndroidAutoArtwork.distinctUntilChanged().collect { show ->
                 showAndroidAutoArtwork = show
                 syncSession()
@@ -324,6 +347,7 @@ class PlaybackService : MediaLibraryService() {
         resolveJob?.cancel()
         noMetadataJob?.cancel()
         stopAfterPauseJob?.cancel()
+        focusResumeJob?.cancel()
         player.removeAnalyticsListener(analyticsListener)
         player.removeListener(playerListener)
         mediaSession?.release()
@@ -495,6 +519,7 @@ class PlaybackService : MediaLibraryService() {
         )
         resolveJob?.cancel()
         stopAfterPauseJob?.cancel()
+        focusResumeJob?.cancel()
         noMetadataJob?.cancel()
         // 进度轮询只属于点播单集：换内容时立刻停掉，否则旧任务的 tick 会把
         // 上一集的 positionMs/durationMs 写回来，面板据此错误继承点播形态
@@ -668,6 +693,7 @@ class PlaybackService : MediaLibraryService() {
         resolveJob?.cancel()
         noMetadataJob?.cancel()
         stopAfterPauseJob?.cancel()
+        focusResumeJob?.cancel()
         positionJob?.cancel()
         playbackRequested = false
         currentStreamIsHls = false
@@ -703,6 +729,7 @@ class PlaybackService : MediaLibraryService() {
         )
         resolveJob?.cancel()
         playbackRequested = false
+        focusResumeJob?.cancel()
         noMetadataJob?.cancel()
         currentStreamIsHls = false
         // 停之前把当前位置同步进 state 并抓存：暂停保存断点 / 恢复续播都不能用
@@ -756,6 +783,44 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * 焦点被抢后的自动恢复：每 [FOCUS_RESUME_RETRY_INTERVAL_MS] 试一次 player.play()。
+     *
+     * ExoPlayer 只在瞬态丢失（来电、语音消息）后自己续播；被直播间 / 视频用永久焦点抢走时
+     * 它不会再请求焦点，所以这里主动重试。对方仍占着焦点时请求会被拒绝，不会打断对方；
+     * 对方一放手，下一次重试就能拿回焦点并接着播。
+     *
+     * 窗口长度沿用「暂停后停止服务」设置（上限 [FOCUS_RESUME_MAX_MS]）；设成「从不」时
+     * 只在窗口内重试，不主动停服务。
+     */
+    private fun scheduleFocusResumeRetry() {
+        if (!resumeAfterInterruption) return
+        if (focusResumeJob?.isActive == true) return
+        val never = stopServiceAfterPauseMinutes == STOP_SERVICE_AFTER_PAUSE_NEVER
+        val budgetMs = if (never) {
+            FOCUS_RESUME_MAX_MS
+        } else {
+            (stopServiceAfterPauseMinutes * 60_000L).coerceAtMost(FOCUS_RESUME_MAX_MS)
+        }
+        focusResumeJob = scope.launch {
+            var waitedMs = 0L
+            while (waitedMs < budgetMs) {
+                delay(FOCUS_RESUME_RETRY_INTERVAL_MS)
+                waitedMs += FOCUS_RESUME_RETRY_INTERVAL_MS
+                val current = state.value
+                // 已经在播，或内容被换掉 / 清空了：本次自动恢复结束
+                if (current.isPlaying) return@launch
+                if (current.selectedStation == null || player.mediaItemCount == 0) return@launch
+                if (current.resolving || current.buffering) continue
+                player.play()
+            }
+            val current = state.value
+            if (!never && !current.isPlaying && current.trackStatus == PlaybackTrackStatus.Paused) {
+                stopPlaybackService()
+            }
+        }
+    }
+
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             _state.update {
@@ -786,6 +851,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            val focusLost = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
             if (!playWhenReady && reason in listOf(
                     Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
                     Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
@@ -799,12 +865,23 @@ class PlaybackService : MediaLibraryService() {
                     pausedPositionMs = player.currentPosition
                 }
                 _state.update { it.withTrackStatus(PlaybackTrackStatus.Paused) }
-                scheduleStopAfterPause()
+                if (focusLost && resumeAfterInterruption) {
+                    // 焦点被抢是「被动暂停」，不是用户意图：先别启动「暂停后停止服务」倒计时，
+                    // 改按同样长的窗口重试拿回焦点。否则直播间 / 视频放得久一点，服务已被回收，
+                    // 焦点回来也没内容可续播，只能手动点播放。
+                    stopAfterPauseJob?.cancel()
+                    scheduleFocusResumeRetry()
+                } else {
+                    // 自动恢复关掉时保持原有暂停策略；耳机拔出（becoming noisy）
+                    // 按 Android 规范也不自动恢复，同样走这里
+                    scheduleStopAfterPause()
+                }
             } else if (playWhenReady && !playbackRequested) {
                 // 外部把 playWhenReady 拉回来了（别的 App 释放音频焦点、系统媒体恢复等）：
                 // ExoPlayer 自己会接着播，但这里的状态还停在 Paused、playbackRequested 也是
                 // false，于是面板显示暂停、也不续播。用「没经过本服务请求就已就绪」识别，
                 // 把意图与状态一起拉回来。media3 没有 AUDIO_FOCUS_GAIN 常量，不能按 reason 判断。
+                focusResumeJob?.cancel()
                 playbackRequested = true
                 _state.update { it.copy(trackStatus = null) }
                 if (!player.isPlaying && player.mediaItemCount > 0) {
@@ -1097,6 +1174,7 @@ class PlaybackService : MediaLibraryService() {
             }
             resolveJob?.cancel()
             stopAfterPauseJob?.cancel()
+            focusResumeJob?.cancel()
             noMetadataJob?.cancel()
             positionJob?.cancel()
             playbackRequested = false

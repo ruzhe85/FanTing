@@ -53,6 +53,9 @@
     <string name="settings_stop_service_after_pause_never_subtitle">Уведомление останется, пока вы не остановите приложение</string>
     <string name="settings_stop_service_after_pause_never">Никогда</string>
     <string name="settings_stop_service_after_pause_minutes">%1$d мин</string>
+    <string name="settings_resume_after_interruption_title">Возобновление после прерывания</string>
+    <string name="settings_resume_after_interruption_on">Воспроизведение продолжится, когда прервавшее приложение остановится</string>
+    <string name="settings_resume_after_interruption_off">Возобновляйте воспроизведение вручную</string>
     <string name="settings_keep_media_card_title">Сохранять плеер после остановки сервиса</string>
     <string name="settings_keep_media_card_on">Android будет сохранять плеер в панели быстрых настроек</string>
     <string name="settings_keep_media_card_off">Android не будет сохранять плеер в панели быстрых настроек</string>
@@ -223,7 +226,7 @@
     <string name="player_bitrate_format">%1$d кбит/с</string>
     <string name="player_live_badge">LIVE</string>
     <string name="player_not_playing">Ничего не играет</string>
-    <string name="player_not_playing_hint">Нажмите воспроизведение, чтобы продолжить</string>
+    <string name="player_not_playing_hint">Нажмите воспроизведение, чтобы вернуться к последнему</string>
     <string name="podcast_refresh_failed">Не удалось обновить: %1$s</string>
     <string name="podcast_refresh_nothing">Нет подписок для обновления</string>
     <string name="podcast_refresh_auto_failed">Не удалось обновить подписок: %1$d</string>

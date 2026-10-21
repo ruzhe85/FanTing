@@ -159,6 +159,7 @@ fun SettingsPage(
     addRadioBrowserTags: Boolean,
     removeTrackingParameters: Boolean,
     showAndroidAutoArtwork: Boolean,
+    resumeAfterInterruption: Boolean,
     podcastAutoRefreshOnStart: Boolean,
     podcastAutoRefreshOnEnterList: Boolean,
     podcastRefreshIntervalMinutes: Int,
@@ -185,6 +186,7 @@ fun SettingsPage(
     onAddRadioBrowserTagsChange: (Boolean) -> Unit,
     onRemoveTrackingParametersChange: (Boolean) -> Unit,
     onShowAndroidAutoArtworkChange: (Boolean) -> Unit,
+    onResumeAfterInterruptionChange: (Boolean) -> Unit,
     onPodcastAutoRefreshOnStartChange: (Boolean) -> Unit,
     onPodcastAutoRefreshOnEnterListChange: (Boolean) -> Unit,
     onPodcastRefreshIntervalMinutesChange: (Int) -> Unit,
@@ -282,6 +284,16 @@ fun SettingsPage(
                 },
                 selectedMinutes = stopServiceAfterPauseMinutes,
                 onSelectedMinutesChange = onStopServiceAfterPauseMinutesChange,
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_resume_after_interruption_title),
+                subtitle = if (resumeAfterInterruption) {
+                    stringResource(R.string.settings_resume_after_interruption_on)
+                } else {
+                    stringResource(R.string.settings_resume_after_interruption_off)
+                },
+                checked = resumeAfterInterruption,
+                onCheckedChange = onResumeAfterInterruptionChange,
             )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_keep_media_card_title),

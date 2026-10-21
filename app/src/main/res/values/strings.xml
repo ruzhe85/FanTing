@@ -63,6 +63,9 @@
     <string name="settings_stop_service_after_pause_never_subtitle">Notification will stay until you stop the app</string>
     <string name="settings_stop_service_after_pause_never">Never</string>
     <string name="settings_stop_service_after_pause_minutes">%1$d min</string>
+    <string name="settings_resume_after_interruption_title">Resume after interruption</string>
+    <string name="settings_resume_after_interruption_on">Playback resumes when the interrupting app stops</string>
+    <string name="settings_resume_after_interruption_off">Resume manually by tapping play</string>
     <string name="settings_keep_media_card_title">Keep media controls after service stops</string>
     <string name="settings_keep_media_card_on">Android will keep media controls in Quick Settings</string>
     <string name="settings_keep_media_card_off">Android will clear media controls in Quick Settings</string>
@@ -248,7 +251,7 @@
     <string name="player_bitrate_format">%1$d kbps</string>
     <string name="player_live_badge">LIVE</string>
     <string name="player_not_playing">Not playing</string>
-    <string name="player_not_playing_hint">Tap play to resume the last station</string>
+    <string name="player_not_playing_hint">Tap play to resume what you played last</string>
     <string name="player_clipboard_track_label">Track</string>
     <string name="player_track_copied">Track name copied</string>
     <string name="player_clipboard_stream_info_label">Stream info</string>
