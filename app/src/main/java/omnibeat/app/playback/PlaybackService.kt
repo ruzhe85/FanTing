@@ -100,6 +100,13 @@ data class PlaybackState(
     val playbackSpeed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
     /** 当前条目已播到结尾（STATE_ENDED）；准备新条目时会自动清零，供 UI 做「标记听完 + 自动下一集」 */
     val ended: Boolean = false,
+
+    /**
+     * 用户主动停止（长按停止键 / 通知栏停止）。
+     * 与「启动时还没播过」区分开：两者 selectedStation 都是 null，
+     * 但停止之后播放面板应显示空态，而不是回落到上次播过的内容。
+     */
+    val stopped: Boolean = false,
     /**
      * 系统侧（通知栏 / 锁屏 / 耳机线控）请求上一集/下一集的单调递增计数。
      * 单集模式下服务不知道整季列表，只递增计数发信号，由 App 侧执行实际切集；
@@ -442,6 +449,10 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun playEpisodeStation(station: Station?, startPositionMs: Long, speed: Float) {
         if (station == null) return
+        // 单集同样要记「最后播放」：previewing 只表示「不在电台库」，
+        // 不该顺带把恢复依据也去掉，否则退出重进只能恢复上次的电台。
+        lastPlayedStationId = station.id
+        scope.launch { repository.saveLastPlayedStationId(station.id) }
         playStation(
             station = station,
             index = -1,
@@ -538,6 +549,7 @@ class PlaybackService : MediaLibraryService() {
                 streamInfo = PlaybackStreamInfo(),
                 // 新内容立即就位：清掉上一集的进度/倍速，面板随之切回对应形态
                 seekable = seekable,
+                stopped = false,
                 positionMs = 0L,
                 durationMs = 0L,
                 playbackSpeed = if (seekable) speed else PODCAST_DEFAULT_PLAYBACK_SPEED,
@@ -676,6 +688,7 @@ class PlaybackService : MediaLibraryService() {
                 positionMs = 0L,
                 durationMs = 0L,
                 seekable = false,
+                stopped = true,
                 playbackSpeed = PODCAST_DEFAULT_PLAYBACK_SPEED,
                 ended = false,
             ).withTrackStatus(PlaybackTrackStatus.Stopped)
@@ -787,6 +800,18 @@ class PlaybackService : MediaLibraryService() {
                 }
                 _state.update { it.withTrackStatus(PlaybackTrackStatus.Paused) }
                 scheduleStopAfterPause()
+            } else if (playWhenReady &&
+                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_GAIN
+            ) {
+                // 别的 App（视频、通话）释放焦点：ExoPlayer 自己会把 playWhenReady 恢复，
+                // 但这里的状态还停在 Paused、playbackRequested 也是 false，
+                // 于是面板显示暂停、也不接着播。把意图与状态一起拉回来。
+                playbackRequested = true
+                _state.update { it.copy(trackStatus = null) }
+                if (!player.isPlaying && player.mediaItemCount > 0) {
+                    player.play()
+                }
+                scheduleNoMetadataIfPlaybackStarted()
             }
             syncSession()
         }
@@ -1088,6 +1113,7 @@ class PlaybackService : MediaLibraryService() {
                     previewing = false, resolving = false, buffering = false, isPlaying = false,
                     errorText = null, streamInfo = PlaybackStreamInfo(),
                     seekable = false,
+                    stopped = false,
                     positionMs = 0L,
                     durationMs = 0L,
                     playbackSpeed = PODCAST_DEFAULT_PLAYBACK_SPEED,

@@ -1175,12 +1175,13 @@ fun PodcastEpisodesScreen(
 
         // 状态 chips：计数按全部期数，只筛列表不动数据
         if (!selecting) {
+            // 间距 8、行起点 22（与列表页左右基准 RadioSpacing.page 齐）
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(start = 12.dp, end = 12.dp, bottom = 2.dp),
+                    .padding(start = 22.dp, end = 12.dp, bottom = 2.dp),
             ) {
                 EpisodeFilterChip(
                     label = stringResource(R.string.podcast_filter_all, orderedEpisodes.size),
@@ -1939,7 +1940,8 @@ private fun EpisodeFilterChip(label: String, selected: Boolean, onClick: () -> U
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) RadioPrimary else RadioSurface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 1.dp),
+            // 只放宽水平内边距：垂直保持 1dp，chip 高度仍是 19dp
+            .padding(horizontal = 10.dp, vertical = 1.dp),
     )
 }
 

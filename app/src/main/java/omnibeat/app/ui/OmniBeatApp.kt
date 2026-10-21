@@ -2506,8 +2506,10 @@ fun OmniBeatApp() {
                     // 上次播放的内容（电台或播客单集）直接作为面板内容显示，
                     // 不显示「未在播放 / 点播放键继续上次的电台」这类占位提示。
                     val playing = playbackState.selectedStation != null
-                    val resumeEpisode = if (playing) null else findResumeEpisode()
-                    val resumeStation = if (playing) {
+                    // 主动停止后不回落到「上次播放」：面板显示空态，按键置灰
+                    val explicitlyStopped = playbackState.stopped
+                    val resumeEpisode = if (playing || explicitlyStopped) null else findResumeEpisode()
+                    val resumeStation = if (playing || explicitlyStopped) {
                         null
                     } else {
                         lastPlayedStationId?.let { id -> stations.firstOrNull { it.id == id } }
@@ -2529,9 +2531,10 @@ fun OmniBeatApp() {
                     } else {
                         resumeEpisode?.second?.positionMs ?: 0L
                     }
+                    // 停止后仍显示面板（空态「未在播放」），避免底部突然消失造成跳动
                     val showPlayerPanel =
                         (selectedPage in visibleTabPages || selectedPage == MainPage.SearchOnline) &&
-                            panelStation != null
+                            (panelStation != null || explicitlyStopped)
                     // 播客单集：点面板信息区直接回到它所属订阅的期数列表；电台保持原来的「复制曲目」
                     val openEpisodeSubscription: (() -> Unit)? = if (panelSeekable) {
                         {
