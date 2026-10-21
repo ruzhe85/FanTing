@@ -225,7 +225,10 @@ class PlaybackService : MediaLibraryService() {
                 }
                 val current = savedStations.indexOfFirst { it.id == currentStation.id }
                 if (current == -1) {
-                    stopPlayback()
+                    // 播客单集用的是临时 Station，本来就不在电台库里。
+                    // 早先这里无条件 stopPlayback()，于是电台库任意一次变化（收藏、
+                    // 播放记录、导入导出）都会把单集停掉，面板随即退回电台形态。
+                    if (!state.value.seekable) stopPlayback()
                 } else {
                     _state.update {
                         it.copy(
@@ -1022,7 +1025,15 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: List<MediaItem>, startIndex: Int, startPositionMs: Long,
         ): ListenableFuture<*> {
             val selected = mediaItems.getOrNull(if (startIndex == C.INDEX_UNSET) 0 else startIndex)
-            val station = stations.find { it.id == selected?.mediaId?.let(StationMediaLibrary::stationId) }
+            val incomingId = selected?.mediaId?.let(StationMediaLibrary::stationId)
+            val currentState = state.value
+            // 系统媒体控件「继续播放」时会把队列再推一次。若推回来的仍是当前这一期，
+            // 只当同步处理：否则下面的 seekable = false 会把面板打回电台形态，
+            // 进度条与倍速一起消失。
+            if (currentItemSeekable && incomingId == currentState.selectedStation?.id) {
+                return Futures.immediateVoidFuture()
+            }
+            val station = stations.find { it.id == incomingId }
             if (station == null) {
                 stopPlayback()
                 return Futures.immediateVoidFuture()
