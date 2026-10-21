@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -62,6 +63,9 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private const val PLAYER_USER_AGENT = "FanTing Android"
+
+/** 临时诊断日志：定位「系统媒体恢复后单集变电台」，确认后删除 */
+private const val PLAY_TRACE = "OBPlay"
 
 enum class PlaybackTrackStatus {
     Stopped,
@@ -224,6 +228,11 @@ class PlaybackService : MediaLibraryService() {
                     return@collect
                 }
                 val current = savedStations.indexOfFirst { it.id == currentStation.id }
+                Log.w(
+                    PLAY_TRACE,
+                    "stations.collect: current=${currentStation.id} seekable=${state.value.seekable} " +
+                        "index=$current",
+                )
                 if (current == -1) {
                     // 播客单集用的是临时 Station，本来就不在电台库里。
                     // 早先这里无条件 stopPlayback()，于是电台库任意一次变化（收藏、
@@ -330,12 +339,19 @@ class PlaybackService : MediaLibraryService() {
 
     private fun playFromCurrentState() {
         val current = state.value
+        Log.w(
+            PLAY_TRACE,
+            "playFromCurrentState: seekable=${current.seekable} curItemSeekable=$currentItemSeekable " +
+                "mediaItems=${player.mediaItemCount} status=${current.trackStatus} " +
+                "station=${current.selectedStation?.id} pausedPos=$pausedPositionMs",
+        )
         if (player.isPlaying || current.resolving) return
         if (player.mediaItemCount > 0 && current.errorText == null &&
             current.trackStatus != PlaybackTrackStatus.Paused
         ) {
             playbackRequested = true
             player.play()
+            Log.w(PLAY_TRACE, "playFromCurrentState -> branch=player.play()")
             return
         }
         if (current.selectedStation == null) {
@@ -461,6 +477,11 @@ class PlaybackService : MediaLibraryService() {
         startPositionMs: Long = 0L,
         speed: Float = PODCAST_DEFAULT_PLAYBACK_SPEED,
     ) {
+        Log.w(
+            PLAY_TRACE,
+            "playStation: id=${station.id} seekable=$seekable startPos=$startPositionMs " +
+                "startPlayback=$startPlayback previewing=$previewing",
+        )
         resolveJob?.cancel()
         stopAfterPauseJob?.cancel()
         noMetadataJob?.cancel()
@@ -630,6 +651,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun stopPlayback() {
+        // 带 throwable 打一次调用栈：用来确认是谁把单集状态清成了电台
+        Log.w(PLAY_TRACE, "stopPlayback: seekable=${state.value.seekable}", Throwable("stopPlayback caller"))
         resolveJob?.cancel()
         noMetadataJob?.cancel()
         stopAfterPauseJob?.cancel()
@@ -660,6 +683,11 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun pausePlayback() {
+        Log.w(
+            PLAY_TRACE,
+            "pausePlayback: seekable=${state.value.seekable} curItemSeekable=$currentItemSeekable " +
+                "station=${state.value.selectedStation?.id}",
+        )
         resolveJob?.cancel()
         playbackRequested = false
         noMetadataJob?.cancel()
@@ -1034,6 +1062,11 @@ class PlaybackService : MediaLibraryService() {
                 return Futures.immediateVoidFuture()
             }
             val station = stations.find { it.id == incomingId }
+            Log.w(
+                PLAY_TRACE,
+                "handleSetMediaItems: incoming=$incomingId curItemSeekable=$currentItemSeekable " +
+                    "station=${currentState.selectedStation?.id} found=${station?.id} count=${mediaItems.size}",
+            )
             if (station == null) {
                 stopPlayback()
                 return Futures.immediateVoidFuture()
@@ -1075,6 +1108,11 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+            Log.w(
+                PLAY_TRACE,
+                "handleSetPlayWhenReady($playWhenReady): seekable=${PlaybackService.state.value.seekable} " +
+                    "curItemSeekable=$currentItemSeekable station=${PlaybackService.state.value.selectedStation?.id}",
+            )
             if (playWhenReady) {
                 if (PlaybackService.state.value.resolving) {
                     playbackRequested = true
