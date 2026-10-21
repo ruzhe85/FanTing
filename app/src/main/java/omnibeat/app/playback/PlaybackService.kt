@@ -1101,7 +1101,18 @@ class PlaybackService : MediaLibraryService() {
             val current = PlaybackService.state.value
             if (!current.resolving && player.playbackState == STATE_IDLE) {
                 current.selectedStation?.let {
-                    playStation(it, current.selectedIndex, current.previewing, startPlayback = playbackRequested)
+                    // 必须带上原来的点播语义与断点：系统媒体「继续」会先发 prepare，
+                    // 暂停时已经 stop + clearMediaItems，这里是唯一的重建入口。
+                    // 早先没传这两个参数，单集被按电台重建 —— 面板变 LIVE、进度归零。
+                    playStation(
+                        station = it,
+                        index = current.selectedIndex,
+                        previewing = current.previewing,
+                        startPlayback = playbackRequested,
+                        seekable = current.seekable,
+                        startPositionMs = if (current.seekable) pausedPositionMs else 0L,
+                        speed = current.playbackSpeed,
+                    )
                 }
             }
             return Futures.immediateVoidFuture()
