@@ -800,12 +800,11 @@ class PlaybackService : MediaLibraryService() {
                 }
                 _state.update { it.withTrackStatus(PlaybackTrackStatus.Paused) }
                 scheduleStopAfterPause()
-            } else if (playWhenReady &&
-                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_GAIN
-            ) {
-                // 别的 App（视频、通话）释放焦点：ExoPlayer 自己会把 playWhenReady 恢复，
-                // 但这里的状态还停在 Paused、playbackRequested 也是 false，
-                // 于是面板显示暂停、也不接着播。把意图与状态一起拉回来。
+            } else if (playWhenReady && !playbackRequested) {
+                // 外部把 playWhenReady 拉回来了（别的 App 释放音频焦点、系统媒体恢复等）：
+                // ExoPlayer 自己会接着播，但这里的状态还停在 Paused、playbackRequested 也是
+                // false，于是面板显示暂停、也不续播。用「没经过本服务请求就已就绪」识别，
+                // 把意图与状态一起拉回来。media3 没有 AUDIO_FOCUS_GAIN 常量，不能按 reason 判断。
                 playbackRequested = true
                 _state.update { it.copy(trackStatus = null) }
                 if (!player.isPlaying && player.mediaItemCount > 0) {
