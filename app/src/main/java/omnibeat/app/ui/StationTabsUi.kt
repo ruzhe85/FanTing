@@ -15,9 +15,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import omnibeat.app.R
@@ -56,6 +58,41 @@ fun StationTabsPager(
     podcastContent: @Composable (Modifier) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    // 名称排序按 App 内生效语言走（简中拼音 / 繁中笔画 / 其它语言默认）。
+    // 这里只在入参或语言变化时排一次，避免每次重组都重排整份电台列表。
+    val locale = LocalContext.current.resources.configuration.locales[0]
+    val sortedStationList = remember(
+        stations,
+        sortState,
+        customStationOrder,
+        customFavoriteOrder,
+        locale,
+    ) {
+        sortedStations(
+            source = stations,
+            page = MainPage.Stations,
+            sortState = sortState,
+            customStationOrder = customStationOrder,
+            customFavoriteOrder = customFavoriteOrder,
+            locale = locale,
+        )
+    }
+    val sortedFavoriteStationList = remember(
+        stations,
+        sortState,
+        customStationOrder,
+        customFavoriteOrder,
+        locale,
+    ) {
+        sortedStations(
+            source = stations.filter { it.isFavorite },
+            page = MainPage.Favorites,
+            sortState = sortState,
+            customStationOrder = customStationOrder,
+            customFavoriteOrder = customFavoriteOrder,
+            locale = locale,
+        )
+    }
     HorizontalPager(
         state = pagerState,
         // 主列表不再用左右滑动切页：只通过顶部标签切换，避免和列表内的横向手势打架
@@ -69,13 +106,7 @@ fun StationTabsPager(
         ) {
             when (visibleTabPages[pageIndex]) {
                 MainPage.Stations -> {
-                    val visibleStations = reorderDraft?.stations ?: sortedStations(
-                        source = stations,
-                        page = MainPage.Stations,
-                        sortState = sortState,
-                        customStationOrder = customStationOrder,
-                        customFavoriteOrder = customFavoriteOrder,
-                    )
+                    val visibleStations = reorderDraft?.stations ?: sortedStationList
                     StationPageList(
                         stations = visibleStations,
                         selectedStationId = selectedStationId,
@@ -101,13 +132,7 @@ fun StationTabsPager(
                 }
 
                 MainPage.Favorites -> {
-                    val favoriteStations = reorderDraft?.stations ?: sortedStations(
-                        source = stations.filter { it.isFavorite },
-                        page = MainPage.Favorites,
-                        sortState = sortState,
-                        customStationOrder = customStationOrder,
-                        customFavoriteOrder = customFavoriteOrder,
-                    )
+                    val favoriteStations = reorderDraft?.stations ?: sortedFavoriteStationList
                     FavoritesTabContent(
                         section = favoritesSection,
                         onSectionChange = onFavoritesSectionChange,

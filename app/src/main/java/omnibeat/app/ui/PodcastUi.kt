@@ -631,16 +631,22 @@ private fun SubscriptionTitle(
     )
 }
 
-/** 订阅副标题：期数 · 月-日 时:分 更新；一次都没更新过就显示「尚未更新」 */
+/**
+ * 订阅副标题：期数 · 月-日 时:分 更新。
+ *
+ * 时间用 [latestUpdatedAtMs]（最新一期发布时间），与「最近更新」排序同一基准；
+ * 一次都没拉到过才显示「尚未更新」。
+ */
 @Composable
 private fun subscriptionSubtitle(subscription: PodcastSubscription): String {
-    if (subscription.lastFetchedAtMs <= 0L) {
+    val stampMs = subscription.latestUpdatedAtMs
+    if (stampMs <= 0L) {
         return stringResource(R.string.podcast_never_updated)
     }
     return stringResource(
         R.string.podcast_list_subtitle_all,
         subscription.episodes.size,
-        formatStamp(subscription.lastFetchedAtMs),
+        formatStamp(stampMs),
     )
 }
 

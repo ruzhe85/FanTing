@@ -11,6 +11,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+import omnibeat.app.model.nameComparator
 import kotlin.time.Duration.Companion.days
 
 data class RadioBrowserStation(
@@ -131,8 +132,9 @@ private object RadioBrowserApi {
 }
 
 class RadioBrowserClient(context: Context) {
+    private val appContext = context.applicationContext
     private var cachedBaseUrl: String? = null
-    private val filterCacheDirectory = File(context.applicationContext.cacheDir, "radio_browser_filters")
+    private val filterCacheDirectory = File(appContext.cacheDir, "radio_browser_filters")
 
     private data class FilterCache(val savedAt: Long, val options: List<RadioBrowserFilterOption>) {
         val isFresh: Boolean
@@ -320,29 +322,33 @@ class RadioBrowserClient(context: Context) {
     private fun hostOf(url: String): String? = runCatching { URI(url).host?.lowercase() }.getOrNull()
 
     suspend fun countries(): List<RadioBrowserFilterOption> = withContext(Dispatchers.IO) {
-        readFilterCache("countries")?.takeIf { it.isFresh }?.let { return@withContext it.options }
+        readFilterCache("countries")?.takeIf { it.isFresh }?.let {
+            return@withContext it.options.sortedByName()
+        }
         val query = buildDefaultFilterQuery()
         decodeFilterOptions(
             responseText = readRadioBrowserText("${RadioBrowserApi.Path.COUNTRIES}?$query"),
             codeKeys = listOf(RadioBrowserApi.Json.ISO_3166_1, RadioBrowserApi.Json.COUNTRY_CODE),
-        ).also { writeFilterCache("countries", it) }
+        ).sortedByName().also { writeFilterCache("countries", it) }
     }
 
     suspend fun languages(): List<RadioBrowserFilterOption> = withContext(Dispatchers.IO) {
-        readFilterCache("languages")?.takeIf { it.isFresh }?.let { return@withContext it.options }
+        readFilterCache("languages")?.takeIf { it.isFresh }?.let {
+            return@withContext it.options.sortedByName()
+        }
         val query = buildDefaultFilterQuery()
         decodeFilterOptions(
             responseText = readRadioBrowserText("${RadioBrowserApi.Path.LANGUAGES}?$query"),
             codeKeys = emptyList(),
-        ).also { writeFilterCache("languages", it) }
+        ).sortedByName().also { writeFilterCache("languages", it) }
     }
 
     suspend fun cachedCountries(): List<RadioBrowserFilterOption>? = withContext(Dispatchers.IO) {
-        readFilterCache("countries")?.options
+        readFilterCache("countries")?.options?.sortedByName()
     }
 
     suspend fun cachedLanguages(): List<RadioBrowserFilterOption>? = withContext(Dispatchers.IO) {
-        readFilterCache("languages")?.options
+        readFilterCache("languages")?.options?.sortedByName()
     }
 
     private fun readFilterCache(name: String): FilterCache? {
@@ -485,7 +491,18 @@ class RadioBrowserClient(context: Context) {
                     ),
                 )
             }
-        }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        }
+    }
+
+    /**
+     * 按 App 内生效语言的常规顺序排名称（简中拼音 / 繁中笔画 / 其它语言默认）。
+     *
+     * 缓存里存的是上次排序结果，语言切过或规则改过就不对了，所以读取路径上也排一次；
+     * 列表规模只有几十到几百条，代价可忽略。
+     */
+    private fun List<RadioBrowserFilterOption>.sortedByName(): List<RadioBrowserFilterOption> {
+        val comparator = nameComparator(appContext.resources.configuration.locales[0])
+        return sortedWith(compareBy(comparator) { it.name })
     }
 
     private fun buildQuery(params: List<Pair<String, String>>): String {

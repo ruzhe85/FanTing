@@ -137,6 +137,26 @@ class PodcastRepository(private val context: Context) {
     }
 
     /**
+     * 记录一次自动刷新失败的时间，作为节流基准的一部分。
+     *
+     * 只写这个字段，不动 [PodcastSubscription.lastFetchedAtMs]——那个是「上次拉取成功」，
+     * 节流与备份合并都按它算。按 feedUrl 在库里定位，
+     * 不用调用方的订阅快照整体覆盖，避免把刷新期间写入的播放进度写回旧值。
+     */
+    suspend fun markRefreshFailed(feedUrl: String) {
+        val now = System.currentTimeMillis()
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            val index = current.indexOfFirst { it.feedUrl == feedUrl }
+            if (index == -1) return@edit
+            val next = current.toMutableList().also {
+                it[index] = it[index].copy(lastRefreshFailedAtMs = now)
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
+    /**
      * 一次性替换某个订阅（用于改标题 / 换订阅地址）。
      * 按 [previousFeedUrl] 定位，替换后**保持它在列表中的位置**，并沿用原有的播放进度
      * （按 guid 合并，因此换源后若 guid 相同，断点仍然有效）。
@@ -527,6 +547,7 @@ internal fun encodePodcastSubscriptions(subscriptions: List<PodcastSubscription>
                 .put("imageUrl", subscription.imageUrl.orEmpty())
                 .put("imageUrlManual", subscription.imageUrlManual)
                 .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
+                .put("lastRefreshFailedAtMs", subscription.lastRefreshFailedAtMs)
                 .put("hidden", subscription.hidden)
                 .put("episodes", episodes),
         )
@@ -554,6 +575,8 @@ internal fun decodePodcastSubscriptions(subscriptionsJson: String): List<Podcast
                             imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
                             imageUrlManual = item.optBoolean("imageUrlManual", false),
                             lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
+                            // 旧数据没有这个字段：0 表示从未失败过
+                            lastRefreshFailedAtMs = item.optLong("lastRefreshFailedAtMs", 0L),
                             hidden = item.optBoolean("hidden", false),
                             episodes = decodePodcastEpisodes(item.optJSONArray("episodes")),
                         ),

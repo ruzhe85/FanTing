@@ -24,6 +24,7 @@ import omnibeat.app.data.StationRepository
 import omnibeat.app.data.appString
 import omnibeat.app.model.MainPage
 import omnibeat.app.model.Station
+import omnibeat.app.model.nameComparator
 import omnibeat.app.model.sortedStations
 
 @OptIn(UnstableApi::class)
@@ -40,6 +41,8 @@ internal class StationMediaLibrary(
         val favoriteStations: List<Station>,
         val recentIds: List<String>,
         val showArtwork: Boolean,
+        /** 名称排序规则，与主界面同一套（按语言习惯：简中拼音 / 繁中笔画 / 其它语言默认） */
+        val nameOrder: Comparator<String>,
     ) {
         private fun recentlyPlayed(): List<Station> =
             recentIds.mapNotNull { id -> stations.find { it.id == id } }
@@ -52,7 +55,7 @@ internal class StationMediaLibrary(
             parent.startsWith(TAG_PREFIX) -> {
                 val tag = Uri.decode(parent.removePrefix(TAG_PREFIX))
                 stations.filter { station -> station.tags.any { it.equals(tag, ignoreCase = true) } }
-                    .sortedBy { it.title.lowercase() }
+                    .sortedWith(compareBy(nameOrder) { it.title })
             }
             else -> null
         }
@@ -60,7 +63,12 @@ internal class StationMediaLibrary(
         fun search(query: String): List<Station> = stations.filter { station ->
             station.title.contains(query, ignoreCase = true) ||
                 station.tags.any { it.contains(query, ignoreCase = true) }
-        }.sortedBy { it.title.lowercase() }
+        }.sortedWith(compareBy(nameOrder) { it.title })
+
+        /** 标签名去重后按语言习惯排序（原来按小写码点排，中文看着无序） */
+        fun tagNames(): List<String> = stations.flatMap { it.tags }
+            .distinctBy { it.lowercase() }
+            .sortedWith(nameOrder)
     }
 
     private suspend fun library(): Library {
@@ -69,16 +77,24 @@ internal class StationMediaLibrary(
         val sortState = repository.stationSortState.first()
         val customStationOrder = repository.customStationOrder.first()
         val customFavoriteOrder = repository.customFavoriteOrder.first()
+        // Auto 端也按 App 内生效语言排序，与主界面保持一致
+        val locale = context.resources.configuration.locales[0]
         return Library(
             stations = stations,
             allStations = sortedStations(
-                stations, MainPage.Stations, sortState, customStationOrder, customFavoriteOrder,
+                stations, MainPage.Stations, sortState, customStationOrder, customFavoriteOrder, locale,
             ),
             favoriteStations = sortedStations(
-                stations.filter { it.isFavorite }, MainPage.Favorites, sortState, customStationOrder, customFavoriteOrder,
+                stations.filter { it.isFavorite },
+                MainPage.Favorites,
+                sortState,
+                customStationOrder,
+                customFavoriteOrder,
+                locale,
             ),
             recentIds = repository.recentlyPlayedStationIds.first(),
             showArtwork = repository.showAndroidAutoArtwork.first(),
+            nameOrder = nameComparator(locale),
         )
     }
 
@@ -126,8 +142,7 @@ internal class StationMediaLibrary(
 
     private fun children(library: Library, parent: String): List<MediaItem>? = when (parent) {
         ROOT -> listOf(FAVORITES, ALL, TAGS, RECENT).map { folder(it) }
-        TAGS -> library.stations.flatMap { it.tags }.distinctBy { it.lowercase() }
-            .sortedBy { it.lowercase() }.map { folder(TAG_PREFIX + Uri.encode(it), it) }
+        TAGS -> library.tagNames().map { tag -> folder(TAG_PREFIX + Uri.encode(tag), tag) }
         else -> library.stationsIn(parent)?.map { stationItem(context, it, parent, library.showArtwork) }
     }
 

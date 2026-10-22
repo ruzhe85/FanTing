@@ -216,6 +216,8 @@ fun OmniBeatApp() {
 
     OmniBeatTheme(themeMode = themeMode, accentPalette = accentPalette) {
         val resources = LocalResources.current
+        // App 内语言覆盖后的生效语言：名称排序（拼音 / 笔画 / 各语言常规）都按它来
+        val uiLocale = resources.configuration.locales[0]
         val statusBarColor = RadioBackground
         val navigationBarColor = RadioBackground
         SideEffect {
@@ -305,7 +307,7 @@ fun OmniBeatApp() {
         LaunchedEffect(podcastRepository) {
             podcastRepository.customOrder.collect { podcastCustomOrder = it }
         }
-        // 一键刷新期间冻结列表顺序：每刷完一个订阅 lastFetchedAtMs 都会变，
+        // 一键刷新期间冻结列表顺序：每刷完一个订阅的最新一期发布时间可能变，
         // 若不冻结，列表会跟着「最近更新」排序连续跳动，看起来像抽风
         var podcastOrderSnapshot by remember { mutableStateOf<List<String>?>(null) }
         // 拖动中的草稿优先，否则按当前排序偏好展示
@@ -315,6 +317,8 @@ fun OmniBeatApp() {
             podcastCustomOrder,
             podcastReorderDraft,
             podcastOrderSnapshot,
+            // 切语言后名称排序规则会变，必须重新排
+            uiLocale,
         ) {
             // 用局部 val 接住：直接引用委托属性时智能转换不生效，返回值会变成可空
             val draft = podcastReorderDraft
@@ -328,7 +332,12 @@ fun OmniBeatApp() {
                     val known = ordered.mapTo(mutableSetOf()) { it.feedUrl }
                     ordered + podcastVisibleSubscriptions.filter { it.feedUrl !in known }
                 }
-                else -> sortedPodcasts(podcastVisibleSubscriptions, podcastSortState, podcastCustomOrder)
+                else -> sortedPodcasts(
+                    source = podcastVisibleSubscriptions,
+                    sortState = podcastSortState,
+                    customOrder = podcastCustomOrder,
+                    locale = uiLocale,
+                )
             }
         }
         var scrollToSelectedRequest by remember { mutableIntStateOf(0) }
@@ -1379,10 +1388,31 @@ fun OmniBeatApp() {
             }
         }
 
-        /** 距上次拉取超过设置的刷新间隔才算「可以再拉」 */
+        /**
+         * 距上次拉取（成功或失败）超过设置的刷新间隔才算「可以再拉」。
+         *
+         * 失败也要算基准：失败时 [PodcastSubscription.lastFetchedAtMs] 不前进，
+         * 只看它的话失败的订阅永远「该刷新了」——启动与每次回到播客列表都会重拉它、
+         * 再失败，用户看到的就是同一个源反复刷新失败。
+         */
         fun refreshIntervalElapsed(subscription: PodcastSubscription): Boolean {
             val intervalMs = podcastRefreshIntervalMinutes.coerceAtLeast(1) * 60_000L
-            return System.currentTimeMillis() - subscription.lastFetchedAtMs >= intervalMs
+            val lastAttemptMs = maxOf(
+                subscription.lastFetchedAtMs,
+                subscription.lastRefreshFailedAtMs,
+            )
+            return System.currentTimeMillis() - lastAttemptMs >= intervalMs
+        }
+
+        /** 自动刷新失败后记下这次尝试的时间；写库失败不影响刷新流程本身 */
+        suspend fun markPodcastRefreshFailed(subscription: PodcastSubscription) {
+            try {
+                podcastRepository.markRefreshFailed(subscription.feedUrl)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // 记不上就下次再试，不能让写库异常盖住刷新失败本身
+            }
         }
 
         /** 单个订阅刷新失败的提示（RssParser 的异常 message 就是可展示文案） */
@@ -1450,6 +1480,9 @@ fun OmniBeatApp() {
                     // 自动刷新（非 force）保持静默，由批量逻辑统一汇总提示
                     if (force) {
                         showPodcastRefreshError(error)
+                    } else {
+                        // 自动刷新失败也要记下尝试时间，否则下次进页面还会再拉同一个源再失败
+                        markPodcastRefreshFailed(subscription)
                     }
                 } finally {
                     // 写库也可能抛异常；不复位的话刷新按钮会永久失效
@@ -1497,7 +1530,7 @@ fun OmniBeatApp() {
                 return
             }
             podcastLoading = true
-            // 冻结当前顺序：刷新过程中每项 lastFetchedAtMs 都会变，不冻结会连续重排
+            // 冻结当前顺序：刷新过程中每项的最新一期发布时间可能变，不冻结会连续重排
             podcastOrderSnapshot = podcastList.map { it.feedUrl }
             podcastRefreshAllTotal = pending.size
             podcastRefreshAllDone = 0
@@ -1529,6 +1562,9 @@ fun OmniBeatApp() {
                             throw cancelled
                         } catch (_: Exception) {
                             failed++
+                            // 失败也记尝试时间：否则这批源永远「间隔已到」，
+                            // 每次启动 / 回到播客列表都会重新拉、重新失败
+                            markPodcastRefreshFailed(subscription)
                         }
                         podcastRefreshAllDone++
                     }
@@ -1537,7 +1573,7 @@ fun OmniBeatApp() {
                     podcastLoading = false
                     podcastRefreshAllTotal = 0
                     podcastRefreshAllDone = 0
-                    // 顺序解冻：这时才按新的 lastFetchedAtMs 重新排一次
+                    // 顺序解冻：这时才按新的「最新一期发布时间」重新排一次
                     podcastOrderSnapshot = null
                 }
                 when {
@@ -2072,6 +2108,7 @@ fun OmniBeatApp() {
                 sortState = sortState,
                 customStationOrder = customStationOrder,
                 customFavoriteOrder = customFavoriteOrder,
+                locale = resources.configuration.locales[0],
             )
         }
 

@@ -145,6 +145,13 @@ data class PodcastSubscription(
     /** true = 封面是用户手动填的，刷新订阅源时不得覆盖 */
     val imageUrlManual: Boolean = false,
     /**
+     * 最近一次自动刷新失败的时间。
+     *
+     * 自动刷新的节流基准取它与 [lastFetchedAtMs] 中较晚的一个：失败时 [lastFetchedAtMs]
+     * 不会前进，只看它的话失败的订阅永远「该刷新了」，每次启动 / 回到播客列表都会重拉同一批坏源。
+     */
+    val lastRefreshFailedAtMs: Long = 0L,
+    /**
      * true = 已退订，仅从订阅列表隐藏。
      *
      * 下载文件、播放进度与收藏都保留：重新订阅同一 feed 时会按 guid 合并回来。
@@ -152,6 +159,19 @@ data class PodcastSubscription(
      */
     val hidden: Boolean = false,
 )
+
+/**
+ * 播客自身最后一次更新的时间 = 最新一期的发布时间。
+ *
+ * 列表副标题与「最近更新」排序都用它，不能用 [PodcastSubscription.lastFetchedAtMs]
+ * ——那是本地发起检查的时间，每次自动刷新都会变，哪怕源站几个月没发新期。
+ * 期数缺发布时间（部分源没有 pubDate）时退回上次成功拉取时间，避免这类订阅全塌到 0。
+ */
+val PodcastSubscription.latestUpdatedAtMs: Long
+    get() {
+        val latestEpisodeMs = episodes.maxOfOrNull { it.publishedAtMs } ?: 0L
+        return if (latestEpisodeMs > 0L) latestEpisodeMs else lastFetchedAtMs
+    }
 
 /** 解析结果：订阅元数据 + 期数列表（顺序由解析层保证：按期数倒序） */
 data class ParsedFeed(
