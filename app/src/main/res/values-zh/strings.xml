@@ -403,6 +403,13 @@
     <string name="podcast_refresh_failed">刷新失败：%1$s</string>
     <string name="podcast_refresh_nothing">没有可刷新的订阅</string>
     <string name="podcast_refresh_auto_failed">%1$d 个订阅刷新失败</string>
+    <string name="podcast_refresh_failure_one">「%1$s」刷新失败</string>
+    <string name="podcast_refresh_failure_many">「%1$s」等 %2$d 个订阅刷新失败</string>
+    <string name="podcast_refresh_failure_view">查看</string>
+    <string name="podcast_refresh_failure_title">刷新失败</string>
+    <string name="podcast_refresh_failure_retry">重试</string>
+    <string name="podcast_refresh_failure_notice">自动刷新失败：%1$s</string>
+    <string name="podcast_refresh_failure_ignore">忽略这次失败</string>
     <string name="podcast_refresh_summary">已刷新 %1$d 个订阅 · 新增 %2$d 期 · 失败 %3$d 个</string>
     <string name="podcast_refresh_all">刷新全部</string>
     <string name="podcast_refresh_single_new">已刷新 · 新增 %1$d 期</string>

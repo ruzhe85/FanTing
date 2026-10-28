@@ -5,6 +5,8 @@ import java.util.Locale
 const val PODCAST_FEED_URL_MAX_LENGTH = 2048
 const val PODCAST_TITLE_MAX_LENGTH = 200
 const val PODCAST_IMAGE_URL_MAX_LENGTH = 2048
+/** 刷新失败原因的展示长度上限：异常文案可能很长，截断后再入库 */
+const val PODCAST_REFRESH_FAILURE_REASON_MAX_LENGTH = 200
 
 /** 播客订阅列表的显示方式：标准行 / 紧凑行 / 纯封面网格 */
 enum class PodcastListLayout { Standard, Compact, Cover }
@@ -152,6 +154,20 @@ data class PodcastSubscription(
      */
     val lastRefreshFailedAtMs: Long = 0L,
     /**
+     * 最近一次刷新失败的可展示原因（RssParser 异常 message）；刷新成功后清空。
+     *
+     * 自动刷新失败时只弹「N 个订阅失败」用户不知道是哪个源，靠它把名字与原因带到
+     * 期数页顶部的窄条里。
+     */
+    val lastRefreshFailureReason: String? = null,
+    /**
+     * 用户点掉失败窄条的时间。
+     *
+     * 与 [lastRefreshFailedAtMs] 比较：失败时间更新（再次失败）才重新提示，
+     * 点掉之后重启 App、重新进入期数页都不再出现。
+     */
+    val lastRefreshFailureSeenAtMs: Long = 0L,
+    /**
      * true = 已退订，仅从订阅列表隐藏。
      *
      * 下载文件、播放进度与收藏都保留：重新订阅同一 feed 时会按 guid 合并回来。
@@ -171,6 +187,17 @@ val PodcastSubscription.latestUpdatedAtMs: Long
     get() {
         val latestEpisodeMs = episodes.maxOfOrNull { it.publishedAtMs } ?: 0L
         return if (latestEpisodeMs > 0L) latestEpisodeMs else lastFetchedAtMs
+    }
+
+/**
+ * 还没被用户完结的刷新失败原因；null = 不需要提示。
+ *
+ * 点过窄条的 × 后 [PodcastSubscription.lastRefreshFailureSeenAtMs] 会追平失败时间，
+ * 这里随即返回 null；只有再次刷新失败（失败时间更新）才会重新给出。
+ */
+val PodcastSubscription.pendingRefreshFailureReason: String?
+    get() = lastRefreshFailureReason?.takeIf { reason ->
+        reason.isNotBlank() && lastRefreshFailedAtMs > lastRefreshFailureSeenAtMs
     }
 
 /** 解析结果：订阅元数据 + 期数列表（顺序由解析层保证：按期数倒序） */

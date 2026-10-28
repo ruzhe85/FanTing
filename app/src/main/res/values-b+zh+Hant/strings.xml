@@ -403,6 +403,13 @@
     <string name="podcast_refresh_failed">重新整理失敗：%1$s</string>
     <string name="podcast_refresh_nothing">沒有可重新整理的訂閱</string>
     <string name="podcast_refresh_auto_failed">%1$d 個訂閱重新整理失敗</string>
+    <string name="podcast_refresh_failure_one">「%1$s」重新整理失敗</string>
+    <string name="podcast_refresh_failure_many">「%1$s」等 %2$d 個訂閱重新整理失敗</string>
+    <string name="podcast_refresh_failure_view">檢視</string>
+    <string name="podcast_refresh_failure_title">重新整理失敗</string>
+    <string name="podcast_refresh_failure_retry">重試</string>
+    <string name="podcast_refresh_failure_notice">自動重新整理失敗：%1$s</string>
+    <string name="podcast_refresh_failure_ignore">忽略這次失敗</string>
     <string name="podcast_refresh_summary">已重新整理 %1$d 個訂閱 · 新增 %2$d 期 · 失敗 %3$d 個</string>
     <string name="podcast_refresh_all">重新整理全部</string>
     <string name="podcast_refresh_single_new">已重新整理 · 新增 %1$d 期</string>

@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -117,6 +118,80 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  * 播客 Tab 的内容分发：期数列表 / 下载管理页 / 订阅列表。
  * 期数页与下载管理页都显示返回箭头，同时吞掉系统返回键（优先于外层抽屉/翻页的 BackHandler）。
  */
+/** 一次自动刷新失败：哪个订阅 + 可展示的原因（只在内存里，用于提示条与明细弹窗） */
+data class PodcastRefreshFailure(
+    val subscription: PodcastSubscription,
+    val reason: String,
+)
+
+/**
+ * 自动刷新失败明细：一个失败的订阅一行（名字 + 原因 + 重试）。
+ *
+ * 列表本身不做失败标记，失败信息只在这里与期数页顶部的窄条出现。
+ */
+@Composable
+fun PodcastRefreshFailuresDialog(
+    failures: List<PodcastRefreshFailure>,
+    onRetry: (PodcastRefreshFailure) -> Unit,
+    onClose: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = RadioSurface,
+        titleContentColor = RadioText,
+        textContentColor = RadioTextMuted,
+        title = {
+            Text(
+                text = stringResource(R.string.podcast_refresh_failure_title),
+                fontWeight = FontWeight.SemiBold,
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(RadioSpacing.small),
+                modifier = Modifier
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                failures.forEach { failure ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = failure.subscription.title,
+                                color = RadioText,
+                                fontSize = RadioTextSizes.body,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = failure.reason,
+                                color = RadioTextMuted,
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.podcast_refresh_failure_retry),
+                            color = RadioPrimary,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onRetry(failure) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            OmniSecondaryButton(text = stringResource(R.string.action_close), onClick = onClose)
+        },
+        dismissButton = {},
+    )
+}
+
 @Composable
 fun PodcastTabContent(
     subscriptions: List<PodcastSubscription>,
@@ -143,6 +218,10 @@ fun PodcastTabContent(
     /** 订阅列表显示方式：标准行 / 紧凑行 / 纯封面网格 */
     listLayout: PodcastListLayout = PodcastListLayout.Standard,
     onRefreshSubscription: (PodcastSubscription) -> Unit,
+    /** 当前打开订阅「还没被点掉」的刷新失败原因：期数页顶部窄条展示 */
+    refreshFailureReason: String? = null,
+    onRetryRefreshFailure: () -> Unit = {},
+    onDismissRefreshFailure: () -> Unit = {},
     onRefreshAll: () -> Unit = {},
     refreshingAll: Boolean = false,
     refreshProgress: Pair<Int, Int>? = null,
@@ -184,6 +263,9 @@ fun PodcastTabContent(
                 onSearchQueryChange = onEpisodeSearchQueryChange,
                 onBack = onCloseSubscription,
                 onRefresh = { onRefreshSubscription(open) },
+                refreshFailureReason = refreshFailureReason,
+                onRetryRefreshFailure = onRetryRefreshFailure,
+                onDismissRefreshFailure = onDismissRefreshFailure,
                 onEpisodeClick = onPlayEpisode,
                 onToggleFavorite = { onToggleFavorite(open, it) },
                 downloadStates = downloadStates,
@@ -822,6 +904,13 @@ fun PodcastEpisodesScreen(
     onBack: () -> Unit,
     /** 下拉刷新；顶栏 ⋮ 的「刷新节目」由外层直接触发，不经本页 */
     onRefresh: () -> Unit,
+    /**
+     * 上次刷新失败的原因（null = 不需要提示）。
+     * 用户点掉 × 后外层会把「已阅时间」入库，这里随即变回 null，之后再进也不会出现。
+     */
+    refreshFailureReason: String? = null,
+    onRetryRefreshFailure: () -> Unit = {},
+    onDismissRefreshFailure: () -> Unit = {},
     onEpisodeClick: (PodcastSubscription, PodcastEpisode) -> Unit,
     onToggleFavorite: (PodcastEpisode) -> Unit = {},
     downloadStates: Map<String, PodcastDownloadState> = emptyMap(),
@@ -1246,6 +1335,55 @@ fun PodcastEpisodesScreen(
                     bottom = RadioSpacing.small,
                 ),
             )
+        }
+
+        // 上次刷新失败的窄条：只说这一个源，× 只完结「这一次」失败（外层写入已阅时间），
+        // 再次刷新失败会带着新的原因重新出现。
+        val failureReason = refreshFailureReason
+        if (!selecting && failureReason != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 22.dp, end = 12.dp, bottom = RadioSpacing.small)
+                    .background(RadioSurface, RoundedCornerShape(RadioCorners.medium))
+                    .padding(start = RadioSpacing.medium, end = 2.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.podcast_refresh_failure_notice,
+                        failureReason,
+                    ),
+                    color = RadioTextMuted,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = stringResource(R.string.podcast_refresh_failure_retry),
+                    color = RadioPrimary,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onRetryRefreshFailure)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+                IconButton(
+                    onClick = onDismissRefreshFailure,
+                    modifier = Modifier.size(HEADER_ICON_BUTTON_SIZE),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_close),
+                        contentDescription = stringResource(
+                            R.string.podcast_refresh_failure_ignore,
+                        ),
+                        tint = RadioTextMuted,
+                        modifier = Modifier.size(RadioSizes.iconCompact),
+                    )
+                }
+            }
         }
 
         // 下拉刷新。空态也放进 LazyColumn：没有可滚动容器时下拉手势收不到。

@@ -25,9 +25,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -86,6 +92,7 @@ import omnibeat.app.model.PodcastEpisode
 import omnibeat.app.model.PodcastSortMode
 import omnibeat.app.model.PodcastSortState
 import omnibeat.app.model.PodcastSubscription
+import omnibeat.app.model.pendingRefreshFailureReason
 import omnibeat.app.model.Station
 import omnibeat.app.model.StationEditorState
 import omnibeat.app.model.StationReorderDraft
@@ -376,6 +383,12 @@ fun OmniBeatApp() {
         var podcastRefreshAllDone by remember { mutableIntStateOf(0) }
         var podcastError by remember { mutableStateOf<String?>(null) }
         var pendingPodcastRemoval by remember { mutableStateOf<PodcastSubscription?>(null) }
+        // 自动刷新失败的明细（播客名 + 原因）：提示条与明细弹窗共用同一份，只在内存里
+        var podcastRefreshFailures by remember {
+            mutableStateOf(emptyList<PodcastRefreshFailure>())
+        }
+        var podcastRefreshFailuresVisible by remember { mutableStateOf(false) }
+        val podcastSnackbarHostState = remember { SnackbarHostState() }
         // 仅 Wi-Fi 下载：移动数据下点下载时先记下这一集，等弹窗确认（单次放行，不持久化）
         var pendingMobileDataDownload by remember {
             mutableStateOf<Pair<PodcastSubscription, PodcastEpisode>?>(null)
@@ -1404,10 +1417,14 @@ fun OmniBeatApp() {
             return System.currentTimeMillis() - lastAttemptMs >= intervalMs
         }
 
-        /** 自动刷新失败后记下这次尝试的时间；写库失败不影响刷新流程本身 */
-        suspend fun markPodcastRefreshFailed(subscription: PodcastSubscription) {
+        /** 失败原因的可展示文案（RssParser 的异常 message 本身就是给用户看的） */
+        fun refreshFailureReason(error: Throwable): String =
+            error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
+
+        /** 刷新失败后记下这次尝试的时间与原因；写库失败不影响刷新流程本身 */
+        suspend fun markPodcastRefreshFailed(subscription: PodcastSubscription, error: Throwable) {
             try {
-                podcastRepository.markRefreshFailed(subscription.feedUrl)
+                podcastRepository.markRefreshFailed(subscription.feedUrl, refreshFailureReason(error))
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -1417,12 +1434,43 @@ fun OmniBeatApp() {
 
         /** 单个订阅刷新失败的提示（RssParser 的异常 message 就是可展示文案） */
         fun showPodcastRefreshError(error: Throwable) {
-            val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
             Toast.makeText(
                 context,
-                resources.appString(R.string.podcast_refresh_failed, reason),
+                resources.appString(R.string.podcast_refresh_failed, refreshFailureReason(error)),
                 Toast.LENGTH_LONG,
             ).show()
+        }
+
+        /**
+         * 自动刷新失败的应用内提示。
+         *
+         * 提示条只报「第一个失败的播客 + 失败个数」，不往列表里加任何标记；
+         * 「查看」打开明细（名字 + 原因，可逐个重试）。明细留在内存，仅本次会话有效。
+         */
+        fun showPodcastRefreshFailures(failures: List<PodcastRefreshFailure>) {
+            if (failures.isEmpty()) return
+            podcastRefreshFailures = failures
+            val firstName = failures.first().subscription.title
+            val message = if (failures.size == 1) {
+                resources.appString(R.string.podcast_refresh_failure_one, firstName)
+            } else {
+                resources.appString(
+                    R.string.podcast_refresh_failure_many,
+                    firstName,
+                    failures.size,
+                )
+            }
+            scope.launch {
+                val result = podcastSnackbarHostState.showSnackbar(
+                    message = message,
+                    actionLabel = resources.appString(R.string.podcast_refresh_failure_view),
+                    withDismissAction = true,
+                    duration = SnackbarDuration.Long,
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    podcastRefreshFailuresVisible = true
+                }
+            }
         }
 
         /**
@@ -1460,6 +1508,8 @@ fun OmniBeatApp() {
                                 parsed.imageUrl ?: subscription.imageUrl
                             },
                             lastFetchedAtMs = System.currentTimeMillis(),
+                            // 拉成功了就把上次的失败原因清掉，期数页的失败窄条随之消失
+                            lastRefreshFailureReason = null,
                             episodes = parsed.episodes,
                         ),
                     )
@@ -1480,10 +1530,9 @@ fun OmniBeatApp() {
                     // 自动刷新（非 force）保持静默，由批量逻辑统一汇总提示
                     if (force) {
                         showPodcastRefreshError(error)
-                    } else {
-                        // 自动刷新失败也要记下尝试时间，否则下次进页面还会再拉同一个源再失败
-                        markPodcastRefreshFailed(subscription)
                     }
+                    // 失败的时间与原因一律入库：既用于节流，也用于期数页顶部的失败窄条
+                    markPodcastRefreshFailed(subscription, error)
                 } finally {
                     // 写库也可能抛异常；不复位的话刷新按钮会永久失效
                     podcastLoading = false
@@ -1538,6 +1587,8 @@ fun OmniBeatApp() {
                 var succeeded = 0
                 var failed = 0
                 var newEpisodes = 0
+                // 本次失败的明细：自动刷新结束后用它弹提示条与明细（手动刷新另有汇总 toast）
+                val failures = mutableListOf<PodcastRefreshFailure>()
                 try {
                     pending.forEach { subscription ->
                         // 刷新前的期数 guid 快照：刷新后 diff 就是「新增期数」
@@ -1555,16 +1606,22 @@ fun OmniBeatApp() {
                                         parsed.imageUrl ?: subscription.imageUrl
                                     },
                                     lastFetchedAtMs = System.currentTimeMillis(),
+                                    // 拉成功了就把上次的失败原因清掉，期数页的失败窄条随之消失
+                                    lastRefreshFailureReason = null,
                                     episodes = parsed.episodes,
                                 ),
                             )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
                             failed++
-                            // 失败也记尝试时间：否则这批源永远「间隔已到」，
+                            failures += PodcastRefreshFailure(
+                                subscription = subscription,
+                                reason = refreshFailureReason(error),
+                            )
+                            // 失败也记尝试时间与原因：否则这批源永远「间隔已到」，
                             // 每次启动 / 回到播客列表都会重新拉、重新失败
-                            markPodcastRefreshFailed(subscription)
+                            markPodcastRefreshFailed(subscription, error)
                         }
                         podcastRefreshAllDone++
                     }
@@ -1577,12 +1634,8 @@ fun OmniBeatApp() {
                     podcastOrderSnapshot = null
                 }
                 when {
-                    // 自动刷新不打扰：只在有失败时提示
-                    silent && failed > 0 -> Toast.makeText(
-                        context,
-                        resources.appString(R.string.podcast_refresh_auto_failed, failed),
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    // 自动刷新不打扰：只在有失败时给一条可展开的提示（不往列表里加标记）
+                    silent && failures.isNotEmpty() -> showPodcastRefreshFailures(failures)
                     !silent -> Toast.makeText(
                         context,
                         resources.appString(
@@ -1606,7 +1659,10 @@ fun OmniBeatApp() {
             podcastMultiSelectRequest = 0
             // 手动打开别的订阅时，不再回发现页
             podcastReturnToChartFor = null
-            refreshPodcast(subscription)
+            // 打开订阅时的节流刷新也归「进入自动刷新」管：关掉开关后不再自动拉取，
+            // 需要新期数时用下拉刷新（force）或 FAB 一键刷新，这两条始终可用。
+            // 这里用 state 而不是读 DataStore：点击发生时设置早已加载完毕。
+            if (podcastAutoRefreshOnEnterList) refreshPodcast(subscription)
         }
 
         fun removePodcast(subscription: PodcastSubscription) {
@@ -1698,10 +1754,11 @@ fun OmniBeatApp() {
         }
 
         // 启动时按设置自动刷新全部订阅（静默：只拉间隔已到的，成功不提示、失败才提示）。
-        // 订阅列表从 DataStore 现读，避免组合首次时 collectAsState 还是空列表导致漏刷。
+        // 开关与订阅列表都从 DataStore 现读：collectAsState 的 initial 是 true，
+        // 冷启动首帧还没读到用户关掉的设置，用 state 判断会先按默认值刷一次。
         // 注意：本地函数必须先声明后使用，这两个 effect 放在刷新函数之后。
         LaunchedEffect(Unit) {
-            if (!podcastAutoRefreshOnStart) return@LaunchedEffect
+            if (!podcastRepository.autoRefreshOnStart.first()) return@LaunchedEffect
             val saved = podcastRepository.subscriptions.first().filterNot { it.hidden }
             if (saved.isNotEmpty()) {
                 refreshAllPodcasts(saved, silent = true)
@@ -1723,7 +1780,8 @@ fun OmniBeatApp() {
         // 打开期数页（openPodcastUrl != null）不触发，那边走打开订阅时的单个节流刷新。
         LaunchedEffect(selectedPage, openPodcastUrl) {
             if (selectedPage != MainPage.Podcasts || openPodcastUrl != null) return@LaunchedEffect
-            if (!podcastAutoRefreshOnEnterList) return@LaunchedEffect
+            // 同上：开关从 DataStore 现读，避免 initial 默认值把「已关闭」误判成开启
+            if (!podcastRepository.autoRefreshOnEnterList.first()) return@LaunchedEffect
             val saved = podcastRepository.subscriptions.first().filterNot { it.hidden }
             if (saved.isNotEmpty()) {
                 refreshAllPodcasts(saved, silent = true)
@@ -2429,6 +2487,18 @@ fun OmniBeatApp() {
         ) {
             Scaffold(
                 containerColor = RadioBackground,
+                snackbarHost = {
+                    SnackbarHost(hostState = podcastSnackbarHostState) { data ->
+                        Snackbar(
+                            snackbarData = data,
+                            containerColor = RadioSurface,
+                            contentColor = RadioText,
+                            actionContentColor = RadioPrimary,
+                            dismissActionContentColor = RadioTextMuted,
+                            shape = RoundedCornerShape(RadioCorners.medium),
+                        )
+                    }
+                },
                 topBar = {
                     MainTopBar(
                         selectedPage = selectedPage,
@@ -2793,6 +2863,22 @@ fun OmniBeatApp() {
                                         marqueeTitles = marqueeTrackTitle,
                                         listLayout = podcastListLayout,
                                         onRefreshSubscription = { refreshPodcast(it, force = true) },
+                                        // 期数页顶部失败窄条：只显示还没被点掉的那一次失败
+                                        refreshFailureReason = podcastSubscriptions
+                                            .firstOrNull { it.feedUrl == openPodcastUrl }
+                                            ?.pendingRefreshFailureReason,
+                                        onRetryRefreshFailure = {
+                                            podcastSubscriptions
+                                                .firstOrNull { it.feedUrl == openPodcastUrl }
+                                                ?.let { refreshPodcast(it, force = true) }
+                                        },
+                                        onDismissRefreshFailure = {
+                                            openPodcastUrl?.let { url ->
+                                                scope.launch {
+                                                    podcastRepository.dismissRefreshFailure(url)
+                                                }
+                                            }
+                                        },
                                         onRefreshAll = {
                                             refreshAllPodcasts(
                                                 podcastVisibleSubscriptions,
@@ -3079,6 +3165,25 @@ fun OmniBeatApp() {
                     pendingPodcastRemoval = null
                     removePodcast(subscription)
                 },
+            )
+        }
+
+        // 自动刷新失败的明细（提示条「查看」打开）：列出哪个源失败、原因是什么，可逐个重试
+        if (podcastRefreshFailuresVisible && podcastRefreshFailures.isNotEmpty()) {
+            PodcastRefreshFailuresDialog(
+                failures = podcastRefreshFailures,
+                onRetry = { failure ->
+                    podcastRefreshFailures = podcastRefreshFailures.filterNot {
+                        it.subscription.feedUrl == failure.subscription.feedUrl
+                    }
+                    if (podcastRefreshFailures.isEmpty()) podcastRefreshFailuresVisible = false
+                    // 用库里最新的对象重试：提示时的快照可能已落后于刷新期间写入的进度
+                    val latest = podcastList.firstOrNull {
+                        it.feedUrl == failure.subscription.feedUrl
+                    } ?: failure.subscription
+                    refreshPodcast(latest, force = true)
+                },
+                onClose = { podcastRefreshFailuresVisible = false },
             )
         }
 

@@ -410,6 +410,13 @@
     <string name="podcast_refresh_failed">Refresh failed: %1$s</string>
     <string name="podcast_refresh_nothing">No subscriptions to refresh</string>
     <string name="podcast_refresh_auto_failed">%1$d subscriptions failed to refresh</string>
+    <string name="podcast_refresh_failure_one">%1$s failed to refresh</string>
+    <string name="podcast_refresh_failure_many">%1$s and %2$d subscriptions failed to refresh</string>
+    <string name="podcast_refresh_failure_view">View</string>
+    <string name="podcast_refresh_failure_title">Refresh failed</string>
+    <string name="podcast_refresh_failure_retry">Retry</string>
+    <string name="podcast_refresh_failure_notice">Auto refresh failed: %1$s</string>
+    <string name="podcast_refresh_failure_ignore">Dismiss this failure</string>
     <string name="podcast_refresh_summary">Refreshed %1$d subscriptions · %2$d new episodes · %3$d failed</string>
     <string name="podcast_refresh_all">Refresh all</string>
     <string name="podcast_refresh_single_new">Refreshed · %1$d new episodes</string>

@@ -230,6 +230,13 @@
     <string name="podcast_refresh_failed">Не удалось обновить: %1$s</string>
     <string name="podcast_refresh_nothing">Нет подписок для обновления</string>
     <string name="podcast_refresh_auto_failed">Не удалось обновить подписок: %1$d</string>
+    <string name="podcast_refresh_failure_one">Не удалось обновить %1$s</string>
+    <string name="podcast_refresh_failure_many">Не удалось обновить подписок: %2$d, включая %1$s</string>
+    <string name="podcast_refresh_failure_view">Показать</string>
+    <string name="podcast_refresh_failure_title">Ошибка обновления</string>
+    <string name="podcast_refresh_failure_retry">Повторить</string>
+    <string name="podcast_refresh_failure_notice">Автообновление не удалось: %1$s</string>
+    <string name="podcast_refresh_failure_ignore">Скрыть это сообщение</string>
     <string name="podcast_refresh_summary">Обновлено подписок: %1$d · новых выпусков: %2$d · ошибок: %3$d</string>
     <string name="podcast_refresh_all">Обновить все</string>
     <string name="podcast_refresh_single_new">Обновлено · новых выпусков: %1$d</string>

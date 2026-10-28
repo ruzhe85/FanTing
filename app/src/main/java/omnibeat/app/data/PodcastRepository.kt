@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import omnibeat.app.model.PODCAST_DEFAULT_PLAYBACK_SPEED
 import omnibeat.app.model.PODCAST_DEFAULT_REFRESH_INTERVAL_MINUTES
 import omnibeat.app.model.PODCAST_DEFAULT_SEARCH_REGION
+import omnibeat.app.model.PODCAST_REFRESH_FAILURE_REASON_MAX_LENGTH
 import omnibeat.app.model.PODCAST_PLAYBACK_SPEEDS
 import omnibeat.app.model.PODCAST_REFRESH_INTERVAL_OPTIONS
 import omnibeat.app.model.PODCAST_SEARCH_REGIONS
@@ -143,14 +144,37 @@ class PodcastRepository(private val context: Context) {
      * 节流与备份合并都按它算。按 feedUrl 在库里定位，
      * 不用调用方的订阅快照整体覆盖，避免把刷新期间写入的播放进度写回旧值。
      */
-    suspend fun markRefreshFailed(feedUrl: String) {
+    suspend fun markRefreshFailed(feedUrl: String, reason: String) {
+        val now = System.currentTimeMillis()
+        val reasonText = reason.trim()
+            .take(PODCAST_REFRESH_FAILURE_REASON_MAX_LENGTH)
+            .takeIf { it.isNotBlank() }
+        context.podcastDataStore.edit { preferences ->
+            val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
+            val index = current.indexOfFirst { it.feedUrl == feedUrl }
+            if (index == -1) return@edit
+            val next = current.toMutableList().also {
+                it[index] = it[index].copy(
+                    lastRefreshFailedAtMs = now,
+                    lastRefreshFailureReason = reasonText,
+                )
+            }
+            preferences[podcastsJsonKey] = encodeSubscriptions(next)
+        }
+    }
+
+    /**
+     * 用户点掉失败窄条：记下已阅时间，这次失败就不再出现
+     * （重启、重新进入期数页都不出现；再次刷新失败会更新失败时间，重新提示）。
+     */
+    suspend fun dismissRefreshFailure(feedUrl: String) {
         val now = System.currentTimeMillis()
         context.podcastDataStore.edit { preferences ->
             val current = decodeSubscriptions(preferences[podcastsJsonKey].orEmpty())
             val index = current.indexOfFirst { it.feedUrl == feedUrl }
             if (index == -1) return@edit
             val next = current.toMutableList().also {
-                it[index] = it[index].copy(lastRefreshFailedAtMs = now)
+                it[index] = it[index].copy(lastRefreshFailureSeenAtMs = now)
             }
             preferences[podcastsJsonKey] = encodeSubscriptions(next)
         }
@@ -548,6 +572,8 @@ internal fun encodePodcastSubscriptions(subscriptions: List<PodcastSubscription>
                 .put("imageUrlManual", subscription.imageUrlManual)
                 .put("lastFetchedAtMs", subscription.lastFetchedAtMs)
                 .put("lastRefreshFailedAtMs", subscription.lastRefreshFailedAtMs)
+                .put("lastRefreshFailureReason", subscription.lastRefreshFailureReason.orEmpty())
+                .put("lastRefreshFailureSeenAtMs", subscription.lastRefreshFailureSeenAtMs)
                 .put("hidden", subscription.hidden)
                 .put("episodes", episodes),
         )
@@ -575,8 +601,11 @@ internal fun decodePodcastSubscriptions(subscriptionsJson: String): List<Podcast
                             imageUrl = item.optString("imageUrl").trim().takeIf { it.isNotBlank() },
                             imageUrlManual = item.optBoolean("imageUrlManual", false),
                             lastFetchedAtMs = item.optLong("lastFetchedAtMs", 0L),
-                            // 旧数据没有这个字段：0 表示从未失败过
+                            // 旧数据没有这些字段：0 / null 表示从未失败过
                             lastRefreshFailedAtMs = item.optLong("lastRefreshFailedAtMs", 0L),
+                            lastRefreshFailureReason = item.optString("lastRefreshFailureReason")
+                                .trim().takeIf { it.isNotBlank() },
+                            lastRefreshFailureSeenAtMs = item.optLong("lastRefreshFailureSeenAtMs", 0L),
                             hidden = item.optBoolean("hidden", false),
                             episodes = decodePodcastEpisodes(item.optJSONArray("episodes")),
                         ),
